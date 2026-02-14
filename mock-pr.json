@@ -1,0 +1,22 @@
+{
+  "eventType": "git.pullrequest.created",
+  "resource": {
+    "pullRequestId": 42,
+    "title": "Add user authentication middleware",
+    "description": "Implements JWT-based authentication middleware for API routes. Includes token validation, error handling, and refresh token support.",
+    "repository": {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "backend-api",
+      "project": {
+        "name": "MyProject",
+        "id": "p1r2o3j4-e5c6-7890-abcd-ef1234567890"
+      }
+    },
+    "sourceRefName": "refs/heads/feature/auth-middleware",
+    "targetRefName": "refs/heads/main",
+    "createdBy": {
+      "displayName": "John Doe",
+      "uniqueName": "john.doe@company.com"
+    }
+  }
+}

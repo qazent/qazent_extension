@@ -1,0 +1,211 @@
+/**
+ * In-memory job queue with retry logic and background processing
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import { QueueJob, QueueStatus, WebhookPayload, PRMetadata } from './types';
+import * as logger from './logger';
+import * as adoClient from './ado-client';
+import * as ai from './ai';
+
+const queue: QueueJob[] = [];
+let isProcessing = false;
+const MAX_RETRIES = 3;
+
+/**
+ * Extract PR metadata from webhook payload
+ */
+function extractPRMetadata(payload: WebhookPayload): PRMetadata {
+  return {
+    prId: payload.resource.pullRequestId,
+    title: payload.resource.title,
+    description: payload.resource.description || '',
+    repositoryId: payload.resource.repository.id,
+    repositoryName: payload.resource.repository.name,
+    projectName: payload.resource.repository.project.name,
+    projectId: payload.resource.repository.project.id,
+    sourceBranch: payload.resource.sourceRefName.replace('refs/heads/', ''),
+    targetBranch: payload.resource.targetRefName.replace('refs/heads/', ''),
+    author: payload.resource.createdBy.displayName,
+    authorEmail: payload.resource.createdBy.uniqueName
+  };
+}
+
+/**
+ * Process a single job
+ */
+async function processJob(job: QueueJob): Promise<void> {
+  const { payload, attempt } = job;
+  const prMetadata = extractPRMetadata(payload);
+
+  logger.info('Processing job', {
+    jobId: job.id,
+    prId: prMetadata.prId,
+    attempt,
+    maxAttempts: job.maxAttempts
+  });
+
+  try {
+    // Step 1: Fetch PR diff from Azure DevOps
+    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId });
+    const codeDiff = await adoClient.fetchPRDiff(
+      prMetadata.projectName,
+      prMetadata.repositoryId,
+      prMetadata.prId
+    );
+
+    // Step 2: Generate test cases using AI
+    logger.info('Generating test cases with AI', { jobId: job.id, prId: prMetadata.prId });
+    const testCase = await ai.generateTestCases(prMetadata, codeDiff);
+
+    // Step 3: Create work item in Azure DevOps
+    logger.info('Creating work item', { jobId: job.id, prId: prMetadata.prId });
+    const workItemId = await adoClient.createTestCaseWorkItem(
+      prMetadata.projectName,
+      testCase,
+      prMetadata
+    );
+
+    logger.info('Job completed successfully', {
+      jobId: job.id,
+      prId: prMetadata.prId,
+      workItemId,
+      attempt
+    });
+
+  } catch (error) {
+    logger.error('Job failed', {
+      jobId: job.id,
+      prId: prMetadata.prId,
+      attempt,
+      error: String(error)
+    });
+
+    // Check if we should retry
+    if (attempt < job.maxAttempts) {
+      const nextAttempt = attempt + 1;
+      const backoffSeconds = Math.pow(2, attempt - 1); // 1s, 2s, 4s
+      const scheduledFor = new Date(Date.now() + backoffSeconds * 1000);
+
+      logger.warn('Scheduling retry', {
+        jobId: job.id,
+        prId: prMetadata.prId,
+        nextAttempt,
+        backoffSeconds,
+        scheduledFor: scheduledFor.toISOString()
+      });
+
+      // Re-queue with incremented attempt and scheduled time
+      queue.push({
+        ...job,
+        attempt: nextAttempt,
+        scheduledFor
+      });
+
+    } else {
+      // Max retries reached, create fallback work item
+      logger.error('Max retries reached, creating fallback work item', {
+        jobId: job.id,
+        prId: prMetadata.prId
+      });
+
+      try {
+        const fallbackWorkItemId = await adoClient.createFallbackWorkItem(
+          prMetadata.projectName,
+          prMetadata
+        );
+
+        logger.info('Fallback work item created', {
+          jobId: job.id,
+          prId: prMetadata.prId,
+          workItemId: fallbackWorkItemId
+        });
+
+      } catch (fallbackError) {
+        logger.error('Failed to create fallback work item', {
+          jobId: job.id,
+          prId: prMetadata.prId,
+          error: String(fallbackError)
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Background worker that processes jobs from the queue
+ */
+async function worker(): Promise<void> {
+  while (true) {
+    // Check if there are jobs ready to process
+    const now = new Date();
+    const readyJobIndex = queue.findIndex(job => {
+      return !job.scheduledFor || job.scheduledFor <= now;
+    });
+
+    if (readyJobIndex !== -1) {
+      // Remove job from queue
+      const job = queue.splice(readyJobIndex, 1)[0];
+
+      // Process the job
+      await processJob(job);
+
+    } else {
+      // No jobs ready, wait before checking again
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+}
+
+/**
+ * Add a job to the queue
+ */
+export function addJob(payload: WebhookPayload): string {
+  const jobId = uuidv4();
+
+  const job: QueueJob = {
+    id: jobId,
+    payload,
+    attempt: 1,
+    maxAttempts: MAX_RETRIES
+  };
+
+  queue.push(job);
+
+  logger.info('Job added to queue', {
+    jobId,
+    prId: payload.resource.pullRequestId,
+    queueLength: queue.length
+  });
+
+  return jobId;
+}
+
+/**
+ * Start the background worker
+ */
+export function startWorker(): void {
+  if (isProcessing) {
+    logger.warn('Worker already running');
+    return;
+  }
+
+  isProcessing = true;
+  logger.info('Starting background worker');
+
+  // Start worker (non-blocking)
+  worker().catch(error => {
+    logger.error('Worker crashed', { error: String(error) });
+    isProcessing = false;
+  });
+}
+
+/**
+ * Get current queue status
+ */
+export function getQueueStatus(): QueueStatus {
+  return {
+    pending: queue.length,
+    processing: isProcessing
+  };
+}
