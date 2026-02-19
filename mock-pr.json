@@ -2,6 +2,7 @@
   "eventType": "git.pullrequest.created",
   "resource": {
     "pullRequestId": 1,
+    "link":"https://dev.azure.com/qazent/test-extension/_git/test-extension/pullrequest/1?_a=overview",
     "title": "create a c# script for user validation, added safety check",
     "description": "create a c# script for user validation, added safety check if project name is not defined",
     "repository": {
