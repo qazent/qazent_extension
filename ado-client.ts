@@ -17,6 +17,11 @@ let connection: azdev.WebApi | null = null;
 export function initializeAdoConnection(): azdev.WebApi {
   const orgUrl = process.env.ADO_ORG_URL;
   const pat = process.env.ADO_PAT;
+  const projectName = process.env.ADO_PROJECT_NAME;
+
+  if (!orgUrl || !pat || !projectName) {
+    throw new Error('ADO_ORG_URL, ADO_PAT, and ADO_PROJECT_NAME environment variables are required');
+  }
 
   if (!orgUrl || !pat) {
     throw new Error('ADO_ORG_URL and ADO_PAT environment variables are required');
