@@ -19,7 +19,7 @@ export function loadSystemPrompt(): string {
     return systemPrompt;
   }
 
-  const promptPath = path.join(__dirname, 'system-prompt.txt');
+  const promptPath = path.join(process.cwd(), 'system-prompt.txt');
 
   try {
     systemPrompt = fs.readFileSync(promptPath, 'utf-8');
@@ -186,6 +186,7 @@ export async function generateTestCases(
     logger.info('Generating test cases with AI', { prId: prMetadata.prId });
 
     // Load system prompt
+
     const sysPrompt = loadSystemPrompt();
 
     // Initialize Gemini
