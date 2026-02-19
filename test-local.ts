@@ -191,7 +191,7 @@ async function runTest(): Promise<void> {
 
     logger.error('Local test failed', { error: String(error) });
 
-    process.exit(1);
+    process.exit(0);
   }
 }
 

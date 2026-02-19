@@ -191,9 +191,9 @@ export async function generateTestCases(
     // Initialize Gemini
     const ai = getGenAI();
     const model = ai.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-3-pro-preview', // Use latest available model
       generationConfig: {
-        temperature: 0.7,
+        temperature: 1,
         maxOutputTokens: 4096,
         responseMimeType: 'application/json'
       }
