@@ -13,6 +13,7 @@ namespace DennisApp.Services
     {
         private readonly IUserRepository _userRepository;
         private readonly ITokenProvider _tokenProvider;
+        private static readonly TimeSpan TokenExpiration = TimeSpan.FromHours(1);
         private readonly ILogger<UserAuthService> _logger;
 
         public UserAuthService(IUserRepository userRepository, ITokenProvider tokenProvider, ILogger<UserAuthService> logger)
