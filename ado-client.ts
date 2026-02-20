@@ -268,6 +268,26 @@ function formatDescriptionHtml(testCase: GeneratedTestCase, prMetadata: PRMetada
 }
 
 /**
+ * Build Azure DevOps artifact URI for linking PR to work item
+ *
+ * Format: vstfs:///Git/PullRequestId/{projectId}%2F{repositoryId}%2F{pullRequestId}
+ *
+ * @param prMetadata PR metadata containing required IDs
+ * @returns Artifact URI string in vstfs format
+ */
+export function buildPRArtifactUri(prMetadata: PRMetadata): string {
+  // Validate required fields
+  if (!prMetadata.projectId || !prMetadata.repositoryId || prMetadata.prId == null) {
+    throw new Error('Missing required IDs for PR artifact URI construction');
+  }
+
+  // Construct artifact URI with URL-encoded separators
+  const artifactUri = `vstfs:///Git/PullRequestId/${prMetadata.projectId}%2F${prMetadata.repositoryId}%2F${prMetadata.prId}`;
+
+  return artifactUri;
+}
+
+/**
  * Create Test Case work item in Azure DevOps
  */
 export async function createTestCaseWorkItem(
@@ -287,8 +307,15 @@ export async function createTestCaseWorkItem(
     // Format description as HTML
     const descriptionHtml = formatDescriptionHtml(testCase, prMetadata);
 
-    // Build PR URL for linking
-    const prUrl = `${process.env.ADO_ORG_URL}/${projectName}/_git/${prMetadata.repositoryName}/pullrequest/${prMetadata.prId}`;
+    // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
+    const prArtifactUri = buildPRArtifactUri(prMetadata);
+
+    logger.debug('Constructed PR artifact URI', {
+      projectId: prMetadata.projectId,
+      repositoryId: prMetadata.repositoryId,
+      prId: prMetadata.prId,
+      artifactUri: prArtifactUri
+    });
 
     // Create patch document for work item
     const patchDocument: JsonPatchOperation[] = [
@@ -317,7 +344,7 @@ export async function createTestCaseWorkItem(
         path: '/relations/-',
         value: {
           rel: 'ArtifactLink',
-          url: prUrl,
+          url: prArtifactUri,
           attributes: {
             name: 'Pull Request'
           }
@@ -386,7 +413,15 @@ export async function createFallbackWorkItem(
   </step>
 </steps>`;
 
-    const prUrl = `${process.env.ADO_ORG_URL}/${projectName}/_git/${prMetadata.repositoryName}/pullrequest/${prMetadata.prId}`;
+    // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
+    const prArtifactUri = buildPRArtifactUri(prMetadata);
+
+    logger.debug('Constructed PR artifact URI for fallback', {
+      projectId: prMetadata.projectId,
+      repositoryId: prMetadata.repositoryId,
+      prId: prMetadata.prId,
+      artifactUri: prArtifactUri
+    });
 
     const patchDocument: JsonPatchOperation[] = [
       {
@@ -414,7 +449,7 @@ export async function createFallbackWorkItem(
         path: '/relations/-',
         value: {
           rel: 'ArtifactLink',
-          url: prUrl,
+          url: prArtifactUri,
           attributes: {
             name: 'Pull Request'
           }
