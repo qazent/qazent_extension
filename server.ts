@@ -17,6 +17,7 @@ dotenv.config();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
 
+
 /**
  * Validate required environment variables
  */
