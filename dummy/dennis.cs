@@ -1,4 +1,7 @@
 // filepath: c:\dev\test-extension\dennis.cs
+
+// blob blob file
+// This file is a dummy file created to test the extension's ability to handle blob files. It contains random text and does not serve any functional purpose in the application. The content is intentionally meaningless to simulate a blob file scenario.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,49 +30,62 @@ namespace DennisApp.Services
         /// Authenticates user credentials and returns JWT token
         /// </summary>
         public async Task<AuthResult> AuthenticateUserAsync(string email, string password)
+{
+    try
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return new AuthResult { Success = false, Message = "Invalid credentials" };
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+
+        // Check lockout
+        if (_loginAttempts.ContainsKey(normalizedEmail))
         {
-            try
+            var entry = _loginAttempts[normalizedEmail];
+
+            if (entry.LockoutEnd.HasValue && entry.LockoutEnd > DateTime.UtcNow)
             {
-                var user = await _userRepository.GetUserByEmailAsync(email);
-                
-                if (user == null)
+                _logger.LogWarning($"User {normalizedEmail} is temporarily locked out.");
+                return new AuthResult
                 {
-                    _logger.LogWarning($"Authentication failed: User not found for email {email}");
-                    return new AuthResult { Success = false, Message = "Invalid credentials" };
-                }
-
-                if (!user.IsActive)
-                {
-                    _logger.LogWarning($"Authentication failed: User account inactive for {email}");
-                    return new AuthResult { Success = false, Message = "Account is disabled" };
-                }
-
-                if (!VerifyPassword(password, user.PasswordHash))
-                {
-                    _logger.LogWarning($"Authentication failed: Invalid password for {email}");
-                    return new AuthResult { Success = false, Message = "Invalid credentials" };
-                }
-
-                var token = _tokenProvider.GenerateToken(user.Id, user.Email, user.Role);
-                user.LastLoginDate = DateTime.UtcNow;
-                await _userRepository.UpdateUserAsync(user);
-
-                _logger.LogInformation($"User successfully authenticated: {email}");
-                
-                return new AuthResult 
-                { 
-                    Success = true, 
-                    Token = token,
-                    ExpiresIn = 3600,
-                    Message = "Authentication successful"
+                    Success = false,
+                    Message = "Account temporarily locked. Try again later."
                 };
             }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error during authentication: {ex.Message}");
-                return new AuthResult { Success = false, Message = "An error occurred during authentication" };
-            }
         }
+
+        var user = await _userRepository.GetUserByEmailAsync(normalizedEmail);
+
+        if (user == null || !user.IsActive || !VerifyPassword(password, user.PasswordHash))
+        {
+            RegisterFailedAttempt(normalizedEmail);
+            return new AuthResult { Success = false, Message = "Invalid credentials" };
+        }
+
+        // Reset failed attempts on success
+        ResetFailedAttempts(normalizedEmail);
+
+        var token = _tokenProvider.GenerateToken(user.Id, user.Email, user.Role);
+        user.LastLoginDate = DateTime.UtcNow;
+        await _userRepository.UpdateUserAsync(user);
+
+        _logger.LogInformation($"User successfully authenticated: {normalizedEmail}");
+
+        return new AuthResult
+        {
+            Success = true,
+            Token = token,
+            ExpiresIn = (int)TokenExpiration.TotalSeconds,
+            Message = "Authentication successful"
+        };
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError($"Error during authentication: {ex.Message}");
+        return new AuthResult { Success = false, Message = "An error occurred during authentication" };
+    }
+}
+        
 
         /// <summary>
         /// Validates JWT token and returns user claims
