@@ -37,9 +37,12 @@ jobs:
       tfx extension create --manifest-globs vss-extension.json --rev-version
     displayName: 'Package extension with version bump'
 
+    
+
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(System.DefaultWorkingDirectory)/*.vsix'
       artifact: 'extension-package'
       publishLocation: 'pipeline'
     displayName: 'Publish .vsix artifact'
+
