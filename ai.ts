@@ -69,7 +69,7 @@ function getGenAI(): GoogleGenAI {
 /**
  * Construct user prompt from PR metadata and code diff
  */
-function buildUserPrompt(prMetadata: PRMetadata, codeDiff: CodeDiff): string {
+function buildUserPrompt(prMetadata: PRMetadata, codeDiff: CodeDiff, customContext?: string): string {
   let prompt = `Generate test cases for this Pull Request:
 
 PR Title: ${prMetadata.title}
@@ -94,6 +94,11 @@ Lines Deleted: ${change.linesDeleted}
 Diff:
 ${change.diffContent}
 `;
+  }
+
+  // Append custom context if provided
+  if (customContext && customContext.trim().length > 0) {
+    prompt += `\n\nRepository-Specific Context:\n${customContext}\n`;
   }
 
   prompt += `
@@ -173,7 +178,8 @@ function validateTaskOutput(data: any): TaskWorkItemOutput {
  */
 export async function generateTestCases(
   prMetadata: PRMetadata,
-  codeDiff: CodeDiff
+  codeDiff: CodeDiff,
+  customContext?: string
 ): Promise<TaskWorkItemOutput> {
   const MAX_ATTEMPTS = 2;
   let lastError: Error | null = null;
@@ -189,7 +195,7 @@ export async function generateTestCases(
       const ai = getGenAI();
 
       // Build user prompt
-      const userPrompt = buildUserPrompt(prMetadata, codeDiff);
+      const userPrompt = buildUserPrompt(prMetadata, codeDiff, customContext);
 
       logger.debug('Sending prompt to AI', {
         systemPromptLength: sysPrompt.length,

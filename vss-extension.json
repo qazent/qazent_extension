@@ -27,6 +27,16 @@
         "uri": "dist/hub.html",
         "order": 100
       }
+    },
+    {
+      "id": "ai-context-settings-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-web.project-admin-hub-group"],
+      "properties": {
+        "name": "AI Assistant Context",
+        "order": 100,
+        "uri": "dist/settings.html"
+      }
     }
   ],
   "files": [
@@ -34,5 +44,6 @@
       "path": "dist",
       "addressable": true
     }
-  ]
+  ],
+  "scopes": ["vso.code"]
 }
