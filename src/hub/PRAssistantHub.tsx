@@ -115,8 +115,11 @@ const PRAssistantHub: React.FC = () => {
       console.error('Error loading PR context:', err);
     }
   };
+// Load custom context from extension data storage, combining project default and repo-specific contexts
+// TODO: Consider caching this context in session storage to avoid repeated loads on every render
 
-  const loadCustomContext = async (projectId: string, repositoryId: string) => {
+// TODO: USE PROJECTID IF ORGANIZATION SUPPORT IS ADDED IN THE FUTURE, CURRENTLY USING PROJECT NAME AS KEY PART OF STORAGE
+  const loadCustomContext = async (_projectId: string, repositoryId: string) => {
     try {
       // Build combined context: project default + repo-specific
       const contextParts: string[] = [];
@@ -128,7 +131,7 @@ const PRAssistantHub: React.FC = () => {
         'QAZent.pr-assistant-extension',
         await SDK.getAccessToken()
       );
-
+    
       // Load project default first
       const projectDefault = await dataManager.getDocument('ai-contexts', 'project-default');
       if (projectDefault && (projectDefault as AIContextDocument).contextText && (projectDefault as AIContextDocument).contextText.trim()) {

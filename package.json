@@ -30,6 +30,7 @@
     "@fluentui/react-combobox": "^9.15.0",
     "@fluentui/react-components": "^9.73.0",
     "@google/genai": "^1.35.0",
+    "@testing-library/react": "^16.3.2",
     "azure-devops-extension-api": "^4.0.2",
     "azure-devops-extension-sdk": "^4.2.0",
     "azure-devops-node-api": "^12.5.0",
@@ -41,6 +42,7 @@
     "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
     "@types/cors": "^2.8.13",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
@@ -51,7 +53,9 @@
     "cpx": "^1.5.0",
     "html-webpack-plugin": "^5.5.3",
     "jest": "^30.2.0",
+    "jest-dom": "^4.0.0",
     "jest-environment-node": "^30.2.0",
+    "react-testing-library": "^8.0.1",
     "ts-jest": "^29.4.6",
     "ts-loader": "^9.4.4",
     "ts-node": "^10.9.0",

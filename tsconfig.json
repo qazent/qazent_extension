@@ -15,7 +15,7 @@
     "sourceMap": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
-    "types": ["node", "jest"],
+    "types": ["node", "jest", "@testing-library/jest-dom"],
     "strictFunctionTypes": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
