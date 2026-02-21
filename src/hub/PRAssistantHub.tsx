@@ -4,6 +4,7 @@
 
 import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
+import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -43,22 +44,23 @@ const PRAssistantHub: React.FC = () => {
 
   const loadPRContext = async () => {
     try {
-      // Extract PR information from URL parameters
-      const params = new URLSearchParams(window.location.search);
-      const pullRequestId = parseInt(params.get('pullRequestId') || '0', 10);
-      const authorEmail = params.get('authorEmail') || 'Unknown Author';
+      // Get the host page context from Azure DevOps SDK
+      const config = SDK.getConfiguration();
 
-      if (!pullRequestId) {
-        setError('Please navigate to a Pull Request to use this extension');
+      if (!config || !config.pullRequestId) {
+        setError('Unable to load PR context from Azure DevOps');
         return;
       }
+
+      // Azure DevOps provides PR context when extension is shown in PR tab
+      const pullRequestId = config.pullRequestId as number;
 
       // Set PR data (basic info without full API call)
       setPRData({
         prTitle: 'PR #' + pullRequestId,
         prId: pullRequestId,
-        author: authorEmail,
-        filesChanged: 0
+        author: 'Unknown Author', // Can be fetched via API if needed
+        filesChanged: 0 // Can be fetched via API if needed
       });
 
     } catch (err) {
@@ -149,58 +151,60 @@ const PRAssistantHub: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Error Message */}
-      {error && (
-        <div style={{
-          backgroundColor: '#fde7e9',
-          border: '1px solid #e81123',
-          color: '#e81123',
-          padding: '12px',
-          marginBottom: '16px',
-          borderRadius: '4px'
-        }}>
-          {error}
-        </div>
-      )}
+    <FluentProvider theme={webLightTheme}>
+      <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Error Message */}
+        {error && (
+          <div style={{
+            backgroundColor: '#fde7e9',
+            border: '1px solid #e81123',
+            color: '#e81123',
+            padding: '12px',
+            marginBottom: '16px',
+            borderRadius: '4px'
+          }}>
+            {error}
+          </div>
+        )}
 
-      {/* Success Message */}
-      {successMessage && (
-        <div style={{
-          backgroundColor: '#dff6dd',
-          border: '1px solid #107c10',
-          color: '#107c10',
-          padding: '12px',
-          marginBottom: '16px',
-          borderRadius: '4px'
-        }}>
-          {successMessage}
-        </div>
-      )}
+        {/* Success Message */}
+        {successMessage && (
+          <div style={{
+            backgroundColor: '#dff6dd',
+            border: '1px solid #107c10',
+            color: '#107c10',
+            padding: '12px',
+            marginBottom: '16px',
+            borderRadius: '4px'
+          }}>
+            {successMessage}
+          </div>
+        )}
 
-      {/* PR Info Section */}
-      <PRInfoSection
-        prTitle={prData?.prTitle}
-        prId={prData?.prId}
-        author={prData?.author}
-        filesChanged={prData?.filesChanged}
-      />
+        {/* PR Info Section */}
+        <PRInfoSection
+          prTitle={prData?.prTitle}
+          prId={prData?.prId}
+          author={prData?.author}
+          filesChanged={prData?.filesChanged}
+        />
 
-      {/* Generate Button */}
-      <GenerateButton
-        isLoading={isGenerating}
-        isDisabled={!prData}
-        onClick={handleGenerateTests}
-      />
+        {/* Generate Button */}
+        <GenerateButton
+          isLoading={isGenerating}
+          isDisabled={!prData}
+          onClick={handleGenerateTests}
+        />
 
-      {/* Test Case Card */}
-      <TestCaseCard
-        testCase={testCase}
-        onCopyToClipboard={handleCopyToClipboard}
-        onCreateWorkItem={handleCreateWorkItem}
-        isCreatingWorkItem={isCreatingWorkItem}
-      />
-    </div>
+        {/* Test Case Card */}
+        <TestCaseCard
+          testCase={testCase}
+          onCopyToClipboard={handleCopyToClipboard}
+          onCreateWorkItem={handleCreateWorkItem}
+          isCreatingWorkItem={isCreatingWorkItem}
+        />
+      </div>
+    </FluentProvider>
   );
 };
 

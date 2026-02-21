@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.0.9",
+  "version": "1.2.1",
   "publisher": "QAZent",
   "targets": [
     {
@@ -19,16 +19,13 @@
   },
   "contributions": [
     {
-      "id": "pr-assistant-hub",
-      "type": "ms.vss-web.hub",
-      "targets": ["ms.vss-code-web.code-hub-group"],
+      "id": "pr-assistant-tab",
+      "type": "ms.vss-web.tab",
+      "targets": ["ms.vss-code-web.pr-tabs"],
       "properties": {
         "name": "PR Assistant",
         "uri": "dist/hub.html",
-        "order": 30,
-        "configuration": {
-          "backendUrl": "http://localhost:3000"
-        }
+        "order": 100
       }
     }
   ],
