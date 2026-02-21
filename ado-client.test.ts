@@ -8,19 +8,22 @@ import { describe, it, expect } from '@jest/globals';
 
 
 describe('buildPRArtifactUri', () => {
-  const mockMetadata: PRMetadata = {
-    projectId: 'a1b2c3d4-e5f6-7890-abcd-1234567890ab',
-    repositoryId: 'e5f6g7h8-i9j0-1234-5678-abcdef123456',
+    const mockMetadata: PRMetadata = {
     prId: 2,
-    projectName: 'test-extension',
-    repositoryName: 'test-extension',
-    title: 'Test PR',
-    description: 'Test description',
-    sourceBranch: 'feature/test',
-    targetBranch: 'main',
-    author: 'Test Author',
-    authorEmail: 'test@example.com'
+    title: "Test PR",
+    description: "Some description",
+    repositoryId: "e5f6g7h8-i9j0-1234-5678-abcdef123456",
+    repositoryName: "my-repo",
+    projectName: "my-project",
+    projectId: "a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    sourceBranch: "refs/heads/feature/test",
+    targetBranch: "refs/heads/main",
+    author: "John Doe",
+    authorEmail: "john@example.com",
+    createDate: new Date(),
+    branchName: "feature/test"
   };
+  console.log(mockMetadata);
 
   it('should construct correct vstfs artifact URI format', () => {
     const result = buildPRArtifactUri(mockMetadata);

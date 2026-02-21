@@ -43,6 +43,9 @@ export interface PRMetadata {
   targetBranch: string;
   author: string;
   authorEmail: string;
+  createDate: Date;
+  branchName: string;
+  
 }
 
 /**
