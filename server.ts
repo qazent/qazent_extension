@@ -200,10 +200,13 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
         return;
       }
 
+      const customContext = payload.customContext; // Optional field
+
       logger.info('Generate tests request', {
         prId: payload.prId,
         projectName: payload.projectName,
-        repositoryId: payload.repositoryId
+        repositoryId: payload.repositoryId,
+        hasCustomContext: !!customContext
       });
 
       // Fetch PR diff
@@ -231,7 +234,7 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
       };
 
       // Generate test cases
-      const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff);
+      const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff, customContext);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(taskOutput));

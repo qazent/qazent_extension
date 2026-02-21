@@ -11,7 +11,8 @@ export async function generateTestCases(
   prId: number,
   projectName: string,
   repositoryId: string,
-  backendUrl: string
+  backendUrl: string,
+  customContext?: string
 ): Promise<GeneratedTestCase> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -25,7 +26,8 @@ export async function generateTestCases(
       body: JSON.stringify({
         prId,
         projectName,
-        repositoryId
+        repositoryId,
+        customContext
       }),
       signal: controller.signal
     });

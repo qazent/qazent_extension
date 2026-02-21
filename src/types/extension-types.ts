@@ -45,3 +45,16 @@ export interface ApiErrorResponse {
   details?: string;
   message?: string;
 }
+
+/**
+ * AI context document stored in Extension Data Service
+ */
+export interface AIContextDocument {
+  id: string;
+  projectId?: string;
+  repositoryId?: string;
+  repositoryName?: string;
+  contextText: string;
+  updatedAt: string;
+  updatedBy: string;
+}
