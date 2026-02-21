@@ -553,7 +553,8 @@ export async function postPRComment(
   repositoryId: string,
   prId: number,
   workItemId: number,
-  authorEmail: string
+  author: string,
+
 ): Promise<void> {
   try {
     logger.info('Posting PR comment', { projectName, prId, workItemId });
@@ -562,7 +563,7 @@ export async function postPRComment(
     const gitApi: GitApi = await conn.getGitApi();
 
     // Build comment text with @mention and #workitem reference
-    const commentText = `Testcase has been created! @${authorEmail} #${workItemId}`;
+    const commentText = `Testcase workitem has been created! @${author} #${workItemId}`;
 
     // Create comment thread payload
     const commentThread = {
