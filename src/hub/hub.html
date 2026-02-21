@@ -4,11 +4,9 @@
     <meta charset="utf-8" />
     <title>PR Assistant</title>
 
-    <!-- Required for Azure DevOps extension styling -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Fluent UI (optional but recommended) -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/@fluentui/react-components/dist/react-components.min.css"
@@ -16,13 +14,12 @@
   </head>
 
   <body>
-    <!-- React root -->
     <div id="root"></div>
 
-    <!-- 1️⃣ Load Azure DevOps Extension SDK BEFORE your bundle -->
-    <script src="https://unpkg.com/azure-devops-extension-sdk@2.0.0/SDK.min.js"></script>
+    <!-- Correct Azure DevOps SDK v2 -->
+    <script src="https://unpkg.com/azure-devops-extension-sdk@2.0.0/dist/azure-devops-extension-sdk.js"></script>
 
-    <!-- 2️⃣ Load your compiled React bundle (hub.js or index.js) -->
+    <!-- Your bundle -->
     <script src="hub.js"></script>
   </body>
 </html>

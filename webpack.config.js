@@ -35,8 +35,7 @@ module.exports = (env, argv) => {
       })
     ],
     externals: {
-      // Azure DevOps SDK loaded from CDN
-      'azure-devops-extension-sdk': 'SDK'
-    }
+  "azure-devops-extension-sdk": "AzureDevOpsExtensionSDK"
+}
   };
 };
