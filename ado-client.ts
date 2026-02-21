@@ -544,3 +544,56 @@ export async function createFallbackWorkItem(
     throw new Error(`Failed to create fallback work item: ${error}`);
   }
 }
+
+/**
+ * Post a comment on a pull request
+ */
+export async function postPRComment(
+  projectName: string,
+  repositoryId: string,
+  prId: number,
+  workItemId: number,
+  authorEmail: string
+): Promise<void> {
+  try {
+    logger.info('Posting PR comment', { projectName, prId, workItemId });
+
+    const conn = getConnection();
+    const gitApi: GitApi = await conn.getGitApi();
+
+    // Build comment text with @mention and #workitem reference
+    const commentText = `Testcase has been created! @${authorEmail} #${workItemId}`;
+
+    // Create comment thread payload
+    const commentThread = {
+      comments: [
+        {
+          parentCommentId: 0,
+          content: commentText,
+          commentType: 1 // 1 = text comment
+        }
+      ],
+      status: 1, // 1 = Active thread
+      threadContext: null // null for general PR comment (not line-specific)
+    };
+
+    // Post the comment thread
+    await gitApi.createThread(
+      commentThread,
+      repositoryId,
+      prId,
+      projectName
+    );
+
+    logger.info('PR comment posted successfully', { projectName, prId, workItemId });
+
+  } catch (error) {
+    logger.error('Failed to post PR comment', {
+      projectName,
+      prId,
+      workItemId,
+      error: String(error)
+    });
+    throw new Error(`Failed to post PR comment: ${error}`);
+  }
+}

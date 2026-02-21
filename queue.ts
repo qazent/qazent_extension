@@ -69,6 +69,26 @@ async function processJob(job: QueueJob): Promise<void> {
       prMetadata
     );
 
+    // Step 4: Post PR comment
+    try {
+      logger.info('Posting PR comment', { jobId: job.id, prId: prMetadata.prId, workItemId });
+      await adoClient.postPRComment(
+        prMetadata.projectName,
+        prMetadata.repositoryId,
+        prMetadata.prId,
+        workItemId,
+        prMetadata.authorEmail
+      );
+    } catch (commentError) {
+      // Log warning but don't fail job - work item already created
+      logger.warn('Failed to post PR comment, continuing', {
+        jobId: job.id,
+        prId: prMetadata.prId,
+        workItemId,
+        error: String(commentError)
+      });
+    }
+
     logger.info('Job completed successfully', {
       jobId: job.id,
       prId: prMetadata.prId,
@@ -123,6 +143,24 @@ async function processJob(job: QueueJob): Promise<void> {
           prId: prMetadata.prId,
           workItemId: fallbackWorkItemId
         });
+
+        // Post PR comment for fallback work item
+        try {
+          await adoClient.postPRComment(
+            prMetadata.projectName,
+            prMetadata.repositoryId,
+            prMetadata.prId,
+            fallbackWorkItemId,
+            prMetadata.authorEmail
+          );
+        } catch (commentError) {
+          logger.warn('Failed to post PR comment for fallback work item', {
+            jobId: job.id,
+            prId: prMetadata.prId,
+            workItemId: fallbackWorkItemId,
+            error: String(commentError)
+          });
+        }
 
       } catch (fallbackError) {
         logger.error('Failed to create fallback work item', {
