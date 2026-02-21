@@ -4,16 +4,16 @@
 
 import { generateTestCases } from './ai';
 import { PRMetadata, CodeDiff } from './types';
-import * as logger from './logger';
-import * as fs from 'fs';
 
 
-// Mock GoogleGenAI
+// Mock GoogleGenAI with a controlled mock function
+const mockGenerateContent = jest.fn();
+
 jest.mock('@google/genai', () => {
   return {
     GoogleGenAI: jest.fn().mockImplementation(() => ({
       models: {
-        generateContent: jest.fn()
+        generateContent: mockGenerateContent
       }
     }))
   };
@@ -69,6 +69,7 @@ describe('generateTestCases', () => {
     };
 
     jest.clearAllMocks();
+    mockGenerateContent.mockClear();
   });
 
   afterEach(() => {
@@ -76,123 +77,120 @@ describe('generateTestCases', () => {
   });
 
   it('should successfully extract text from AI response and parse JSON', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({
+    const mockHtmlDescription = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
+<h2>Scope of Change</h2><p>Feature module</p>
+<h2>Preconditions</h2><ul><li>System is running</li></ul>
+<h2>Test Steps & Expected Results</h2>
+<table><tr><th>Step</th><th>Expected Result</th></tr>
+<tr><td>Open app</td><td>App opens</td></tr>
+<tr><td>Click feature button</td><td>Button responds</td></tr>
+<tr><td>Verify result</td><td>Feature works</td></tr></table>
+<h2>Negative Scenarios</h2><ul><li>Test with invalid input</li></ul>
+<h2>Edge Cases</h2><ul><li>Test with empty data</li></ul>
+<h2>Regression Areas</h2><ul><li>Existing features</li></ul>
+<h2>Data Requirements</h2><ul><li>Test user account</li></ul>
+<h2>Automation Notes</h2><p>Can be automated with Selenium</p>`;
+
+    mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
-        title: 'Test Feature Functionality',
-        purpose: 'Verify the new feature works correctly',
-        scopeOfChange: 'Feature module',
-        preconditions: ['System is running'],
-        testSteps: ['Open app', 'Click feature button', 'Verify result'],
-        expectedResults: ['App opens', 'Button responds', 'Feature works'],
-        negativeScenarios: ['Test with invalid input'],
-        edgeCases: ['Test with empty data'],
-        regressionAreas: ['Existing features'],
-        dataRequirements: ['Test user account'],
-        automationNotes: 'Can be automated with Selenium'
+        title: 'Test Case: Feature Functionality',
+        htmlDescription: mockHtmlDescription
       })
     });
 
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
-
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
-    expect(result.title).toBe('Test Feature Functionality');
-    expect(result.testSteps.length).toBe(result.expectedResults.length);
+    expect(result.title).toBe('Test Case: Feature Functionality');
+    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<table>');
   });
 
   it('should handle AI response with markdown JSON wrapper', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({
-      text: '```json\n{"title": "Test Title", "purpose": "Test Purpose", "testSteps": ["Step 1"], "expectedResults": ["Result 1"]}\n```'
+    mockGenerateContent.mockResolvedValue({
+      text: '```json\n{"title": "Test Case: Test Title", "htmlDescription": "<h2>Purpose</h2><p>Test Purpose</p><h2>Scope of Change</h2><p>Test</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate with unit tests</p>"}\n```'
     });
-
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
-    expect(result.title).toBe('Test Title');
-    expect(result.purpose).toBe('Test Purpose');
+    expect(result.title).toBe('Test Case: Test Title');
+    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<p>Test Purpose</p>');
   });
 
   it('should throw error when AI returns empty response', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({ text: '' });
-
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
+    mockGenerateContent.mockResolvedValue({ text: '' });
 
     await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
       .rejects.toThrow('AI returned empty response');
   });
 
   it('should throw error when AI returns non-JSON text', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({
+    mockGenerateContent.mockResolvedValue({
       text: 'This is plain text, not JSON'
     });
 
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
-
     await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
-      .rejects.toThrow('Failed to parse AI response as JSON');
+      .rejects.toThrow('Failed to generate test cases after 2 attempts');
   });
 
-  it('should fill defaults for missing fields', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({
+  it('should throw error when required fields are missing', async () => {
+    mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
-        title: 'Minimal Test Case'
+        title: 'Test Case: Incomplete'
       })
     });
 
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
-
-    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
-
-    expect(result.purpose).toBe('N/A');
-    expect(result.testSteps).toEqual(['Review changes']);
+    await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
+      .rejects.toThrow('Missing required field: htmlDescription');
   });
 
   it('should handle Gemini API errors gracefully', async () => {
-    const mockGenerateContent = jest.fn().mockRejectedValue(
+    mockGenerateContent.mockRejectedValue(
       new Error('API rate limit exceeded')
     );
 
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
-
     await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
-      .rejects.toThrow('Gemini API error');
+      .rejects.toThrow('Failed to generate test cases after 2 attempts');
   });
 
-  it('should ensure testSteps and expectedResults have same length', async () => {
-    const mockGenerateContent = jest.fn().mockResolvedValue({
-      text: JSON.stringify({
-        title: 'Test Case',
-        testSteps: ['Step 1', 'Step 2', 'Step 3'],
-        expectedResults: ['Result 1']
-      })
-    });
+  it('should retry once on parsing failure then succeed', async () => {
+    const mockHtmlDescription = `<h2>Purpose</h2><p>Retry test</p>
+<h2>Scope of Change</h2><p>Test module</p>
+<h2>Preconditions</h2><p>None</p>
+<h2>Test Steps & Expected Results</h2>
+<table><tr><th>Step</th><th>Expected Result</th></tr>
+<tr><td>Step 1</td><td>Result 1</td></tr></table>
+<h2>Negative Scenarios</h2><p>None</p>
+<h2>Edge Cases</h2><p>None</p>
+<h2>Regression Areas</h2><p>None</p>
+<h2>Data Requirements</h2><p>None</p>
+<h2>Automation Notes</h2><p>Unit tests</p>`;
 
-    const { GoogleGenAI } = require('@google/genai');
-    GoogleGenAI.mockImplementation(() => ({
-      models: { generateContent: mockGenerateContent }
-    }));
+    mockGenerateContent
+      .mockResolvedValueOnce({ text: 'Invalid JSON on first attempt' })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({
+          title: 'Test Case: Retry Success',
+          htmlDescription: mockHtmlDescription
+        })
+      });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
-    expect(result.expectedResults).toEqual(['Result 1', 'N/A', 'N/A']);
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(result.title).toBe('Test Case: Retry Success');
+    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
   });
+
+  it('should throw after two failed attempts', async () => {
+    mockGenerateContent
+      .mockRejectedValueOnce(new Error('First failure'))
+      .mockRejectedValueOnce(new Error('Second failure'));
+
+    await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
+      .rejects.toThrow('Failed to generate test cases after 2 attempts');
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
 });

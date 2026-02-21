@@ -85,6 +85,14 @@ export interface GeneratedTestCase {
 }
 
 /**
+ * AI-generated Task work item output structure
+ */
+export interface TaskWorkItemOutput {
+  title: string;
+  htmlDescription: string;
+}
+
+/**
  * Job queue item
  */
 export interface QueueJob {

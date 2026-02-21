@@ -5,7 +5,7 @@
 import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeDiff, GeneratedTestCase, PRMetadata } from './types';
+import { CodeDiff, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 import { jsonrepair } from "jsonrepair";
 
@@ -99,17 +99,8 @@ ${change.diffContent}
   prompt += `
 Please provide test cases in the following JSON structure:
 {
-  "title": "Test case title",
-  "purpose": "Why this testing is needed",
-  "scopeOfChange": "What areas are affected",
-  "preconditions": ["condition 1", "condition 2"],
-  "testSteps": ["step 1", "step 2"],
-  "expectedResults": ["result 1", "result 2"],
-  "negativeScenarios": ["scenario 1"],
-  "edgeCases": ["edge case 1"],
-  "regressionAreas": ["area 1"],
-  "dataRequirements": ["data 1"],
-  "automationNotes": "Notes about automation potential"
+  "title": "Test Case: <short summary>",
+  "htmlDescription": "<complete HTML document with all 9 sections>"
 }`;
 
   return prompt;
@@ -158,132 +149,129 @@ function safeParseAIResponse(response: string) {
 }
 
 /**
- * Validate and fill missing fields in AI response
+ * Validate Task work item output from AI
  */
-function validateAndFillDefaults(data: Partial<GeneratedTestCase>): GeneratedTestCase {
-  const defaults: GeneratedTestCase = {
-    title: data.title || 'Test Case: Untitled',
-    purpose: data.purpose || 'N/A',
-    scopeOfChange: data.scopeOfChange || 'N/A',
-    preconditions: Array.isArray(data.preconditions) ? data.preconditions : [],
-    testSteps: Array.isArray(data.testSteps) ? data.testSteps : ['Review changes'],
-    expectedResults: Array.isArray(data.expectedResults) ? data.expectedResults : ['Changes reviewed'],
-    negativeScenarios: Array.isArray(data.negativeScenarios) ? data.negativeScenarios : [],
-    edgeCases: Array.isArray(data.edgeCases) ? data.edgeCases : [],
-    regressionAreas: Array.isArray(data.regressionAreas) ? data.regressionAreas : [],
-    dataRequirements: Array.isArray(data.dataRequirements) ? data.dataRequirements : [],
-    automationNotes: data.automationNotes || 'N/A'
+function validateTaskOutput(data: any): TaskWorkItemOutput {
+  // Check title field
+  if (!data.title || typeof data.title !== 'string' || data.title.trim() === '') {
+    throw new Error('Missing required field: title');
+  }
+
+  // Check htmlDescription field
+  if (!data.htmlDescription || typeof data.htmlDescription !== 'string' || data.htmlDescription.trim() === '') {
+    throw new Error('Missing required field: htmlDescription');
+  }
+
+  return {
+    title: data.title.trim(),
+    htmlDescription: data.htmlDescription.trim()
   };
-
-  // Ensure test steps and expected results have same length
-  if (defaults.testSteps.length > defaults.expectedResults.length) {
-    const diff = defaults.testSteps.length - defaults.expectedResults.length;
-    for (let i = 0; i < diff; i++) {
-      defaults.expectedResults.push('N/A');
-    }
-  } else if (defaults.expectedResults.length > defaults.testSteps.length) {
-    const diff = defaults.expectedResults.length - defaults.testSteps.length;
-    for (let i = 0; i < diff; i++) {
-      defaults.testSteps.push('N/A');
-    }
-  }
-
-  const missingFields: string[] = [];
-  if (!data.title) missingFields.push('title');
-  if (!data.purpose) missingFields.push('purpose');
-  if (!data.testSteps || data.testSteps.length === 0) missingFields.push('testSteps');
-  if (!data.expectedResults || data.expectedResults.length === 0) missingFields.push('expectedResults');
-
-  if (missingFields.length > 0) {
-    logger.warn('AI response missing fields, using defaults', { missingFields });
-  }
-
-  return defaults;
 }
 
 /**
- * Generate test cases using Gemini AI
+ * Generate test cases using Gemini AI with retry logic
  */
 export async function generateTestCases(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff
-): Promise<GeneratedTestCase> {
-  try {
-    logger.info('Generating test cases with AI', { prId: prMetadata.prId });
+): Promise<TaskWorkItemOutput> {
+  const MAX_ATTEMPTS = 2;
+  let lastError: Error | null = null;
 
-    // Load system prompt
-
-    const sysPrompt = loadSystemPrompt();
-
-    // Initialize Gemini
-    const ai = getGenAI();
-
-    // Build user prompt
-    const userPrompt = buildUserPrompt(prMetadata, codeDiff);
-
-    logger.debug('Sending prompt to AI', {
-      systemPromptLength: sysPrompt.length,
-      userPromptLength: userPrompt.length
-    });
-
-    // Generate content using new SDK API
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Use stable GA model instead of preview
-      contents: [
-        { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
-      ],
-      config: {
-        temperature: 1,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const text = response.text; // Direct property access, NOT a method call
-
-    if (!text) {
-      throw new Error('AI returned empty response');
-    }
-
-    logger.debug('AI response received', {
-      prId: prMetadata.prId,
-      responseLength: text?.length || 0,
-      textPreview: text?.substring(0, 100) || 'null'
-    });
-
-
-    // Extract and robustly parse JSON using safeParseAIResponse
-    let parsed: Partial<GeneratedTestCase>;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      parsed = safeParseAIResponse(text);
-    } catch (parseError) {
-      logger.error("Failed to parse/repair AI response as JSON", {
-        prId: prMetadata.prId,
-        error: String(parseError),
-        errorName: parseError instanceof Error ? parseError.name : 'Unknown',
-        rawResponsePreview: text.substring(0, 500),
-        textType: typeof text,
-        rawLength: text.length
+      logger.info('Generating test cases with AI', { prId: prMetadata.prId, attempt });
+
+      // Load system prompt
+      const sysPrompt = loadSystemPrompt();
+
+      // Initialize Gemini
+      const ai = getGenAI();
+
+      // Build user prompt
+      const userPrompt = buildUserPrompt(prMetadata, codeDiff);
+
+      logger.debug('Sending prompt to AI', {
+        systemPromptLength: sysPrompt.length,
+        userPromptLength: userPrompt.length,
+        attempt
       });
-      throw new Error(`Failed to parse/repair AI response as JSON: ${parseError}`);
+
+      // Generate content using new SDK API
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Use stable GA model instead of preview
+        contents: [
+          { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
+        ],
+        config: {
+          temperature: 1,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const text = response.text; // Direct property access, NOT a method call
+
+      if (!text) {
+        throw new Error('AI returned empty response');
+      }
+
+      logger.debug('AI response received', {
+        prId: prMetadata.prId,
+        responseLength: text?.length || 0,
+        textPreview: text?.substring(0, 100) || 'null',
+        attempt
+      });
+
+      // Extract and robustly parse JSON using safeParseAIResponse
+      let parsed: any;
+      try {
+        parsed = safeParseAIResponse(text);
+      } catch (parseError) {
+        logger.error("Failed to parse/repair AI response as JSON", {
+          prId: prMetadata.prId,
+          error: String(parseError),
+          errorName: parseError instanceof Error ? parseError.name : 'Unknown',
+          rawResponsePreview: text.substring(0, 500),
+          textType: typeof text,
+          rawLength: text.length,
+          attempt
+        });
+        throw new Error(`Failed to parse AI response: ${parseError}`);
+      }
+
+      // Validate task output
+      const taskOutput = validateTaskOutput(parsed);
+
+      logger.info("Task work item output generated successfully", {
+        prId: prMetadata.prId,
+        title: taskOutput.title,
+        htmlLength: taskOutput.htmlDescription.length,
+        attempt
+      });
+
+      return taskOutput;
+
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < MAX_ATTEMPTS) {
+        logger.warn(`AI generation attempt ${attempt} failed, retrying`, {
+          prId: prMetadata.prId,
+          error: String(error),
+          attempt
+        });
+        // Continue to next attempt
+      } else {
+        logger.error(`AI generation attempt ${attempt} failed (final attempt)`, {
+          prId: prMetadata.prId,
+          error: String(error),
+          attempt
+        });
+      }
     }
-
-    // Validate and fill defaults
-    const testCase = validateAndFillDefaults(parsed);
-
-    logger.info("Test case generated successfully", {
-      prId: prMetadata.prId,
-      title: testCase.title,
-      stepsCount: testCase.testSteps.length
-    });
-
-    return testCase;
-
-  } catch (error) {
-    logger.error('Gemini API error', {
-      prId: prMetadata.prId,
-      error: String(error)
-    });
-    throw new Error(`Gemini API error: ${error}`);
   }
+
+  // All attempts failed
+  throw new Error(`Failed to generate test cases after ${MAX_ATTEMPTS} attempts: ${lastError?.message || 'Unknown error'}`);
 }
