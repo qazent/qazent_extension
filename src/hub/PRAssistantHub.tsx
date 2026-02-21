@@ -20,13 +20,10 @@ const PRAssistantHub: React.FC = () => {
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [backendUrl, setBackendUrl] = React.useState<string>('http://localhost:3000');
 
-  // Initialize extension and load PR context
+  // Load PR context and configuration on mount
   React.useEffect(() => {
     const init = async () => {
       try {
-        await SDK.init();
-        await SDK.ready();
-
         // Get backend URL from extension configuration
         const config = SDK.getConfiguration();
         if (config && config.backendUrl) {
