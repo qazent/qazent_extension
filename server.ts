@@ -5,7 +5,7 @@
 import * as http from 'http';
 import * as dotenv from 'dotenv';
 
-import { WebhookPayload, WebhookResponse, ErrorResponse, HealthResponse } from './types';
+import { WebhookPayload, WebhookResponse, ErrorResponse, HealthResponse, PRMetadata, GeneratedTestCase } from './types';
 import * as logger from './logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
@@ -177,17 +177,259 @@ function handleHealth(_req: http.IncomingMessage, res: http.ServerResponse): voi
 }
 
 /**
+ * Handle generate tests POST request
+ */
+async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      // Validate request body
+      if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing required fields: prId, projectName, repositoryId'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.info('Generate tests request', {
+        prId: payload.prId,
+        projectName: payload.projectName,
+        repositoryId: payload.repositoryId
+      });
+
+      // Fetch PR diff
+      const codeDiff = await adoClient.fetchPRDiff(
+        payload.projectName,
+        payload.repositoryId,
+        payload.prId
+      );
+
+      // Create minimal PR metadata for AI generation
+      const prMetadata: PRMetadata = {
+        prId: payload.prId,
+        title: 'Manual Test Generation',
+        description: '',
+        repositoryId: payload.repositoryId,
+        repositoryName: '',
+        projectName: payload.projectName,
+        projectId: '',
+        sourceBranch: '',
+        targetBranch: '',
+        author: '',
+        authorEmail: ''
+      };
+
+      // Generate test cases
+      const testCase: GeneratedTestCase = await ai.generateTestCases(prMetadata, codeDiff);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(testCase));
+
+    } catch (error) {
+      logger.error('Failed to generate tests', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Test case generation failed',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 : 500;
+      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
+ * Handle create work item POST request
+ */
+async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      // Validate request body
+      if (!payload.testCase || typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
+        const errorResponse: ErrorResponse = {
+          error: 'Invalid test case data',
+          details: 'Missing required fields: testCase, prId, projectName, repositoryId'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.info('Create work item request', {
+        prId: payload.prId,
+        projectName: payload.projectName
+      });
+
+      // Create minimal PR metadata for work item creation
+      const prMetadata: PRMetadata = {
+        prId: payload.prId,
+        title: payload.testCase.title || 'Test Case',
+        description: '',
+        repositoryId: payload.repositoryId,
+        repositoryName: '',
+        projectName: payload.projectName,
+        projectId: '',
+        sourceBranch: '',
+        targetBranch: '',
+        author: '',
+        authorEmail: ''
+      };
+
+      // Create work item
+      const workItemId = await adoClient.createTestCaseWorkItem(
+        payload.projectName,
+        payload.testCase,
+        prMetadata
+      );
+
+      // Build work item URL
+      const orgUrl = process.env.ADO_ORG_URL;
+      const workItemUrl = `${orgUrl}/${payload.projectName}/_workitems/edit/${workItemId}`;
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        workItemId,
+        workItemUrl
+      }));
+
+    } catch (error) {
+      logger.error('Failed to create work item', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Work item creation failed',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
+ * Apply CORS headers
+ */
+function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
+  // Allow Azure DevOps origins and localhost for development
+  const allowedOrigins = [
+    'https://dev.azure.com',
+    'https://visualstudio.com'
+  ];
+
+  // Allow localhost for development
+  if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
+    allowedOrigins.push(origin);
+  }
+
+  // Check if origin is allowed
+  const allowOrigin = origin && allowedOrigins.some(allowed =>
+    origin === allowed || origin.endsWith(allowed)
+  ) ? origin : allowedOrigins[0];
+
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
+/**
  * Main request handler
  */
 function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
   const method = req.method;
   const url = req.url;
+  const origin = req.headers.origin;
 
   logger.info('Request received', { method, url });
+
+  // Apply CORS headers to all responses
+  applyCorsHeaders(res, origin);
+
+  // Handle preflight requests
+  if (method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   // Health check endpoint
   if (url === '/health' && method === 'GET') {
     handleHealth(req, res);
+    return;
+  }
+
+  // Generate tests endpoint
+  if (url === '/generate-tests' && method === 'POST') {
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      const errorResponse: ErrorResponse = {
+        error: 'Invalid content type',
+        details: 'Expected application/json'
+      };
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+      return;
+    }
+    handleGenerateTests(req, res);
+    return;
+  }
+
+  // Create work item endpoint
+  if (url === '/create-work-item' && method === 'POST') {
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      const errorResponse: ErrorResponse = {
+        error: 'Invalid content type',
+        details: 'Expected application/json'
+      };
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+      return;
+    }
+    handleCreateWorkItem(req, res);
     return;
   }
 
