@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, GeneratedTestCase, PRMetadata } from './types';
 import * as logger from './logger';
+import { jsonrepair } from "jsonrepair";
 
 
 /**
@@ -114,7 +115,6 @@ Please provide test cases in the following JSON structure:
   return prompt;
 }
 
-
 /**
  * Extract JSON from AI response (handle markdown wrappers)
  */
@@ -144,6 +144,17 @@ function extractJSON(response: string): string {
   }
 
   return cleaned;
+}
+
+function safeParseAIResponse(response: string) {
+  const extracted = extractJSON(response);
+
+  try {
+    const repaired = jsonrepair(extracted);
+    return JSON.parse(repaired);
+  } catch (err) {
+    throw new Error("Failed to repair AI JSON: " + err);
+  }
 }
 
 /**
@@ -240,42 +251,31 @@ export async function generateTestCases(
       textPreview: text?.substring(0, 100) || 'null'
     });
 
-    // Extract and parse JSON
-      const jsonText = extractJSON(text);
 
-      logger.debug('JSON extracted from response', {
+    // Extract and robustly parse JSON using safeParseAIResponse
+    let parsed: Partial<GeneratedTestCase>;
+    try {
+      parsed = safeParseAIResponse(text);
+    } catch (parseError) {
+      logger.error("Failed to parse/repair AI response as JSON", {
         prId: prMetadata.prId,
-        jsonLength: jsonText.length,
-        jsonPreview: jsonText.substring(0, 200)
+        error: String(parseError),
+        errorName: parseError instanceof Error ? parseError.name : 'Unknown',
+        rawResponsePreview: text.substring(0, 500),
+        textType: typeof text,
+        rawLength: text.length
       });
+      throw new Error(`Failed to parse/repair AI response as JSON: ${parseError}`);
+    }
 
-      let parsed: Partial<GeneratedTestCase>;
+    // Validate and fill defaults
+    const testCase = validateAndFillDefaults(parsed);
 
-      try {
-        parsed = JSON.parse(jsonText);
-      } catch (parseError) {
-        logger.error("Failed to parse AI response as JSON", {
-          prId: prMetadata.prId,
-          error: String(parseError),
-          errorName: parseError instanceof Error ? parseError.name : 'Unknown',
-          extractedJSONPreview: jsonText.substring(0, 500),
-          rawResponsePreview: text.substring(0, 500),
-          textType: typeof text,
-          jsonLength: jsonText.length,
-          rawLength: text.length
-        });
-
-        throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
-      }
-
-      // Validate and fill defaults
-      const testCase = validateAndFillDefaults(parsed);
-
-      logger.info("Test case generated successfully", {
-        prId: prMetadata.prId,
-        title: testCase.title,
-        stepsCount: testCase.testSteps.length
-      });
+    logger.info("Test case generated successfully", {
+      prId: prMetadata.prId,
+      title: testCase.title,
+      stepsCount: testCase.testSteps.length
+    });
 
     return testCase;
 

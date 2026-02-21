@@ -30,5 +30,7 @@ Your JSON must contain the following fields:
 - Data Requirements: Specific test data, formats, IDs, or values needed  
 - Automation Notes: How this test could be automated, including considerations and limitations. Suggest unit tests, and end to end testing. 
 
+All fields must be concise. No field may NEVER exceed 300 characters.
+NEVER include long explanations inside JSON fields.
 Respond ONLY with valid JSON matching the structure provided in the user prompt.
 Do not include markdown code blocks, explanations, or additional text.

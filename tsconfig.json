@@ -15,6 +15,7 @@
     "sourceMap": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
+    "types": ["node", "jest"],
     "strictFunctionTypes": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

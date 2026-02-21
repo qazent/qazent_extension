@@ -4,7 +4,8 @@
 
 import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
-import * as DevOps from 'azure-devops-extension-api';
+import { getClient } from 'azure-devops-extension-api';
+import { GitRestClient } from 'azure-devops-extension-api/Git';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
@@ -24,19 +25,21 @@ const PRAssistantHub: React.FC = () => {
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
 
-  // Load PR context and configuration on mount
   React.useEffect(() => {
     const init = async () => {
       try {
-        // Get backend URL from extension configuration
+        // REQUIRED: Initialize Azure DevOps SDK before any API calls
+        await SDK.init();
+        await SDK.ready();
+
         const config = SDK.getConfiguration();
+
+        // Load backend URL from extension config
         if (config && config.backendUrl) {
           setBackendUrl(config.backendUrl as string);
         }
 
-        // Load PR context
-        await loadPRContext();
-
+        await loadPRContext(config);
       } catch (err) {
         setError('Failed to initialize extension: ' + (err instanceof Error ? err.message : String(err)));
       }
@@ -45,58 +48,56 @@ const PRAssistantHub: React.FC = () => {
     init();
   }, []);
 
-  const loadPRContext = async () => {
+  const loadPRContext = async (config: any) => {
     try {
-      // Get Azure DevOps context from SDK
-      const webContext = SDK.getWebContext();
+      // PR context comes from configuration, not webContext
+      const prContext = config?.pullRequest;
 
-      // Check if we're in a PR context
-      if (!webContext.project || !webContext.pullRequest || !webContext.repository) {
-        setError('Please navigate to a Pull Request page to use this extension');
+      if (!prContext) {
+        setError('Please navigate to a Pull Request page to use this extension.');
         return;
       }
 
-      const pullRequestId = webContext.pullRequest.pullRequestId;
-      const repoId = webContext.repository.id;
-      const project = webContext.project.name;
+      const pullRequestId = prContext.pullRequestId;
+      const repoId = prContext.repository?.id;
+      const project = prContext.repository?.project?.name;
 
-      // Store repository and project info for later use
+      if (!repoId || !project) {
+        setError('Unable to determine repository or project from PR context.');
+        return;
+      }
+
+      const gitClient = getClient(GitRestClient);
+
+      // Fetch PR details
+      const prDetails = await gitClient.getPullRequest(repoId, pullRequestId, project);
+
+      const authorName =
+        prDetails.createdBy?.displayName ||
+        prDetails.createdBy?.uniqueName ||
+        'Unknown Author';
+
+      // Count changed files
+      let fileCount = 0;
+      try {
+        const iterations = await gitClient.getPullRequestIterations(repoId, pullRequestId, project);
+        if (iterations?.length) {
+          const lastIteration = iterations[iterations.length - 1];
+          const changes = await gitClient.getPullRequestIterationChanges(
+            repoId,
+            pullRequestId,
+            lastIteration.id!,
+            project
+          );
+          fileCount = changes.changeEntries?.length || 0;
+        }
+      } catch (changeErr) {
+        console.warn('Unable to fetch PR changes:', changeErr);
+      }
+
       setRepositoryId(repoId);
       setProjectName(project);
 
-      // Get Git client from Azure DevOps API
-      const gitClient = DevOps.getClient(DevOps.GitRestClient);
-
-      // Fetch full PR details
-      const prDetails = await gitClient.getPullRequest(repoId, pullRequestId, project);
-
-      // Get PR author
-      const authorName = prDetails.createdBy?.displayName || prDetails.createdBy?.uniqueName || 'Unknown Author';
-
-      // Fetch PR changes to count files
-      let fileCount = 0;
-      try {
-        // Get the last iteration to get latest changes
-        if (prDetails.lastMergeSourceCommit) {
-          const iterations = await gitClient.getPullRequestIterations(repoId, pullRequestId, project);
-          if (iterations && iterations.length > 0) {
-            const lastIteration = iterations[iterations.length - 1];
-            const changes = await gitClient.getPullRequestIterationChanges(
-              repoId,
-              pullRequestId,
-              lastIteration.id!,
-              project
-            );
-            fileCount = changes.changeEntries?.length || 0;
-          }
-        }
-      } catch (changeErr) {
-        // If fetching changes fails, just set to 0
-        console.warn('Unable to fetch PR changes:', changeErr);
-        fileCount = 0;
-      }
-
-      // Set PR data with real values from API
       setPRData({
         prTitle: prDetails.title || `PR #${pullRequestId}`,
         prId: pullRequestId,
@@ -122,13 +123,8 @@ const PRAssistantHub: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Use repository and project info from state (loaded via SDK)
-      if (!repositoryId) {
-        throw new Error('Repository information not available. Please refresh the page.');
-      }
-
-      if (!projectName) {
-        throw new Error('Project information not available. Please refresh the page.');
+      if (!repositoryId || !projectName) {
+        throw new Error('Repository or project information missing. Please refresh the page.');
       }
 
       const generatedTestCase = await backendClient.generateTestCases(
@@ -139,10 +135,9 @@ const PRAssistantHub: React.FC = () => {
       );
 
       setTestCase(generatedTestCase);
-      setIsGenerating(false);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Test case generation failed');
+    } finally {
       setIsGenerating(false);
     }
   };
@@ -153,22 +148,15 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleCreateWorkItem = async () => {
-    if (!testCase || !prData) {
-      return;
-    }
+    if (!testCase || !prData) return;
 
     setIsCreatingWorkItem(true);
     setError(null);
     setSuccessMessage(null);
 
     try {
-      // Use repository and project info from state (loaded via SDK)
-      if (!repositoryId) {
-        throw new Error('Repository information not available. Please refresh the page.');
-      }
-
-      if (!projectName) {
-        throw new Error('Project information not available. Please refresh the page.');
+      if (!repositoryId || !projectName) {
+        throw new Error('Repository or project information missing. Please refresh the page.');
       }
 
       const result = await backendClient.createWorkItem(
@@ -180,13 +168,11 @@ const PRAssistantHub: React.FC = () => {
       );
 
       setSuccessMessage(`Work item created successfully! View it here: ${result.workItemUrl}`);
-      setIsCreatingWorkItem(false);
 
-      // Auto-dismiss success message after 5 seconds
       setTimeout(() => setSuccessMessage(null), 5000);
-
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create work item');
+    } finally {
       setIsCreatingWorkItem(false);
     }
   };
@@ -194,7 +180,6 @@ const PRAssistantHub: React.FC = () => {
   return (
     <FluentProvider theme={webLightTheme}>
       <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-        {/* Error Message */}
         {error && (
           <div style={{
             backgroundColor: '#fde7e9',
@@ -208,7 +193,6 @@ const PRAssistantHub: React.FC = () => {
           </div>
         )}
 
-        {/* Success Message */}
         {successMessage && (
           <div style={{
             backgroundColor: '#dff6dd',
@@ -222,7 +206,6 @@ const PRAssistantHub: React.FC = () => {
           </div>
         )}
 
-        {/* PR Info Section */}
         <PRInfoSection
           prTitle={prData?.prTitle}
           prId={prData?.prId}
@@ -230,14 +213,12 @@ const PRAssistantHub: React.FC = () => {
           filesChanged={prData?.filesChanged}
         />
 
-        {/* Generate Button */}
         <GenerateButton
           isLoading={isGenerating}
           isDisabled={!prData}
           onClick={handleGenerateTests}
         />
 
-        {/* Test Case Card */}
         <TestCaseCard
           testCase={testCase}
           onCopyToClipboard={handleCopyToClipboard}
