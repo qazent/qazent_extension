@@ -573,8 +573,7 @@ export async function postPRComment(
           commentType: 1 // 1 = text comment
         }
       ],
-      status: 1, // 1 = Active thread
-      threadContext: null // null for general PR comment (not line-specific)
+      status: 1 // 1 = Active thread
     };
 
     // Post the comment thread
