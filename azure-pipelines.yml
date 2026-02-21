@@ -1,21 +1,45 @@
-# Node.js
-# Build a general Node.js project with npm.
-# Add steps that analyze code, save build artifacts, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
-
 trigger:
 - main
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
 
-steps:
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20.x'
-  displayName: 'Install Node.js'
+jobs:
+- job: BuildAndPackageExtension
+  displayName: "Build, Test, and Package Azure DevOps Extension"
 
-- script: |
-    npm install
-    npm run build
-  displayName: 'npm install and build'
+  steps:
+  - script: |
+      npm install
+    displayName: 'Install npm dependencies'
+
+  - script: |
+      npm install -g tfx-cli
+    displayName: 'Install tfx-cli globally'
+
+  - script: |
+      npm run test:jest
+    displayName: 'Run Jest tests'
+
+  - script: |
+      npm run lint
+    displayName: 'Run TypeScript linting'
+
+  - script: |
+      npm run build:extension
+    displayName: 'Build extension with Webpack'
+
+  - script: |
+      npm version patch --no-git-tag-version
+    displayName: 'Bump version in package.json'
+
+  - script: |
+      tfx extension create --manifest-globs vss-extension.json --rev-version
+    displayName: 'Package extension with version bump'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(System.DefaultWorkingDirectory)/*.vsix'
+      artifact: 'extension-package'
+      publishLocation: 'pipeline'
+    displayName: 'Publish .vsix artifact'
