@@ -1,0 +1,41 @@
+{
+  "manifestVersion": 1,
+  "id": "pr-assistant-extension",
+  "name": "PR Assistant",
+  "version": "1.0.0",
+  "publisher": "your-publisher-id",
+  "targets": [
+    {
+      "id": "Microsoft.VisualStudio.Services"
+    }
+  ],
+  "description": "AI-powered PR test case generation assistant",
+  "categories": ["Azure Repos"],
+  "tags": ["pull-request", "testing", "ai"],
+  "content": {
+    "details": {
+      "path": "README.md"
+    }
+  },
+  "contributions": [
+    {
+      "id": "pr-assistant-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-code-web.code-hub-group"],
+      "properties": {
+        "name": "PR Assistant",
+        "uri": "dist/hub.html",
+        "order": 30,
+        "configuration": {
+          "backendUrl": "http://localhost:3000"
+        }
+      }
+    }
+  ],
+  "files": [
+    {
+      "path": "dist",
+      "addressable": true
+    }
+  ]
+}
