@@ -2,7 +2,7 @@
  * AI integration module using Google Gemini
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, GeneratedTestCase, PRMetadata } from './types';
@@ -23,7 +23,7 @@ import * as logger from './logger';
 */
 
 let systemPrompt: string | null = null;
-let genAI: GoogleGenerativeAI | null = null;
+let genAI: GoogleGenAI | null = null;
 
 /**
  * Load system prompt from file (cached)
@@ -49,7 +49,7 @@ export function loadSystemPrompt(): string {
 /**
  * Initialize Gemini AI client
  */
-function getGenAI(): GoogleGenerativeAI {
+function getGenAI(): GoogleGenAI {
   if (genAI !== null) {
     return genAI;
   }
@@ -60,7 +60,7 @@ function getGenAI(): GoogleGenerativeAI {
     throw new Error('GEMINI_API_KEY environment variable not set');
   }
 
-  genAI = new GoogleGenerativeAI(apiKey);
+  genAI = new GoogleGenAI({ apiKey });
   logger.info('Gemini AI client initialized');
   return genAI;
 }
@@ -206,14 +206,6 @@ export async function generateTestCases(
 
     // Initialize Gemini
     const ai = getGenAI();
-    const model = ai.getGenerativeModel({
-      model: 'gemini-3-pro-preview', // Use latest available model
-      generationConfig: {
-        temperature: 1,
-        maxOutputTokens: 4096,
-        responseMimeType: 'application/json'
-      }
-    });
 
     // Build user prompt
     const userPrompt = buildUserPrompt(prMetadata, codeDiff);
@@ -223,23 +215,39 @@ export async function generateTestCases(
       userPromptLength: userPrompt.length
     });
 
-    // Generate content
-    const result = await model.generateContent([
-      { text: sysPrompt },
-      { text: userPrompt }
-    ]);
+    // Generate content using new SDK API
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash', // Use stable GA model instead of preview
+      contents: [
+        { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
+      ],
+      config: {
+        temperature: 1,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json'
+      }
+    });
 
-    const response = result.response;
-    const text = response.text();
+    const text = response.text; // Direct property access, NOT a method call
 
     if (!text) {
       throw new Error('AI returned empty response');
     }
 
-    logger.debug('AI response received', { responseLength: text.length });
+    logger.debug('AI response received', {
+      prId: prMetadata.prId,
+      responseLength: text?.length || 0,
+      textPreview: text?.substring(0, 100) || 'null'
+    });
 
     // Extract and parse JSON
       const jsonText = extractJSON(text);
+
+      logger.debug('JSON extracted from response', {
+        prId: prMetadata.prId,
+        jsonLength: jsonText.length,
+        jsonPreview: jsonText.substring(0, 200)
+      });
 
       let parsed: Partial<GeneratedTestCase>;
 
@@ -249,8 +257,12 @@ export async function generateTestCases(
         logger.error("Failed to parse AI response as JSON", {
           prId: prMetadata.prId,
           error: String(parseError),
+          errorName: parseError instanceof Error ? parseError.name : 'Unknown',
           extractedJSONPreview: jsonText.substring(0, 500),
-          rawResponsePreview: text.substring(0, 500)
+          rawResponsePreview: text.substring(0, 500),
+          textType: typeof text,
+          jsonLength: jsonText.length,
+          rawLength: text.length
         });
 
         throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
