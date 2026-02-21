@@ -3,10 +3,7 @@
  */
 
 import * as React from 'react';
-import * as ReactDOM from 'react-dom';
 import * as SDK from 'azure-devops-extension-sdk';
-import { CommonServiceIds, IHostNavigationService } from 'azure-devops-extension-api';
-import { GitRestClient, GitServiceIds } from 'azure-devops-extension-api/Git';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -49,33 +46,22 @@ const PRAssistantHub: React.FC = () => {
 
   const loadPRContext = async () => {
     try {
-      // Get navigation service to determine current context
-      const navService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-      const state = await navService.getCurrentState();
-
-      // Get Git service
-      const gitClient = await SDK.getService<GitRestClient>(GitServiceIds.GitRestClient);
-
-      // Extract PR context from route
-      // Route typically contains repositoryId and pullRequestId
-      const routeValues = state as any;
-      const repositoryId = routeValues.repositoryId || routeValues.repository;
-      const pullRequestId = routeValues.pullRequestId || routeValues.pullRequest;
+      // Extract PR information from URL parameters
+      const params = new URLSearchParams(window.location.search);
+      const pullRequestId = parseInt(params.get('pullRequestId') || '0', 10);
+      const authorEmail = params.get('authorEmail') || 'Unknown Author';
 
       if (!pullRequestId) {
         setError('Please navigate to a Pull Request to use this extension');
         return;
       }
 
-      // Fetch PR data
-      const pr = await gitClient.getPullRequest(repositoryId, parseInt(pullRequestId, 10));
-
-      // Set PR data
+      // Set PR data (basic info without full API call)
       setPRData({
-        prTitle: pr.title || 'Unknown',
-        prId: pr.pullRequestId || 0,
-        author: pr.createdBy?.displayName || 'Unknown',
-        filesChanged: 0 // Approximate - would need additional API call to get exact count
+        prTitle: 'PR #' + pullRequestId,
+        prId: pullRequestId,
+        author: authorEmail,
+        filesChanged: 0
       });
 
     } catch (err) {
@@ -96,13 +82,14 @@ const PRAssistantHub: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Get project and repository context
-      const navService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-      const state = await navService.getCurrentState();
-      const routeValues = state as any;
+      // Extract project and repository from URL
+      const params = new URLSearchParams(window.location.search);
+      const projectName = params.get('project') || 'DefaultProject';
+      const repositoryId = params.get('repositoryId') || params.get('repo') || '';
 
-      const projectName = routeValues.project || 'DefaultProject';
-      const repositoryId = routeValues.repositoryId || routeValues.repository || '';
+      if (!repositoryId) {
+        throw new Error('Unable to determine repository. Please refresh the page.');
+      }
 
       const generatedTestCase = await backendClient.generateTestCases(
         prData.prId,
@@ -135,13 +122,14 @@ const PRAssistantHub: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Get project and repository context
-      const navService = await SDK.getService<IHostNavigationService>(CommonServiceIds.HostNavigationService);
-      const state = await navService.getCurrentState();
-      const routeValues = state as any;
+      // Extract project and repository from URL
+      const params = new URLSearchParams(window.location.search);
+      const projectName = params.get('project') || 'DefaultProject';
+      const repositoryId = params.get('repositoryId') || params.get('repo') || '';
 
-      const projectName = routeValues.project || 'DefaultProject';
-      const repositoryId = routeValues.repositoryId || routeValues.repository || '';
+      if (!repositoryId) {
+        throw new Error('Unable to determine repository. Please refresh the page.');
+      }
 
       const result = await backendClient.createWorkItem(
         testCase,
@@ -219,16 +207,4 @@ const PRAssistantHub: React.FC = () => {
   );
 };
 
-// Initialize and render
-SDK.init().then(() => {
-  SDK.ready().then(() => {
-    ReactDOM.render(<PRAssistantHub />, document.getElementById('root'));
-    SDK.register(SDK.getContributionId(), () => {
-      return {
-        execute: () => {
-          // Extension loaded
-        }
-      };
-    });
-  });
-});
+export { PRAssistantHub };

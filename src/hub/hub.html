@@ -1,12 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PR Assistant</title>
-  <script src="https://dev.azure.com/mseng/VSOnline/_apis/public/gallery/publisher/ms/extension/vss-web-extension-sdk/latest/assetbyname/lib/VSS.SDK.min.js"></script>
-</head>
-<body>
-  <div id="root"></div>
-</body>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PR Assistant</title>
+
+    <!-- Required for Azure DevOps extension styling -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- Fluent UI (optional but recommended) -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@fluentui/react-components/dist/react-components.min.css"
+    />
+  </head>
+
+  <body>
+    <!-- React root -->
+    <div id="root"></div>
+
+    <!-- 1️⃣ Load Azure DevOps Extension SDK BEFORE your bundle -->
+    <script src="https://unpkg.com/azure-devops-extension-sdk@2.0.0/SDK.min.js"></script>
+
+    <!-- 2️⃣ Load your compiled React bundle (hub.js or index.js) -->
+    <script src="hub.js"></script>
+  </body>
 </html>

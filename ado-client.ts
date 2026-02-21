@@ -80,7 +80,7 @@ export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
       projectId: pr.repository?.project?.id ?? "",
       sourceBranch,
       targetBranch,
-      branchName: sourceBranch.split('/').pop() ?? ""
+      branchName: sourceBranch.split('/').pop() ?? "",
     };
 
     logger.info("PR metadata fetched successfully", {

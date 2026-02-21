@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.0.0",
-  "publisher": "your-publisher-id",
+  "version": "1.0.4",
+  "publisher": "QAZent",
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"

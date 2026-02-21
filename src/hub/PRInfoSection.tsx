@@ -3,7 +3,7 @@
  */
 
 import * as React from 'react';
-import { Card } from 'azure-devops-ui/Card';
+import { Card } from '@fluentui/react-card';
 
 interface PRInfoSectionProps {
   prTitle?: string;

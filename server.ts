@@ -225,7 +225,9 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
         sourceBranch: '',
         targetBranch: '',
         author: '',
-        authorEmail: ''
+        authorEmail: '',
+        createDate: payload.createDate instanceof Date ? payload.createDate : new Date(),
+        branchName: payload.branchName || ''
       };
 
       // Generate test cases
@@ -303,7 +305,9 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
         sourceBranch: '',
         targetBranch: '',
         author: '',
-        authorEmail: ''
+        authorEmail: '',
+        createDate: new Date(),
+        branchName: ''
       };
 
       // Create work item

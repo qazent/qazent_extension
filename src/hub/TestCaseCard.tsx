@@ -3,10 +3,9 @@
  */
 
 import * as React from 'react';
-import { Card } from 'azure-devops-ui/Card';
-import { Button } from 'azure-devops-ui/Button';
-import { Spinner, SpinnerSize } from 'azure-devops-ui/Spinner';
+import { Card } from '@fluentui/react-card';
 import { GeneratedTestCase } from '../types/extension-types';
+import { Button } from "@fluentui/react-components";
 
 interface TestCaseCardProps {
   testCase: GeneratedTestCase | null;
@@ -76,7 +75,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
   return (
     <Card className="test-case-card" style={{ marginBottom: '16px', padding: '20px' }}>
       {/* Title */}
-      <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>
+      <div style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '16px', textTransform: 'uppercase', color: '#e01134' }}>
         {testCase.title}
       </div>
 
@@ -111,7 +110,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
       {/* Expected Results */}
       {testCase.expectedResults && testCase.expectedResults.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '20px', marginBottom: '8px', textTransform: 'uppercase', color: '#107c10' }}>
             Expected Result
           </div>
           <ul style={{ marginLeft: '20px', marginTop: '0' }}>
@@ -123,18 +122,21 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
       )}
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
+      <div style={{ display: 'flex', gap: '12px', marginTop: '20px', justifyContent: 'flex-end',color: '#8e09e7' }}>
         <Button
-          text="Copy to Clipboard"
+          appearance="primary"
+          size="small"
           onClick={handleCopyClick}
-        />
+        >
+          Copy to Clipboard
+        </Button>
         <Button
-          text={isCreatingWorkItem ? 'Creating...' : 'Create Work Item'}
-          primary={true}
+          appearance="primary"
           disabled={isCreatingWorkItem}
           onClick={onCreateWorkItem}
-          iconProps={isCreatingWorkItem ? { render: () => <Spinner size={SpinnerSize.small} /> } : undefined}
-        />
+        >
+          {isCreatingWorkItem ? 'Creating...' : 'Create Work Item'}
+        </Button>
       </div>
     </Card>
   );

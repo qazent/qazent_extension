@@ -3,8 +3,7 @@
  */
 
 import * as React from 'react';
-import { Button } from 'azure-devops-ui/Button';
-import { Spinner, SpinnerSize } from 'azure-devops-ui/Spinner';
+import { Button } from "@fluentui/react-components";
 
 interface GenerateButtonProps {
   isLoading: boolean;
@@ -20,12 +19,12 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
   return (
     <div style={{ marginBottom: '16px' }}>
       <Button
-        text={isLoading ? 'Generating...' : 'Generate AI Test Cases'}
-        primary={true}
+        appearance="primary"
         disabled={isLoading || isDisabled}
         onClick={onClick}
-        iconProps={isLoading ? { render: () => <Spinner size={SpinnerSize.small} /> } : undefined}
-      />
+      >
+        {isLoading ? 'Generating...' : 'Generate AI Test Cases'}
+      </Button>
     </div>
   );
 };

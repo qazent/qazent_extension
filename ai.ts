@@ -8,6 +8,20 @@ import * as path from 'path';
 import { CodeDiff, GeneratedTestCase, PRMetadata } from './types';
 import * as logger from './logger';
 
+
+/**
+ * This module handles all interactions with the Gemini AI model, including:
+- Loading the system prompt from a file (with caching)
+- Building the user prompt based on PR metadata and code diff
+- Sending the prompt to Gemini and receiving the response
+- Extracting JSON from the AI response (handling markdown wrappers)
+- Validating the response and filling in defaults for missing fields
+- Logging all steps and errors for observability
+
+ */
+/** let parsed: Partial<GeneratedTestCase>;
+*/
+
 let systemPrompt: string | null = null;
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -99,6 +113,7 @@ Please provide test cases in the following JSON structure:
 
   return prompt;
 }
+
 
 /**
  * Extract JSON from AI response (handle markdown wrappers)
@@ -224,27 +239,31 @@ export async function generateTestCases(
     logger.debug('AI response received', { responseLength: text.length });
 
     // Extract and parse JSON
-    const jsonText = extractJSON(text);
-    let parsed: Partial<GeneratedTestCase>;
+      const jsonText = extractJSON(text);
 
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch (parseError) {
-      logger.error('Failed to parse AI response as JSON', {
-        error: String(parseError),
-        response: text.substring(0, 500)
+      let parsed: Partial<GeneratedTestCase>;
+
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch (parseError) {
+        logger.error("Failed to parse AI response as JSON", {
+          prId: prMetadata.prId,
+          error: String(parseError),
+          extractedJSONPreview: jsonText.substring(0, 500),
+          rawResponsePreview: text.substring(0, 500)
+        });
+
+        throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
+      }
+
+      // Validate and fill defaults
+      const testCase = validateAndFillDefaults(parsed);
+
+      logger.info("Test case generated successfully", {
+        prId: prMetadata.prId,
+        title: testCase.title,
+        stepsCount: testCase.testSteps.length
       });
-      throw new Error(`Failed to parse AI response as JSON: ${parseError}`);
-    }
-
-    // Validate and fill defaults
-    const testCase = validateAndFillDefaults(parsed);
-
-    logger.info('Test case generated successfully', {
-      prId: prMetadata.prId,
-      title: testCase.title,
-      stepsCount: testCase.testSteps.length
-    });
 
     return testCase;
 

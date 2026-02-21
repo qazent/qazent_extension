@@ -1,6 +1,6 @@
 {
   "name": "azure-devops-pr-testcase-generator",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "Generates AI-powered test cases from Azure DevOps PRs",
   "main": "dist/server.js",
   "engines": {
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "ts-node server.ts",
-    "build": "tsc && cpx system-prompt.txt dist && cpx test-local.ts dist && cpx .env dist",
+    "build": "tsc && cpx system-prompt.txt dist && cpx test-local.ts dist ",
     "build:extension": "webpack --config webpack.config.js --mode production",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json",
@@ -27,11 +27,11 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@fluentui/react-components": "^9.73.0",
     "@google/generative-ai": "^0.21.0",
-    "azure-devops-node-api": "^12.5.0",
-    "azure-devops-extension-sdk": "^4.0.2",
     "azure-devops-extension-api": "^4.0.2",
-    "azure-devops-ui": "^2.167.84",
+    "azure-devops-extension-sdk": "^4.2.0",
+    "azure-devops-node-api": "^12.5.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "react": "^18.2.0",
