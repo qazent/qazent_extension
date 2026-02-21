@@ -4,6 +4,7 @@
 
 import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
+import * as DevOps from 'azure-devops-extension-api';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
@@ -20,6 +21,8 @@ const PRAssistantHub: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [backendUrl, setBackendUrl] = React.useState<string>('http://localhost:3000');
+  const [repositoryId, setRepositoryId] = React.useState<string>('');
+  const [projectName, setProjectName] = React.useState<string>('');
 
   // Load PR context and configuration on mount
   React.useEffect(() => {
@@ -44,27 +47,65 @@ const PRAssistantHub: React.FC = () => {
 
   const loadPRContext = async () => {
     try {
-      // Get the host page context from Azure DevOps SDK
-      const config = SDK.getConfiguration();
+      // Get Azure DevOps context from SDK
+      const webContext = SDK.getWebContext();
 
-      if (!config || !config.pullRequestId) {
-        setError('Unable to load PR context from Azure DevOps');
+      // Check if we're in a PR context
+      if (!webContext.project || !webContext.pullRequest || !webContext.repository) {
+        setError('Please navigate to a Pull Request page to use this extension');
         return;
       }
 
-      // Azure DevOps provides PR context when extension is shown in PR tab
-      const pullRequestId = config.pullRequestId as number;
+      const pullRequestId = webContext.pullRequest.pullRequestId;
+      const repoId = webContext.repository.id;
+      const project = webContext.project.name;
 
-      // Set PR data (basic info without full API call)
+      // Store repository and project info for later use
+      setRepositoryId(repoId);
+      setProjectName(project);
+
+      // Get Git client from Azure DevOps API
+      const gitClient = DevOps.getClient(DevOps.GitRestClient);
+
+      // Fetch full PR details
+      const prDetails = await gitClient.getPullRequest(repoId, pullRequestId, project);
+
+      // Get PR author
+      const authorName = prDetails.createdBy?.displayName || prDetails.createdBy?.uniqueName || 'Unknown Author';
+
+      // Fetch PR changes to count files
+      let fileCount = 0;
+      try {
+        // Get the last iteration to get latest changes
+        if (prDetails.lastMergeSourceCommit) {
+          const iterations = await gitClient.getPullRequestIterations(repoId, pullRequestId, project);
+          if (iterations && iterations.length > 0) {
+            const lastIteration = iterations[iterations.length - 1];
+            const changes = await gitClient.getPullRequestIterationChanges(
+              repoId,
+              pullRequestId,
+              lastIteration.id!,
+              project
+            );
+            fileCount = changes.changeEntries?.length || 0;
+          }
+        }
+      } catch (changeErr) {
+        // If fetching changes fails, just set to 0
+        console.warn('Unable to fetch PR changes:', changeErr);
+        fileCount = 0;
+      }
+
+      // Set PR data with real values from API
       setPRData({
-        prTitle: 'PR #' + pullRequestId,
+        prTitle: prDetails.title || `PR #${pullRequestId}`,
         prId: pullRequestId,
-        author: 'Unknown Author', // Can be fetched via API if needed
-        filesChanged: 0 // Can be fetched via API if needed
+        author: authorName,
+        filesChanged: fileCount
       });
 
     } catch (err) {
-      setError('Unable to load PR information. Please refresh.');
+      setError('Unable to load Pull Request details: ' + (err instanceof Error ? err.message : String(err)));
       console.error('Error loading PR context:', err);
     }
   };
@@ -81,13 +122,13 @@ const PRAssistantHub: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Extract project and repository from URL
-      const params = new URLSearchParams(window.location.search);
-      const projectName = params.get('project') || 'DefaultProject';
-      const repositoryId = params.get('repositoryId') || params.get('repo') || '';
-
+      // Use repository and project info from state (loaded via SDK)
       if (!repositoryId) {
-        throw new Error('Unable to determine repository. Please refresh the page.');
+        throw new Error('Repository information not available. Please refresh the page.');
+      }
+
+      if (!projectName) {
+        throw new Error('Project information not available. Please refresh the page.');
       }
 
       const generatedTestCase = await backendClient.generateTestCases(
@@ -121,13 +162,13 @@ const PRAssistantHub: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      // Extract project and repository from URL
-      const params = new URLSearchParams(window.location.search);
-      const projectName = params.get('project') || 'DefaultProject';
-      const repositoryId = params.get('repositoryId') || params.get('repo') || '';
-
+      // Use repository and project info from state (loaded via SDK)
       if (!repositoryId) {
-        throw new Error('Unable to determine repository. Please refresh the page.');
+        throw new Error('Repository information not available. Please refresh the page.');
+      }
+
+      if (!projectName) {
+        throw new Error('Project information not available. Please refresh the page.');
       }
 
       const result = await backendClient.createWorkItem(
