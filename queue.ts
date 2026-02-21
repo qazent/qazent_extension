@@ -27,7 +27,10 @@ function extractPRMetadata(payload: WebhookPayload): PRMetadata {
     sourceBranch: payload.resource.sourceRefName.replace('refs/heads/', ''),
     targetBranch: payload.resource.targetRefName.replace('refs/heads/', ''),
     author: payload.resource.createdBy.displayName,
-    authorEmail: payload.resource.createdBy.uniqueName
+    authorEmail: payload.resource.createdBy.uniqueName,
+    createDate: new Date(),
+    branchName: payload.resource.sourceRefName.replace('refs/heads/', '')
+
   };
 }
 

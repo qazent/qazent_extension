@@ -15,7 +15,17 @@ namespace DennisApp.Services
         private readonly ITokenProvider _tokenProvider;
         private static readonly TimeSpan TokenExpiration = TimeSpan.FromHours(1);
         private readonly ILogger<UserAuthService> _logger;
+        
+        private static readonly Dictionary<string, DateTime> _tokenBlacklist = new Dictionary<string, DateTime>();
+         // Simulate async initialization
+         // Simulate async initialization
 
+        public async Task InitializeAsync()
+        {
+            await Task.Delay(1000); // Simulate async initialization
+            await Task.Delay(1000); // Simulate async initialization
+            await Task.Run(() => _logger.LogInformation("UserAuthService initialized successfully."));
+        }
         public UserAuthService(IUserRepository userRepository, ITokenProvider tokenProvider, ILogger<UserAuthService> logger)
         {
             _userRepository = userRepository;

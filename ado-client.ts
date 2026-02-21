@@ -11,17 +11,15 @@ import * as logger from './logger';
 
 let connection: azdev.WebApi | null = null;
 
+
+
 /**
  * Initialize connection to Azure DevOps
  */
 export function initializeAdoConnection(): azdev.WebApi {
   const orgUrl = process.env.ADO_ORG_URL;
   const pat = process.env.ADO_PAT;
-  const projectName = process.env.ADO_PROJECT_NAME;
 
-  if (!orgUrl || !pat || !projectName) {
-    throw new Error('ADO_ORG_URL, ADO_PAT, and ADO_PROJECT_NAME environment variables are required');
-  }
 
   if (!orgUrl || !pat) {
     throw new Error('ADO_ORG_URL and ADO_PAT environment variables are required');
@@ -44,9 +42,70 @@ function getConnection(): azdev.WebApi {
   return connection;
 }
 
+
 /**
- * Fetch PR diff from Azure DevOps
+ * GET PR metadata (title, description, author) from Azure DevOps
  */
+
+/**
+ * GET PR metadata (title, description, author) from Azure DevOps
+ */
+export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
+  try {
+    logger.info("Fetching PR metadata", { prId });
+
+    const conn = getConnection();
+    const gitApi: GitApi = await conn.getGitApi();
+
+    // Fetch PR by ID (project is optional if connection already scoped)
+    const pr = await gitApi.getPullRequestById(prId);
+
+    if (!pr) {
+      throw new Error(`PR with ID ${prId} not found`);
+    }
+
+    const sourceBranch = pr.sourceRefName ?? "";
+    const targetBranch = pr.targetRefName ?? "";
+    
+    const metadata: PRMetadata = {
+      prId,
+      title: pr.title ?? "",
+      description: pr.description ?? "",
+      author: pr.createdBy?.displayName ?? "",
+      authorEmail: pr.createdBy?.uniqueName ?? "",
+      createDate: pr.creationDate ?? new Date(),
+      repositoryId: pr.repository?.id ?? "",
+      repositoryName: pr.repository?.name ?? "",
+      projectName: pr.repository?.project?.name ?? "",
+      projectId: pr.repository?.project?.id ?? "",
+      sourceBranch,
+      targetBranch,
+      branchName: sourceBranch.split('/').pop() ?? ""
+    };
+
+    logger.info("PR metadata fetched successfully", {
+      prId,
+      title: metadata.title
+    });
+
+    return metadata;
+  } catch (error) {
+    logger.error("Failed to fetch PR metadata", {
+      prId,
+      error: String(error)
+    });
+    throw new Error(`Failed to fetch metadata for PR ${prId}: ${error}`);
+  }
+}
+
+/**
+ * GET PR diff from Azure DevOps
+ *
+ * This function retrieves the list of changed files and their change types (add/edit/delete).
+ * Due to API limitations, it provides a simplified diff representation rather than full line-by-line diffs.
+ */
+
+
 export async function fetchPRDiff(
   projectName: string,
   repositoryId: string,
