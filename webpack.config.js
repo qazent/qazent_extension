@@ -33,9 +33,6 @@ module.exports = (env, argv) => {
         filename: 'hub.html',
         inject: 'body'
       })
-    ],
-    externals: {
-  "azure-devops-extension-sdk": "AzureDevOpsExtensionSDK"
-}
+    ]
   };
 };
