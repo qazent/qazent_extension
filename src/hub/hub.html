@@ -16,10 +16,9 @@
   <body>
     <div id="root"></div>
 
-    <!-- Correct Azure DevOps SDK v2 -->
-    <script src="https://unpkg.com/azure-devops-extension-sdk@2.0.0/dist/azure-devops-extension-sdk.js"></script>
+    <!-- Correct Azure DevOps SDK v2 (minified) -->
+    <script src="https://unpkg.com/azure-devops-extension-sdk@2.0.0/dist/azure-devops-extension-sdk.min.js" defer></script>
 
-    <!-- Your bundle -->
-    <script src="hub.js"></script>
+    <!-- webpack will inject hub.js here automatically -->
   </body>
 </html>
