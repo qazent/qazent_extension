@@ -1,6 +1,6 @@
 {
   "name": "azure-devops-pr-testcase-generator",
-  "version": "1.0.9",
+  "version": "1.2.0",
   "description": "Generates AI-powered test cases from Azure DevOps PRs",
   "main": "dist/server.js",
   "engines": {

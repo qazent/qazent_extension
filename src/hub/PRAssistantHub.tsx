@@ -5,6 +5,7 @@
 import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
 import * as DevOps from 'azure-devops-extension-api';
+import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -191,58 +192,60 @@ const PRAssistantHub: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Error Message */}
-      {error && (
-        <div style={{
-          backgroundColor: '#fde7e9',
-          border: '1px solid #e81123',
-          color: '#e81123',
-          padding: '12px',
-          marginBottom: '16px',
-          borderRadius: '4px'
-        }}>
-          {error}
-        </div>
-      )}
+    <FluentProvider theme={webLightTheme}>
+      <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Error Message */}
+        {error && (
+          <div style={{
+            backgroundColor: '#fde7e9',
+            border: '1px solid #e81123',
+            color: '#e81123',
+            padding: '12px',
+            marginBottom: '16px',
+            borderRadius: '4px'
+          }}>
+            {error}
+          </div>
+        )}
 
-      {/* Success Message */}
-      {successMessage && (
-        <div style={{
-          backgroundColor: '#dff6dd',
-          border: '1px solid #107c10',
-          color: '#107c10',
-          padding: '12px',
-          marginBottom: '16px',
-          borderRadius: '4px'
-        }}>
-          {successMessage}
-        </div>
-      )}
+        {/* Success Message */}
+        {successMessage && (
+          <div style={{
+            backgroundColor: '#dff6dd',
+            border: '1px solid #107c10',
+            color: '#107c10',
+            padding: '12px',
+            marginBottom: '16px',
+            borderRadius: '4px'
+          }}>
+            {successMessage}
+          </div>
+        )}
 
-      {/* PR Info Section */}
-      <PRInfoSection
-        prTitle={prData?.prTitle}
-        prId={prData?.prId}
-        author={prData?.author}
-        filesChanged={prData?.filesChanged}
-      />
+        {/* PR Info Section */}
+        <PRInfoSection
+          prTitle={prData?.prTitle}
+          prId={prData?.prId}
+          author={prData?.author}
+          filesChanged={prData?.filesChanged}
+        />
 
-      {/* Generate Button */}
-      <GenerateButton
-        isLoading={isGenerating}
-        isDisabled={!prData}
-        onClick={handleGenerateTests}
-      />
+        {/* Generate Button */}
+        <GenerateButton
+          isLoading={isGenerating}
+          isDisabled={!prData}
+          onClick={handleGenerateTests}
+        />
 
-      {/* Test Case Card */}
-      <TestCaseCard
-        testCase={testCase}
-        onCopyToClipboard={handleCopyToClipboard}
-        onCreateWorkItem={handleCreateWorkItem}
-        isCreatingWorkItem={isCreatingWorkItem}
-      />
-    </div>
+        {/* Test Case Card */}
+        <TestCaseCard
+          testCase={testCase}
+          onCopyToClipboard={handleCopyToClipboard}
+          onCreateWorkItem={handleCreateWorkItem}
+          isCreatingWorkItem={isCreatingWorkItem}
+        />
+      </div>
+    </FluentProvider>
   );
 };
 
