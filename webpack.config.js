@@ -6,10 +6,13 @@ module.exports = (env, argv) => {
   const isProduction = argv.mode === 'production';
 
   return {
-    entry: './src/index.tsx',
+    entry: {
+      hub: './src/index.tsx',
+      settings: './src/settings/index.tsx'
+    },
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: 'hub.js',
+      filename: '[name].js',
       clean: false // Don't clean dist folder (backend files are there)
     },
     target: 'web',
@@ -31,6 +34,13 @@ module.exports = (env, argv) => {
       new HtmlWebpackPlugin({
         template: './src/hub/hub.html',
         filename: 'hub.html',
+        chunks: ['hub'],
+        inject: 'body'
+      }),
+      new HtmlWebpackPlugin({
+        template: './src/settings/settings.html',
+        filename: 'settings.html',
+        chunks: ['settings'],
         inject: 'body'
       })
     ]

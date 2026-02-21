@@ -6,12 +6,13 @@ import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
 import { getClient } from 'azure-devops-extension-api';
 import { GitRestClient } from 'azure-devops-extension-api/Git';
+import { CommonServiceIds, IExtensionDataService } from 'azure-devops-extension-api';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
 import { TestCaseCard } from './TestCaseCard';
-import { PRData, GeneratedTestCase } from '../types/extension-types';
+import { PRData, GeneratedTestCase, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
 
 const PRAssistantHub: React.FC = () => {
@@ -24,6 +25,7 @@ const PRAssistantHub: React.FC = () => {
   const [backendUrl, setBackendUrl] = React.useState<string>('http://localhost:3000');
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
+  const [customContext, setCustomContext] = React.useState<string>('');
 
   React.useEffect(() => {
     const init = async () => {
@@ -98,6 +100,9 @@ const PRAssistantHub: React.FC = () => {
       setRepositoryId(repoId);
       setProjectName(project);
 
+      // Load custom context for this repository
+      await loadCustomContext(project, repoId);
+
       setPRData({
         prTitle: prDetails.title || `PR #${pullRequestId}`,
         prId: pullRequestId,
@@ -108,6 +113,40 @@ const PRAssistantHub: React.FC = () => {
     } catch (err) {
       setError('Unable to load Pull Request details: ' + (err instanceof Error ? err.message : String(err)));
       console.error('Error loading PR context:', err);
+    }
+  };
+
+  const loadCustomContext = async (projectId: string, repositoryId: string) => {
+    try {
+      // Build combined context: project default + repo-specific
+      const contextParts: string[] = [];
+
+      const dataService = await SDK.getService<IExtensionDataService>(
+        CommonServiceIds.ExtensionDataService
+      );
+      const dataManager = await dataService.getExtensionDataManager(
+        'QAZent.pr-assistant-extension',
+        await SDK.getAccessToken()
+      );
+
+      // Load project default first
+      const projectDefault = await dataManager.getDocument('ai-contexts', 'project-default');
+      if (projectDefault && (projectDefault as AIContextDocument).contextText && (projectDefault as AIContextDocument).contextText.trim()) {
+        contextParts.push((projectDefault as AIContextDocument).contextText.trim());
+      }
+
+      // Load repo-specific and append (not replace)
+      const repoContext = await dataManager.getDocument('ai-contexts', repositoryId);
+      if (repoContext && (repoContext as AIContextDocument).contextText && (repoContext as AIContextDocument).contextText.trim()) {
+        contextParts.push((repoContext as AIContextDocument).contextText.trim());
+      }
+
+      // Combine with double newline separator
+      const combinedContext = contextParts.join('\n\n');
+      setCustomContext(combinedContext);
+    } catch (err) {
+      console.warn('Failed to load custom context:', err);
+      // Non-fatal error - continue without context
     }
   };
 
@@ -131,7 +170,8 @@ const PRAssistantHub: React.FC = () => {
         prData.prId,
         projectName,
         repositoryId,
-        backendUrl
+        backendUrl,
+        customContext
       );
 
       setTestCase(generatedTestCase);
