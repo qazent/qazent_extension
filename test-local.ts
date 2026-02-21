@@ -123,51 +123,30 @@ async function runTest(): Promise<void> {
     // Step 3: Generate test cases with AI
     console.log('Step 3: Generating test cases with AI...');
     ai.loadSystemPrompt();
-    const testCase = await ai.generateTestCases(prMetadata, codeDiff);
-    console.log(`  ✓ Test case generated: ${testCase.title}`);
-    console.log(`  ✓ Test steps: ${testCase.testSteps.length}`);
-    console.log(`  ✓ Negative scenarios: ${testCase.negativeScenarios.length}`);
-    console.log(`  ✓ Edge cases: ${testCase.edgeCases.length}`);
+    const taskOutput = await ai.generateTestCases(prMetadata, codeDiff);
+    console.log(`  ✓ Task output generated: ${taskOutput.title}`);
+    console.log(`  ✓ HTML description length: ${taskOutput.htmlDescription.length} characters`);
     console.log();
 
-    // Display generated test case
-    console.log('Generated Test Case:');
+    // Display generated task output
+    console.log('Generated Task Output:');
     console.log('-'.repeat(60));
-    console.log(`Title: ${testCase.title}`);
-    console.log(`Purpose: ${testCase.purpose}`);
-    console.log(`Scope: ${testCase.scopeOfChange}`);
+    console.log(`Title: ${taskOutput.title}`);
     console.log();
-    console.log('Test Steps:');
-    testCase.testSteps.forEach((step, i) => {
-      console.log(`  ${i + 1}. ${step}`);
-    });
-    console.log();
-    console.log('Expected Results:');
-    testCase.expectedResults.forEach((result, i) => {
-      console.log(`  ${i + 1}. ${result}`);
-    });
-    console.log();
-    console.log('Negative Scenarios:');
-    testCase.negativeScenarios.forEach((scenario, i) => {
-      console.log(`  ${i + 1}. ${scenario}`);
-    });
-    console.log();
-    console.log('Edge Cases:');
-    testCase.edgeCases.forEach((edge, i) => {
-      console.log(`  ${i + 1}. ${edge}`);
-    });
+    console.log('HTML Description:');
+    console.log(taskOutput.htmlDescription.substring(0, 500) + '...');
     console.log('-'.repeat(60));
     console.log();
 
     // Step 4: Create work item (skip in mock mode)
     if (process.env.MOCK_MODE === 'true') {
       console.log('Step 4: Skipping work item creation (MOCK_MODE=true)...');
-      console.log('  ✓ Test case would be created in Azure DevOps');
+      console.log('  ✓ Task work item would be created in Azure DevOps');
     } else {
-      console.log('Step 4: Creating work item in Azure DevOps...');
-      const workItemId = await adoClient.createTestCaseWorkItem(
+      console.log('Step 4: Creating task work item in Azure DevOps...');
+      const workItemId = await adoClient.createTaskWorkItem(
         prMetadata.projectName,
-        testCase,
+        taskOutput,
         prMetadata
       );
       console.log(`  ✓ Work item created: #${workItemId}`);

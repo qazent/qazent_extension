@@ -59,13 +59,13 @@ async function processJob(job: QueueJob): Promise<void> {
 
     // Step 2: Generate test cases using AI
     logger.info('Generating test cases with AI', { jobId: job.id, prId: prMetadata.prId });
-    const testCase = await ai.generateTestCases(prMetadata, codeDiff);
+    const taskOutput = await ai.generateTestCases(prMetadata, codeDiff);
 
     // Step 3: Create work item in Azure DevOps
     logger.info('Creating work item', { jobId: job.id, prId: prMetadata.prId });
-    const workItemId = await adoClient.createTestCaseWorkItem(
+    const workItemId = await adoClient.createTaskWorkItem(
       prMetadata.projectName,
-      testCase,
+      taskOutput,
       prMetadata
     );
 

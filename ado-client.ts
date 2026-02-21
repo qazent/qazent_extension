@@ -6,7 +6,7 @@ import * as azdev from 'azure-devops-node-api';
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
-import { CodeDiff, DiffChange, GeneratedTestCase, PRMetadata } from './types';
+import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 
 let connection: azdev.WebApi | null = null;
@@ -228,33 +228,6 @@ export async function fetchPRDiff(
 }
 
 /**
- * Format test steps as Azure DevOps XML
- */
-function formatTestStepsXml(testSteps: string[], expectedResults: string[]): string {
-  let xml = '<steps id="0">';
-
-  for (let i = 0; i < testSteps.length; i++) {
-    const stepNum = i + 1;
-    const step = testSteps[i] || 'N/A';
-    const expected = expectedResults[i] || 'N/A';
-
-    // Escape HTML entities and wrap in HTML
-    const stepHtml = escapeHtml(step);
-    const expectedHtml = escapeHtml(expected);
-
-    xml += `
-  <step id="${stepNum}" type="ActionStep">
-    <parameterizedString isformatted="true">&lt;DIV&gt;&lt;P&gt;${stepHtml}&lt;/P&gt;&lt;/DIV&gt;</parameterizedString>
-    <parameterizedString isformatted="true">&lt;DIV&gt;&lt;P&gt;${expectedHtml}&lt;/P&gt;&lt;/DIV&gt;</parameterizedString>
-    <description/>
-  </step>`;
-  }
-
-  xml += '\n</steps>';
-  return xml;
-}
-
-/**
  * Escape HTML entities
  */
 function escapeHtml(text: string): string {
@@ -264,66 +237,6 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-/**
- * Format test case description as HTML
- */
-function formatDescriptionHtml(testCase: GeneratedTestCase, prMetadata: PRMetadata): string {
-  const { purpose, scopeOfChange, preconditions, negativeScenarios, edgeCases,
-          regressionAreas, dataRequirements, automationNotes } = testCase;
-  const { prId, title } = prMetadata;
-
-  let html = `<h2>Purpose</h2><p>${escapeHtml(purpose)}</p>`;
-
-  html += `<h2>Scope of Change</h2><p>${escapeHtml(scopeOfChange)}</p>`;
-
-  if (preconditions.length > 0) {
-    html += '<h2>Preconditions</h2><ul>';
-    preconditions.forEach(item => {
-      html += `<li>${escapeHtml(item)}</li>`;
-    });
-    html += '</ul>';
-  }
-
-  if (negativeScenarios.length > 0) {
-    html += '<h2>Negative Scenarios</h2><ul>';
-    negativeScenarios.forEach(item => {
-      html += `<li>${escapeHtml(item)}</li>`;
-    });
-    html += '</ul>';
-  }
-
-  if (edgeCases.length > 0) {
-    html += '<h2>Edge Cases</h2><ul>';
-    edgeCases.forEach(item => {
-      html += `<li>${escapeHtml(item)}</li>`;
-    });
-    html += '</ul>';
-  }
-
-  if (regressionAreas.length > 0) {
-    html += '<h2>Regression Areas</h2><ul>';
-    regressionAreas.forEach(item => {
-      html += `<li>${escapeHtml(item)}</li>`;
-    });
-    html += '</ul>';
-  }
-
-  if (dataRequirements.length > 0) {
-    html += '<h2>Data Requirements</h2><ul>';
-    dataRequirements.forEach(item => {
-      html += `<li>${escapeHtml(item)}</li>`;
-    });
-    html += '</ul>';
-  }
-
-  html += `<h2>Automation Notes</h2><p>${escapeHtml(automationNotes)}</p>`;
-
-  html += '<hr/>';
-  html += `<p><em>Auto-generated from PR #${prId}: ${escapeHtml(title)}</em></p>`;
-
-  return html;
 }
 
 /**
@@ -347,24 +260,18 @@ export function buildPRArtifactUri(prMetadata: PRMetadata): string {
 }
 
 /**
- * Create Test Case work item in Azure DevOps
+ * Create Task work item in Azure DevOps
  */
-export async function createTestCaseWorkItem(
+export async function createTaskWorkItem(
   projectName: string,
-  testCase: GeneratedTestCase,
+  taskOutput: TaskWorkItemOutput,
   prMetadata: PRMetadata
 ): Promise<number> {
   try {
-    logger.info('Creating test case work item', { projectName, prId: prMetadata.prId });
+    logger.info('Creating task work item', { projectName, prId: prMetadata.prId });
 
     const conn = getConnection();
     const witApi: WorkItemTrackingApi = await conn.getWorkItemTrackingApi();
-
-    // Format test steps as XML
-    const stepsXml = formatTestStepsXml(testCase.testSteps, testCase.expectedResults);
-
-    // Format description as HTML
-    const descriptionHtml = formatDescriptionHtml(testCase, prMetadata);
 
     // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
     const prArtifactUri = buildPRArtifactUri(prMetadata);
@@ -381,17 +288,12 @@ export async function createTestCaseWorkItem(
       {
         op: Operation.Add,
         path: '/fields/System.Title',
-        value: testCase.title
+        value: taskOutput.title
       },
       {
         op: Operation.Add,
         path: '/fields/System.Description',
-        value: descriptionHtml
-      },
-      {
-        op: Operation.Add,
-        path: '/fields/Microsoft.VSTS.TCM.Steps',
-        value: stepsXml
+        value: taskOutput.htmlDescription
       },
       {
         op: Operation.Add,
@@ -416,14 +318,14 @@ export async function createTestCaseWorkItem(
       undefined, // customHeaders
       patchDocument,
       projectName,
-      'Test Case'
+      'Task'
     );
 
     if (!workItem || !workItem.id) {
       throw new Error('Work item creation returned no ID');
     }
 
-    logger.info('Test case work item created', {
+    logger.info('Task work item created', {
       projectName,
       workItemId: workItem.id,
       prId: prMetadata.prId
@@ -457,20 +359,12 @@ export async function createFallbackWorkItem(
     const title = `Test Case: ${prMetadata.title} (Auto-generated - AI unavailable)`;
 
     const descriptionHtml = `
-<p>AI test case generation failed after 3 attempts.</p>
+<p>AI test case generation failed after multiple attempts.</p>
 <p><strong>PR #${prMetadata.prId}:</strong> ${escapeHtml(prMetadata.title)}</p>
 <p><strong>Author:</strong> ${escapeHtml(prMetadata.author)}</p>
 <p><strong>Description:</strong> ${escapeHtml(prMetadata.description || 'N/A')}</p>
 <hr/>
 <p><em>Please manually review this PR and create appropriate test cases.</em></p>`;
-
-    const stepsXml = `<steps id="0">
-  <step id="1" type="ActionStep">
-    <parameterizedString isformatted="true">&lt;DIV&gt;&lt;P&gt;Review PR changes and create appropriate test cases&lt;/P&gt;&lt;/DIV&gt;</parameterizedString>
-    <parameterizedString isformatted="true">&lt;DIV&gt;&lt;P&gt;Test cases created based on PR changes&lt;/P&gt;&lt;/DIV&gt;</parameterizedString>
-    <description/>
-  </step>
-</steps>`;
 
     // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
     const prArtifactUri = buildPRArtifactUri(prMetadata);
@@ -495,11 +389,6 @@ export async function createFallbackWorkItem(
       },
       {
         op: Operation.Add,
-        path: '/fields/Microsoft.VSTS.TCM.Steps',
-        value: stepsXml
-      },
-      {
-        op: Operation.Add,
         path: '/fields/System.Tags',
         value: `AI-Generated-Fallback; PR-${prMetadata.prId}`
       },
@@ -520,7 +409,7 @@ export async function createFallbackWorkItem(
       undefined,
       patchDocument,
       projectName,
-      'Test Case'
+      'Task'
     );
 
     if (!workItem || !workItem.id) {

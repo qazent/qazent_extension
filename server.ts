@@ -5,7 +5,7 @@
 import * as http from 'http';
 import * as dotenv from 'dotenv';
 
-import { WebhookPayload, WebhookResponse, ErrorResponse, HealthResponse, PRMetadata, GeneratedTestCase } from './types';
+import { WebhookPayload, WebhookResponse, ErrorResponse, HealthResponse, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
@@ -231,10 +231,10 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
       };
 
       // Generate test cases
-      const testCase: GeneratedTestCase = await ai.generateTestCases(prMetadata, codeDiff);
+      const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(testCase));
+      res.end(JSON.stringify(taskOutput));
 
     } catch (error) {
       logger.error('Failed to generate tests', { error: String(error) });
@@ -311,7 +311,7 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
       };
 
       // Create work item
-      const workItemId = await adoClient.createTestCaseWorkItem(
+      const workItemId = await adoClient.createTaskWorkItem(
         payload.projectName,
         payload.testCase,
         prMetadata
