@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.16",
+  "version": "1.2.25",
   "publisher": "QAZent",
   "targets": [
     {
@@ -25,8 +25,8 @@
       "properties": {
         "name": "QAZent PR Assistant",
         "uri": "dist/hub.html",
-        "order": 100
-      }
+        "order": 100,
+        "backendUrl": "https://rathely-rubidic-katelin.ngrok-free.dev/"      }
     },
     {
       "id": "ai-context-settings-hub",
@@ -35,14 +35,18 @@
       "properties": {
         "name": "QAZent PR Assistant",
         "order": 100,
-        "uri": "dist/settings.html"
-      }
+        "uri": "dist/settings.html",
+        "backendUrl": "https://rathely-rubidic-katelin.ngrok-free.dev/"      }
     }
   ],
   "files": [
     {
       "path": "dist",
       "addressable": true
+    },
+    {
+      "path": "public",
+      "addressable": true 
     }
   ],
   "scopes": ["vso.code"]

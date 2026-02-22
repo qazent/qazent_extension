@@ -8,10 +8,11 @@
   },
   "scripts": {
     "dev": "ts-node server.ts",
-    "build": "tsc && cpx system-prompt.txt dist && cpx test-local.ts dist ",
+    "build": "tsc && cpx system-prompt.txt dist && cpx test-local.ts dist && cpx public/**/* dist/public",
     "build:extension": "webpack --config webpack.config.js --mode production",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version",
+    "publish:all": "powershell ./publish-all.ps1",
     "start": "node dist/server.js",
     "test:local": "ts-node test-local.ts",
     "lint": "tsc --noEmit",

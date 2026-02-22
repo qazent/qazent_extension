@@ -14,6 +14,7 @@ import { GenerateButton } from './GenerateButton';
 import { TestCaseCard } from './TestCaseCard';
 import { PRData, GeneratedTestCase, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
+import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
 
 const PRAssistantHub: React.FC = () => {
   const [prData, setPRData] = React.useState<PRData | null>(null);
@@ -22,33 +23,52 @@ const PRAssistantHub: React.FC = () => {
   const [isCreatingWorkItem, setIsCreatingWorkItem] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
-  const [backendUrl, setBackendUrl] = React.useState<string>('http://localhost:3000');
+ 
+  const [backendUrl, setBackendUrl] = React.useState<string>(
+  'https://rathely-rubidic-katelin.ngrok-free.dev/');  // Default backend URL, should be overridden by config  // Default backend URL, should be overridden by config
+
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
-  const [customContext, setCustomContext] = React.useState<string>('');
+
 
   React.useEffect(() => {
-    const init = async () => {
-      try {
-        // REQUIRED: Initialize Azure DevOps SDK before any API calls
-        await SDK.init();
-        await SDK.ready();
+  const init = async () => {
+    try {
+      await SDK.init();
+      await SDK.ready();
 
-        const config = SDK.getConfiguration();
+      // 1. Get extension context (cast to extended type)
+      const extContext = SDK.getExtensionContext() as unknown as IExtensionContextWithContributions;
 
-        // Load backend URL from extension config
-        if (config && config.backendUrl) {
-          setBackendUrl(config.backendUrl as string);
-        }
+      // 2. Identify the current contribution
+      const contributionId = SDK.getContributionId();
 
-        await loadPRContext(config);
-      } catch (err) {
-        setError('Failed to initialize extension: ' + (err instanceof Error ? err.message : String(err)));
+      const contribution = extContext.contributions?.find(
+        (c: IContribution) => c.id === contributionId
+      );
+
+      // 3. Read backendUrl from contribution properties
+      const backend = contribution?.properties?.backendUrl;
+      if (backend) {
+        setBackendUrl(backend);
       }
-    };
 
-    init();
-  }, []);
+      // 4. Load PR context
+      const config = SDK.getConfiguration();
+      await loadPRContext(config);
+
+    } catch (err) {
+      setError(
+        'Failed to initialize extension: ' +
+          (err instanceof Error ? err.message : String(err))
+      );
+    }
+  };
+
+  init();
+}, []);
+
+
 
   const loadPRContext = async (config: any) => {
     try {
@@ -63,6 +83,13 @@ const PRAssistantHub: React.FC = () => {
       const pullRequestId = prContext.pullRequestId;
       const repoId = prContext.repository?.id;
       const project = prContext.repository?.project?.name;
+      const customcontext = prContext.customContext || '';
+
+       if (customcontext) {
+        setCustomContext(customcontext);
+      } else {
+        await loadCustomContext(project, repoId);
+      }
 
       if (!repoId || !project) {
         setError('Unable to determine repository or project from PR context.');
@@ -99,6 +126,7 @@ const PRAssistantHub: React.FC = () => {
 
       setRepositoryId(repoId);
       setProjectName(project);
+      setCustomContext(''); // Clear context while loading
 
       // Load custom context for this repository
       await loadCustomContext(project, repoId);
@@ -109,6 +137,10 @@ const PRAssistantHub: React.FC = () => {
         author: authorName,
         filesChanged: fileCount
       });
+
+      if (!loadCustomContext) {
+        setError('Failed to load custom context for this repository. Please try again.');
+      }
 
     } catch (err) {
       setError('Unable to load Pull Request details: ' + (err instanceof Error ? err.message : String(err)));
@@ -154,9 +186,12 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleGenerateTests = async () => {
+    setIsGenerating(true);
     if (!prData) {
       setError('PR information not loaded');
+      setIsGenerating(false);
       return;
+      }
     }
 
     setIsGenerating(true);
@@ -191,9 +226,14 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleCreateWorkItem = async () => {
-    if (!testCase || !prData) return;
+    setIsCreatingWorkItem(true);
+    if (!testCase || !prData) {
+      setError('Test case not generated or PR data not available');
+      return;
+    }
 
     setIsCreatingWorkItem(true);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate work item creation delay
     setError(null);
     setSuccessMessage(null);
 
@@ -206,8 +246,8 @@ const PRAssistantHub: React.FC = () => {
         testCase,
         prData.prId,
         projectName,
+        customContext,
         repositoryId,
-        backendUrl
       );
 
       setSuccessMessage(`Work item created successfully! View it here: ${result.workItemUrl}`);

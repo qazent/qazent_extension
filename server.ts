@@ -206,7 +206,8 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
         prId: payload.prId,
         projectName: payload.projectName,
         repositoryId: payload.repositoryId,
-        hasCustomContext: !!customContext
+        hasCustomContext: !!customContext,
+        contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext)
       });
 
       // Fetch PR diff
@@ -360,14 +361,20 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
  * Apply CORS headers
  */
 function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
+  logger.info("CORS: Incoming origin", { origin });
+
   // Allow Azure DevOps origins and localhost for development
   const allowedOrigins = [
     'https://dev.azure.com',
-    'https://visualstudio.com'
+    'https://visualstudio.com',
+    'https://qazent.azurewebsites.net', // For Azure Functions if used
+    'https://rathely-rubidic-katelin.ngrok-free.dev', // For ngrok tunnels during development
+    'https://qazent.gallerycdn.vsassets.io' // For Azure DevOps hosted extensions
   ];
 
   // Allow localhost for development
   if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
+    logger.info("CORS: Allowing localhost origin", { origin });
     allowedOrigins.push(origin);
   }
 
@@ -380,6 +387,9 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
+
+  logger.info("CORS: Headers applied");
+
 }
 
 /**
@@ -390,28 +400,44 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   const url = req.url;
   const origin = req.headers.origin;
 
-  logger.info('Request received', { method, url });
+  logger.info("Request received", { method, url, origin });
 
   // Apply CORS headers to all responses
   applyCorsHeaders(res, origin);
 
+  // Normalize URL (fixes //generate-tests)
+  const normalizedUrl = url?.replace(/^\/+/, '/');
+  logger.info("Normalized URL", { normalizedUrl });
+
+
   // Handle preflight requests
   if (method === 'OPTIONS') {
+    logger.info("OPTIONS preflight received", { url, origin });
+
     res.writeHead(204);
     res.end();
+
+    logger.info("OPTIONS response sent (204)");
     return;
   }
 
   // Health check endpoint
-  if (url === '/health' && method === 'GET') {
+  if (normalizedUrl === '/health' && method === 'GET') {
+    logger.info("Health check hit");
     handleHealth(req, res);
     return;
   }
 
   // Generate tests endpoint
-  if (url === '/generate-tests' && method === 'POST') {
+  if (normalizedUrl || url === '/generate-tests' && method === 'POST') {
+    logger.info("POST /generate-tests hit");
+
     const contentType = req.headers['content-type'];
+    logger.info("POST content-type", { contentType });
+
     if (!contentType || !contentType.includes('application/json')) {
+      logger.warn("Invalid content type", { contentType });
+
       const errorResponse: ErrorResponse = {
         error: 'Invalid content type',
         details: 'Expected application/json'
@@ -420,28 +446,33 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       res.end(JSON.stringify(errorResponse));
       return;
     }
+
+    logger.info("Calling handleGenerateTests...");
     handleGenerateTests(req, res);
     return;
   }
 
   // Create work item endpoint
-  if (url === '/create-work-item' && method === 'POST') {
+  if (normalizedUrl === '/create-work-item' && method === 'POST') {
+    logger.info("POST /create-work-item hit");
+
     const contentType = req.headers['content-type'];
+    logger.info("POST content-type", { contentType });
+
     if (!contentType || !contentType.includes('application/json')) {
-      const errorResponse: ErrorResponse = {
-        error: 'Invalid content type',
-        details: 'Expected application/json'
-      };
+      logger.warn("Invalid content type", { contentType });
       res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(errorResponse));
+      res.end(JSON.stringify({ error: 'Invalid content type', details: 'Expected application/json' }));
       return;
     }
+
     handleCreateWorkItem(req, res);
     return;
   }
 
+
   // Webhook endpoint
-  if (url === '/webhook' && method === 'POST') {
+  if (normalizedUrl === '/webhook' && method === 'POST') {
     // Check content type
     const contentType = req.headers['content-type'];
 
@@ -463,8 +494,8 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
 
   // Wrong method for webhook
-  if (url === '/webhook' && method !== 'POST') {
-    logger.warn('Method not allowed', { method, url });
+  if (normalizedUrl || url === '/webhook' && method !== 'POST') {
+    logger.warn('Method not allowed', { method, url: normalizedUrl });
 
     const errorResponse: ErrorResponse = {
       error: 'Method not allowed',
@@ -477,11 +508,11 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
 
   // 404 for all other routes
-  logger.warn('Route not found', { method, url });
+  logger.warn('Route not found', { method, url, normalizedUrl, origin, headers: req.headers, statusCode: res.statusCode });
 
   const errorResponse: ErrorResponse = {
     error: 'Not found',
-    details: `Route ${url} not found`
+    details: `Route ${normalizedUrl} or URL ${url} not found`
   };
 
   res.writeHead(404, { 'Content-Type': 'application/json' });

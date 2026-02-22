@@ -1,8 +1,92 @@
 /**
- * Backend API client for extension
+ * Backend API client for Manual Test Case Generation Extension
+ * Provides functions to interact with the backend service for generating test cases
+ * and creating work items.
  */
 
-import { GeneratedTestCase, WorkItemResponse, ApiErrorResponse } from '../types/extension-types';
+import {
+  GeneratedTestCase,
+  WorkItemResponse,
+  ApiErrorResponse
+} from '../types/extension-types';
+
+/**
+ * Normalize backend URL and append path safely
+ */
+function buildUrl(base: string, path: string): string {
+  return base.replace(/\/+$/, '') + path;
+}
+
+/**
+ * Generic helper for backend POST requests with timeout + unified error handling
+ */
+async function postJson<T>(
+  url: string,
+  body: unknown,
+  timeoutMs: number
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    // Handle non-OK responses
+    if (!response.ok) {
+      let errorData: ApiErrorResponse | null = null;
+
+      try {
+        errorData = await response.json();
+      } catch {
+        // ignore JSON parse errors — backend might return HTML on failure
+      }
+
+      const message =
+        errorData?.message ||
+        errorData?.error ||
+        `Backend error (${response.status})`;
+
+      switch (response.status) {
+        case 400:
+          throw new Error('Invalid request data');
+        case 404:
+          throw new Error('Resource not found');
+        case 500:
+          throw new Error('Backend service failed. Please try again.');
+        default:
+          throw new Error(message);
+      }
+    }
+
+    // Parse JSON safely
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new Error('Invalid JSON received from backend');
+    }
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new Error('Request timed out. Please try again.');
+      }
+      if (error.message.includes('fetch') || error.message.includes('Failed to')) {
+        throw new Error('Unable to connect to backend service');
+      }
+      throw error;
+    }
+
+    throw new Error('Unable to connect to backend service');
+  }
+}
 
 /**
  * Generate test cases for a PR
@@ -14,62 +98,17 @@ export async function generateTestCases(
   backendUrl: string,
   customContext?: string
 ): Promise<GeneratedTestCase> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const url = buildUrl(backendUrl, '/generate-tests');
 
-  try {
-    const response = await fetch(`${backendUrl}/generate-tests`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        prId,
-        projectName,
-        repositoryId,
-        customContext
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorData: ApiErrorResponse = await response.json();
-
-      if (response.status === 400) {
-        throw new Error('Invalid PR data');
-      } else if (response.status === 404) {
-        throw new Error('PR not found');
-      } else if (response.status === 500) {
-        throw new Error('Test case generation failed. Please try again.');
-      } else {
-        throw new Error(errorData.message || errorData.error || 'Unknown error occurred');
-      }
-    }
-
-    const testCase: GeneratedTestCase = await response.json();
-    return testCase;
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Request timed out. Please try again.');
-      }
-      if (error.message.includes('fetch')) {
-        throw new Error('Unable to connect to backend service');
-      }
-      throw error;
-    }
-
-    throw new Error('Unable to connect to backend service');
-  }
+  return postJson<GeneratedTestCase>(
+    url,
+    { prId, projectName, repositoryId, customContext },
+    60000 // 60s timeout — backend can take 35–40s for large PRs
+  );
 }
 
 /**
- * Create a work item from test case
+ * Create a work item from a test case
  */
 export async function createWorkItem(
   testCase: GeneratedTestCase,
@@ -78,54 +117,11 @@ export async function createWorkItem(
   repositoryId: string,
   backendUrl: string
 ): Promise<WorkItemResponse> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+  const url = buildUrl(backendUrl, '/create-work-item');
 
-  try {
-    const response = await fetch(`${backendUrl}/create-work-item`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        testCase,
-        prId,
-        projectName,
-        repositoryId
-      }),
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorData: ApiErrorResponse = await response.json();
-
-      if (response.status === 400) {
-        throw new Error('Invalid test case data');
-      } else if (response.status === 500) {
-        throw new Error('Work item creation failed');
-      } else {
-        throw new Error(errorData.message || errorData.error || 'Unknown error occurred');
-      }
-    }
-
-    const result: WorkItemResponse = await response.json();
-    return result;
-
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        throw new Error('Request timed out');
-      }
-      if (error.message.includes('fetch')) {
-        throw new Error('Unable to connect to backend service');
-      }
-      throw error;
-    }
-
-    throw new Error('Unable to connect to backend service');
-  }
+  return postJson<WorkItemResponse>(
+    url,
+    { testCase, prId, projectName, repositoryId },
+    30000 // 30s timeout — work item creation is much faster
+  );
 }

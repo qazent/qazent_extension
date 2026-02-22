@@ -10,6 +10,10 @@ export interface PRData {
   prId: number;
   author: string;
   filesChanged: number;
+  repositoryId: string;
+  repositoryName: string;
+  projectName: string;
+  contextText: string; // Combined context used for test generation 
 }
 
 /**
@@ -57,4 +61,16 @@ export interface AIContextDocument {
   contextText: string;
   updatedAt: string;
   updatedBy: string;
+}
+/**
+ * Interface for extension contributions (e.g., menu items, panels)
+ */
+export interface IContribution {
+  id: string;
+  type: string;
+  properties?: Record<string, any>;
+}
+
+export interface IExtensionContextWithContributions {
+  contributions?: IContribution[];
 }
