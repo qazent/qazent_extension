@@ -185,10 +185,10 @@ export const SettingsHub: React.FC = () => {
 
       await dataManager.setDocument('ai-contexts', document);
 
-      setSuccessMessage('Context saved successfully');
+      setSuccessMessage('Context saved successfully for ' + (selectedRepoId === 'project-default' ? 'project default' : 'repository "' + document.repositoryName + '"') + '!');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setErrorMessage('Failed to save context: ' + (err instanceof Error ? err.message : String(err)));
+      setErrorMessage('Failed to save context. Please try again! ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSaving(false);
     }
@@ -200,163 +200,172 @@ export const SettingsHub: React.FC = () => {
 
   return (
     <FluentProvider theme={webLightTheme}>
-          <div style={{ 
-          padding: '24px', 
-          display: 'flex', 
-          gap: '24px',
-          alignItems: 'flex-start'
-        }}>
-        <div style={{ flex: 1, minWidth: 0 }}></div>
-        <h1 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '8px' }}>
-          QAZent AI Assistant - Custom Context Settings
-        </h1>
-        <p style={{ color: '#605e5c', marginBottom: '24px' }}>
-          Configure custom context that will be provided to the AI assistant when generating test cases.
-          Set a project-wide default or customize context for specific repositories.
-        </p>
+  <div
+    style={{
+      padding: "24px",
+      display: "flex",
+      gap: "24px",
+      alignItems: "flex-start",
+    }}
+  >
+    {/* LEFT COLUMN */}
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <h1 style={{ fontSize: "24px", fontWeight: 600, marginBottom: "8px" }}>
+        QAZent AI Assistant - Custom Context Settings
+      </h1>
 
-        {errorMessage && (
-          <div style={{
-            backgroundColor: '#fde7e9',
-            border: '1px solid #e81123',
-            color: '#e81123',
-            padding: '12px',
-            marginBottom: '16px',
-            borderRadius: '4px'
-          }}>
-            {errorMessage}
-          </div>
-        )}
+      <p style={{ color: "#605e5c", marginBottom: "24px" }}>
+        Configure custom context that will be provided to the AI assistant when
+        generating test cases. Set a project-wide default or customize context
+        for specific repositories.
+      </p>
 
-        {successMessage && (
-          <div style={{
-            backgroundColor: '#dff6dd',
-            border: '1px solid #107c10',
-            color: '#107c10',
-            padding: '12px',
-            marginBottom: '16px',
-            borderRadius: '4px'
-          }}>
-            {successMessage}
-          </div>
-        )}
+      {errorMessage && (
+        <div
+          style={{
+            backgroundColor: "#fde7e9",
+            border: "1px solid #e81123",
+            color: "#e81123",
+            padding: "12px",
+            marginBottom: "16px",
+            borderRadius: "4px",
+          }}
+        >
+          {errorMessage}
+        </div>
+      )}
 
-        <div style={{ marginBottom: '20px' }}>
-          <Field label="Repository">
-            <Combobox
-              placeholder={isLoading && repositories.length === 0 ? "Loading repositories..." : "Select repository"}
-              value={selectedRepoId}
+      {successMessage && (
+        <div
+          style={{
+            backgroundColor: "#fcfcfc",
+            border: "1px solid #000000",
+            color: "#0edd4c",
+            padding: "12px",
+            marginBottom: "16px",
+            borderRadius: "4px",
+          }}
+        >
+          {successMessage}
+        </div>
+      )}
 
-              onOptionSelect={handleRepoChange}
-              disabled={isLoading}
-            >
-              <Option value="project-default">
-                Project Default (applies to all repos)
+      <div style={{ marginBottom: "20px" }}>
+        <Field label="Repository">
+          <Combobox
+            placeholder={
+              isLoading && repositories.length === 0
+                ? "Loading repositories..."
+                : "Select repository"
+            }
+            value={selectedRepoId}
+            onOptionSelect={handleRepoChange}
+            disabled={isLoading}
+          >
+            <Option value="project-default">
+              Project Default (applies to all repos)
+            </Option>
+
+            {repositories.map((repo) => (
+              <Option key={repo.id} value={repo.id}>
+                {repo.name}
               </Option>
+            ))}
+          </Combobox>
+        </Field>
+      </div>
 
-              {repositories.map(repo => (
-                <Option key={repo.id} value={repo.id}>
-                  {repo.name}
-                </Option>
-              ))}
-            </Combobox>
-          </Field>
-        </div>
+      <div style={{ marginBottom: "20px" }}>
+        <Field
+          label="Custom Context"
+          hint="This context will be provided to the AI for all prompts in the selected repository"
+        >
+          <Textarea
+            spellCheck={false}
+            rows={12}
+            value={contextText}
+            onChange={(_e, data) => setContextText(data.value)}
+            disabled={isLoading}
+            placeholder="Enter custom context for the AI assistant..."
+            style={{ width: "100%" }}
+          />
+        </Field>
+      </div>
 
-        <div style={{ marginBottom: '20px' }}>
-          <Field 
-            label="Custom Context" 
-            hint="This context will be provided to the AI for all prompts in the selected repository"
-          >
-            <Textarea
-              rows={12}
-              value={contextText}
-              onChange={(_e, data) => setContextText(data.value)}
-              disabled={isLoading}
-              placeholder="Enter custom context for the AI assistant..."
-              style={{ width: '100%' }}
-            />
-          </Field>
-        </div>
+      <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+        <Button
+          appearance="primary"
+          disabled={isSaving || isLoading}
+          onClick={handleSave}
+        >
+          {isSaving ? "Saving..." : "Save Context"}
+        </Button>
 
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-          <Button
-            appearance="primary"
-            disabled={isSaving || isLoading}
-            onClick={handleSave}
-          >
-            {isSaving ? 'Saving...' : 'Save Context'}
-          </Button>
-          <Button
-            appearance="subtle"
-            disabled={isSaving || isLoading}
-            onClick={handleClear}
-          >
-            Clear
-          </Button>
-        </div>
-
-        <div style={{
-          backgroundColor: '#f3f2f1',
-          border: '1px solid #edebe9',
-          padding: '16px',
-          borderRadius: '4px',
-          color: '#323130'
-        }}>
-    <div></div>
+        <Button
+          appearance="primary"
+          disabled={isSaving || isLoading}
+          onClick={handleClear}
+        >
+          Clear
+        </Button>
+      </div>
     </div>
 
-        <div style={{
-      width: '320px',
-      backgroundColor: '#f3f2f1',
-      border: '1px solid #edebe9',
-      padding: '16px',
-      borderRadius: '4px',
-      color: '#323130',
-      position: 'sticky',
-      top: '24px'
-}}>
+    {/* RIGHT COLUMN – GUIDELINES */}
+    <div
+      style={{
+        width: "320px",
+        backgroundColor: "#f3f2f1",
+        border: "1px solid #edebe9",
+        padding: "16px",
+        borderRadius: "4px",
+        color: "#323130",
+        position: "sticky",
+        top: "24px",
+      }}
+    >
+      <h3 style={{ marginTop: 0, fontSize: "16px", fontWeight: 600 }}>
+        Custom Context Guidelines
+      </h3>
 
+      <p style={{ marginBottom: "12px" }}>
+        The custom context helps the AI understand your project's conventions,
+        domain knowledge, and testing expectations.
+      </p>
+
+      <strong>Recommended length:</strong>
+      <ul style={{ marginTop: "6px", marginBottom: "12px" }}>
+        <li>200–1,500 words</li>
+        <li>Up to ~10,000 characters</li>
+        <li>Short, focused, high‑signal information</li>
+      </ul>
+
+      <strong>Good things to include:</strong>
+      <ul style={{ marginTop: "6px", marginBottom: "12px" }}>
+        <li>Tech stack</li>
+        <li>Domain or business context</li>
+        <li>Testing preferences</li>
+        <li>Core features of the application</li>
+        <li>Platform details (desktop, web, etc.)</li>
+        <li>Tools used for testing</li>
+      </ul>
+
+      <strong>Avoid including:</strong>
+      <ul style={{ marginTop: "6px", marginBottom: "12px" }}>
+        <li>Large code samples</li>
+        <li>Full architecture docs</li>
+        <li>Entire wiki pages</li>
+        <li>Meeting notes or requirement dumps</li>
+      </ul>
+
+      <strong>Example:</strong>
+      <p style={{ fontStyle: "italic", marginTop: "6px" }}>
+        “Our project is a legacy .NET desktop application with a lot of business
+        logic in stored procedures. We prefer manual testing and emphasize
+        domain‑driven validation....”
+      </p>
+    </div>
   </div>
-  <h3 style={{ marginTop: 0, fontSize: '16px', fontWeight: 600 }}>
-    Custom Context Guidelines
-  </h3>
-
-  <p style={{ marginBottom: '12px' }}>
-    The custom context helps the AI understand your project's conventions, 
-    domain knowledge, and testing expectations.
-  </p>
-
-  <strong>Recommended length:</strong>
-  <ul style={{ marginTop: '6px', marginBottom: '12px' }}>
-    <li>200–1,500 words</li>
-    <li>Up to ~10,000 characters</li>
-    <li>Short, focused, high‑signal information</li>
-  </ul>
-
-  <strong>Good things to include:</strong>
-  <ul style={{ marginTop: '6px', marginBottom: '12px' }}>
-    <li>Tech stack</li>
-    <li>Information about the project's domain or business context</li>
-    <li>Testing preferences</li>
-    <li>Core features of the application</li>
-    <li>The application's platform (web, mobile, desktop, etc.)</li>
-    <li>Frameworks or tools used for testing (Ranorex, Selenium, etc.)</li>
-  </ul>
-
-  <strong>Avoid including:</strong>
-  <ul style={{ marginTop: '6px', marginBottom: '12px' }}>
-    <li>Large code samples</li>
-    <li>Full architecture docs</li>
-    <li>Entire wiki pages</li>
-    <li>Meeting notes or requirements dumps</li>
-  </ul>
-
-  <strong>Example:</strong>
-  <p style={{ fontStyle: 'italic', marginTop: '6px' }}>
-    “Our project is a legacy .NET desktop application with a lot of business logic in stored procedures, we prefer manual testing and so on....  "
-  </p>
-</div>
-    </FluentProvider>
+</FluentProvider>
   );
 };

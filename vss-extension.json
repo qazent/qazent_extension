@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.10",
+  "version": "1.2.14",
   "publisher": "QAZent",
   "targets": [
     {
@@ -23,7 +23,7 @@
       "type": "ms.vss-web.tab",
       "targets": ["ms.vss-code-web.pr-tabs"],
       "properties": {
-        "name": "PR Assistant",
+        "name": "QAZent PR Assistant",
         "uri": "dist/hub.html",
         "order": 100
       }
@@ -33,7 +33,7 @@
       "type": "ms.vss-web.hub",
       "targets": ["ms.vss-web.project-admin-hub-group"],
       "properties": {
-        "name": "AI Assistant Context",
+        "name": "QAZent PR Assistant",
         "order": 100,
         "uri": "dist/settings.html"
       }

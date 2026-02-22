@@ -77,7 +77,6 @@ async function processJob(job: QueueJob): Promise<void> {
         prMetadata.repositoryId,
         prMetadata.prId,
         workItemId,
-        prMetadata.authorEmail
       );
     } catch (commentError) {
       // Log warning but don't fail job - work item already created
@@ -151,7 +150,6 @@ async function processJob(job: QueueJob): Promise<void> {
             prMetadata.repositoryId,
             prMetadata.prId,
             fallbackWorkItemId,
-            prMetadata.authorEmail
           );
         } catch (commentError) {
           logger.warn('Failed to post PR comment for fallback work item', {
