@@ -261,6 +261,11 @@ export async function fetchPRDiff(
       try {
         if (changeType === 'delete') {
           // For deleted files, fetch old content only
+          logger.debug("Fetching olditem", {
+          filePath,
+          commitId: targetCommitId,
+          descriptor: targetDescriptor
+        });
           const oldItem = await gitApi.getItem(
             repositoryId,
             filePath,
@@ -279,7 +284,11 @@ export async function fetchPRDiff(
 
         } else if (changeType === 'add') {
           // For added files, fetch new content only
-          
+          logger.debug("Fetching newitem", {
+            filePath,
+            commitId: sourceCommitId,
+            descriptor: sourceDescriptor
+          });
 
           const newItem = await gitApi.getItem(
             repositoryId,
@@ -298,10 +307,20 @@ export async function fetchPRDiff(
           diffContent = `--- /dev/null\n+++ b/${filePath}\n${newContent.split('\n').map(line => `+ ${line}`).slice(0, 50).join('\n')}`;
 
         } else {
+          logger.info("Fetching bot old and newitem", {
+          filePath,
+          commitId: targetCommitId,
+          descriptor: targetDescriptor
+        });
           // For edited files, fetch both old and new content
           const [oldItem, newItem] = await Promise.all([
             gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, targetDescriptor),
-            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceDescriptor)
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceDescriptor),
+            logger.debug("getItem response", {
+            filePath,
+            commitId: targetCommitId,
+            item: sourceDescriptor
+          }),
           ]);
 
           const oldContent = oldItem.content || '';
