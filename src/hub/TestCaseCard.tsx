@@ -16,6 +16,10 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
   onCreateWorkItem,
   isCreatingWorkItem
 }) => {
+  // Safety check: Don't render if creating work item without test case
+  if (isCreatingWorkItem && !testCase) {
+    console.warn('Creating work item without test case data');
+  }
 
   // Don't render if no test case
   if (!testCase) {

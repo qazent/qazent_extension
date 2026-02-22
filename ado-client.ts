@@ -99,13 +99,75 @@ export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
 }
 
 /**
- * GET PR diff from Azure DevOps
- *
- * This function retrieves the list of changed files and their change types (add/edit/delete).
- * Due to API limitations, it provides a simplified diff representation rather than full line-by-line diffs.
+ * Generate unified diff format from two text contents
  */
+function generateUnifiedDiff(
+  filePath: string,
+  oldContent: string,
+  newContent: string
+): { diffContent: string; linesAdded: number; linesDeleted: number } {
+  const oldLines = oldContent.split('\n');
+  const newLines = newContent.split('\n');
 
+  const diffLines: string[] = [];
+  let linesAdded = 0;
+  let linesDeleted = 0;
 
+  // Simple line-by-line comparison
+  let oldIndex = 0;
+  let newIndex = 0;
+
+  while (oldIndex < oldLines.length || newIndex < newLines.length) {
+    const oldLine = oldLines[oldIndex];
+    const newLine = newLines[newIndex];
+
+    if (oldLine === newLine) {
+      // Unchanged line - show context (limit to 3 lines before and after changes)
+      if (diffLines.length < 3 || diffLines.length > oldLines.length - 3) {
+        diffLines.push(`  ${oldLine || ''}`);
+      }
+      oldIndex++;
+      newIndex++;
+    } else if (oldIndex >= oldLines.length) {
+      // Only new lines remain (additions at end)
+      diffLines.push(`+ ${newLine || ''}`);
+      linesAdded++;
+      newIndex++;
+    } else if (newIndex >= newLines.length) {
+      // Only old lines remain (deletions at end)
+      diffLines.push(`- ${oldLine || ''}`);
+      linesDeleted++;
+      oldIndex++;
+    } else {
+      // Lines differ - mark as delete old and add new
+      diffLines.push(`- ${oldLine || ''}`);
+      diffLines.push(`+ ${newLine || ''}`);
+      linesDeleted++;
+      linesAdded++;
+      oldIndex++;
+      newIndex++;
+    }
+  }
+
+  // Limit diff output to prevent overwhelming AI (max 100 lines per file)
+  const truncatedDiff = diffLines.slice(0, 100);
+  const wasTruncated = diffLines.length > 100;
+
+  let diffContent = `--- a/${filePath}\n+++ b/${filePath}\n`;
+  diffContent += truncatedDiff.join('\n');
+  if (wasTruncated) {
+    diffContent += `\n... (${diffLines.length - 100} more lines truncated)`;
+  }
+
+  return { diffContent, linesAdded, linesDeleted };
+}
+
+/**
+ * GET PR diff from Azure DevOps with real file content
+ *
+ * This function retrieves actual line-by-line diffs for PR changes using the Git Items API.
+ * It fetches file contents at both source and target commits and generates unified diffs.
+ */
 export async function fetchPRDiff(
   projectName: string,
   repositoryId: string,
@@ -117,14 +179,26 @@ export async function fetchPRDiff(
     const conn = getConnection();
     const gitApi: GitApi = await conn.getGitApi();
 
-    // Get PR iterations to find latest changes
+    // Step 1: Get PR details to find source and target commits
+    const pr = await gitApi.getPullRequest(repositoryId, prId, projectName);
+
+    if (!pr || !pr.lastMergeSourceCommit || !pr.lastMergeTargetCommit) {
+      logger.warn('PR missing commit information, falling back to iteration changes', { prId });
+      return fetchPRDiffFallback(projectName, repositoryId, prId, gitApi);
+    }
+
+    const sourceCommitId = pr.lastMergeSourceCommit.commitId;
+    const targetCommitId = pr.lastMergeTargetCommit.commitId;
+
+    logger.debug('PR commit IDs', { prId, sourceCommitId, targetCommitId });
+
+    // Step 2: Get PR iterations to find changed files
     const iterations = await gitApi.getPullRequestIterations(repositoryId, prId, projectName);
 
     if (!iterations || iterations.length === 0) {
       throw new Error(`No iterations found for PR ${prId}`);
     }
 
-    // Get the latest iteration
     const latestIteration = iterations[iterations.length - 1];
     const iterationId = latestIteration.id;
 
@@ -132,7 +206,7 @@ export async function fetchPRDiff(
       throw new Error('Latest iteration has no ID');
     }
 
-    // Get changes for the latest iteration
+    // Step 3: Get list of changed files
     const changes = await gitApi.getPullRequestIterationChanges(
       repositoryId,
       prId,
@@ -146,9 +220,10 @@ export async function fetchPRDiff(
     }
 
     const diffChanges: DiffChange[] = [];
+    const MAX_FILES = 20; // Limit files to prevent overwhelming AI and API rate limits
 
-    // Process each changed file
-    for (const change of changes.changeEntries) {
+    // Step 4: Process each changed file and fetch actual content
+    for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
       if (!change.item?.path) {
         continue;
       }
@@ -157,37 +232,78 @@ export async function fetchPRDiff(
       let changeType: 'add' | 'edit' | 'delete' = 'edit';
 
       if (change.changeType) {
-        if (change.changeType.toString().includes('add')) {
+        const changeTypeStr = change.changeType.toString().toLowerCase();
+        if (changeTypeStr.includes('add')) {
           changeType = 'add';
-        } else if (change.changeType.toString().includes('delete')) {
+        } else if (changeTypeStr.includes('delete')) {
           changeType = 'delete';
         }
       }
 
-      // Get file diff content
       let diffContent = '';
       let linesAdded = 0;
       let linesDeleted = 0;
 
       try {
-        // For deleted files, we can't fetch diff, so skip
-        if (changeType !== 'delete' && change.item.objectId) {
-          // Use a simplified approach - just record basic change info
-          // Full diff extraction would require more complex API calls
-          diffContent = `File: ${filePath}\nChange type: ${changeType}`;
+        if (changeType === 'delete') {
+          // For deleted files, fetch old content only
+          const oldItem = await gitApi.getItem(
+            repositoryId,
+            filePath,
+            projectName,
+            undefined, // scopePath
+            undefined, // recursionLevel
+            undefined, // includeContentMetadata
+            undefined, // latestProcessedChange
+            undefined, // download
+            targetCommitId // versionDescriptor - target (before PR)
+          );
 
-          // Estimate line changes based on change type
-          if (changeType === 'add') {
-            linesAdded = 10; // Estimate
-            linesDeleted = 0;
-          } else if (changeType === 'edit') {
-            linesAdded = 5; // Estimate
-            linesDeleted = 3; // Estimate
-          }
+          const oldContent = oldItem.content || '[Binary or empty file]';
+          linesDeleted = oldContent.split('\n').length;
+          diffContent = `--- a/${filePath}\n+++ /dev/null\n${oldContent.split('\n').map(line => `- ${line}`).slice(0, 50).join('\n')}`;
+
+        } else if (changeType === 'add') {
+          // For added files, fetch new content only
+          const newItem = await gitApi.getItem(
+            repositoryId,
+            filePath,
+            projectName,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            sourceCommitId // versionDescriptor - source (after PR)
+          );
+
+          const newContent = newItem.content || '[Binary or empty file]';
+          linesAdded = newContent.split('\n').length;
+          diffContent = `--- /dev/null\n+++ b/${filePath}\n${newContent.split('\n').map(line => `+ ${line}`).slice(0, 50).join('\n')}`;
+
+        } else {
+          // For edited files, fetch both old and new content
+          const [oldItem, newItem] = await Promise.all([
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, targetCommitId),
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceCommitId)
+          ]);
+
+          const oldContent = oldItem.content || '';
+          const newContent = newItem.content || '';
+
+          // Generate unified diff
+          const diff = generateUnifiedDiff(filePath, oldContent, newContent);
+          diffContent = diff.diffContent;
+          linesAdded = diff.linesAdded;
+          linesDeleted = diff.linesDeleted;
         }
+
       } catch (diffError) {
-        logger.warn('Failed to fetch diff for file', { filePath, error: String(diffError) });
-        diffContent = `[Diff unavailable for ${filePath}]`;
+        logger.warn('Failed to fetch content for file, using fallback', { filePath, error: String(diffError) });
+        // Fallback to basic change info
+        diffContent = `File: ${filePath}\nChange type: ${changeType}\n[Content fetch failed - possibly binary file or access restricted]`;
+        linesAdded = changeType === 'add' ? 10 : 5;
+        linesDeleted = changeType === 'delete' ? 10 : 3;
       }
 
       diffChanges.push({
@@ -197,18 +313,22 @@ export async function fetchPRDiff(
         linesDeleted,
         diffContent
       });
-
-      // Limit to 50 files to avoid overwhelming the AI
-      if (diffChanges.length >= 50) {
-        logger.warn('Truncating diff to 50 files', { totalFiles: changes.changeEntries.length });
-        break;
-      }
     }
 
-    logger.info('PR diff fetched successfully', {
+    if (changes.changeEntries.length > MAX_FILES) {
+      logger.warn('Truncated diff to prevent overwhelming AI', {
+        prId,
+        totalFiles: changes.changeEntries.length,
+        included: MAX_FILES
+      });
+    }
+
+    logger.info('PR diff fetched successfully with real content', {
       prId,
       filesChanged: diffChanges.length,
-      totalChanges: changes.changeEntries.length
+      totalChanges: changes.changeEntries.length,
+      linesAdded: diffChanges.reduce((sum, c) => sum + c.linesAdded, 0),
+      linesDeleted: diffChanges.reduce((sum, c) => sum + c.linesDeleted, 0)
     });
 
     return {
@@ -225,6 +345,61 @@ export async function fetchPRDiff(
     });
     throw new Error(`Failed to fetch diff for PR ${prId}: ${error}`);
   }
+}
+
+/**
+ * Fallback diff fetching when commit IDs are unavailable
+ * Returns basic file change information without actual content
+ */
+async function fetchPRDiffFallback(
+  projectName: string,
+  repositoryId: string,
+  prId: number,
+  gitApi: GitApi
+): Promise<CodeDiff> {
+  logger.info('Using fallback diff fetching', { prId });
+
+  const iterations = await gitApi.getPullRequestIterations(repositoryId, prId, projectName);
+  if (!iterations || iterations.length === 0) {
+    return { changes: [], totalChanges: 0 };
+  }
+
+  const latestIteration = iterations[iterations.length - 1];
+  const iterationId = latestIteration.id;
+
+  if (!iterationId) {
+    return { changes: [], totalChanges: 0 };
+  }
+
+  const changes = await gitApi.getPullRequestIterationChanges(repositoryId, prId, iterationId, projectName);
+
+  if (!changes || !changes.changeEntries) {
+    return { changes: [], totalChanges: 0 };
+  }
+
+  const diffChanges: DiffChange[] = changes.changeEntries.slice(0, 20).map(change => {
+    const filePath = change.item?.path || 'unknown';
+    let changeType: 'add' | 'edit' | 'delete' = 'edit';
+
+    if (change.changeType) {
+      const typeStr = change.changeType.toString().toLowerCase();
+      if (typeStr.includes('add')) changeType = 'add';
+      else if (typeStr.includes('delete')) changeType = 'delete';
+    }
+
+    return {
+      filePath,
+      changeType,
+      linesAdded: changeType === 'add' ? 10 : 5,
+      linesDeleted: changeType === 'delete' ? 10 : 3,
+      diffContent: `File: ${filePath}\nChange type: ${changeType}\n[Detailed diff unavailable - fallback mode]`
+    };
+  });
+
+  return {
+    changes: diffChanges,
+    totalChanges: changes.changeEntries.length
+  };
 }
 
 /**

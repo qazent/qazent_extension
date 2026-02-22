@@ -11,9 +11,30 @@ import {
 } from '../types/extension-types';
 
 /**
+ * Validate that the URL is absolute and properly formed
+ * Prevents relative URLs from being resolved against CDN origin
+ */
+function validateBackendUrl(url: string): void {
+  if (!url || url.trim() === '') {
+    throw new Error('Backend URL is empty or undefined');
+  }
+
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    throw new Error(`Invalid backend URL: "${url}" - must start with http:// or https://`);
+  }
+
+  try {
+    new URL(url);
+  } catch {
+    throw new Error(`Malformed backend URL: "${url}"`);
+  }
+}
+
+/**
  * Normalize backend URL and append path safely
  */
 function buildUrl(base: string, path: string): string {
+  validateBackendUrl(base);
   return base.replace(/\/+$/, '') + path;
 }
 
