@@ -41,11 +41,13 @@ export interface PRMetadata {
   projectId: string;
   sourceBranch: string;
   targetBranch: string;
+  sourceCommitId?: string;
+  targetCommitId?: string;
   author: string;
   authorEmail: string;
   createDate: Date;
   branchName: string;
-  
+
 }
 
 /**

@@ -294,10 +294,10 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
       const payload = JSON.parse(body);
 
       // Validate request body
-      if (!payload.testCase || typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
+      if (!payload.testCase || typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId || !payload.projectId || !payload.sourceCommitId || !payload.targetCommitId) {
         const errorResponse: ErrorResponse = {
           error: 'Invalid test case data',
-          details: 'Missing required fields: testCase, prId, projectName, repositoryId'
+          details: 'Missing required fields: testCase, prId, projectName, repositoryId, projectId, sourceCommitId, targetCommitId'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -317,7 +317,9 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
         repositoryId: payload.repositoryId,
         repositoryName: '',
         projectName: payload.projectName,
-        projectId: '',
+        projectId: payload.projectId,
+        sourceCommitId: payload.sourceCommitId,
+        targetCommitId: payload.targetCommitId,
         sourceBranch: '',
         targetBranch: '',
         author: '',

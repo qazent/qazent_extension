@@ -136,13 +136,24 @@ export async function createWorkItem(
   prId: number,
   projectName: string,
   repositoryId: string,
-  backendUrl: string
+  backendUrl: string,
+  projectId: string,
+  sourceCommitId: string,
+  targetCommitId: string
 ): Promise<WorkItemResponse> {
   const url = buildUrl(backendUrl, '/create-work-item');
 
   return postJson<WorkItemResponse>(
     url,
-    { testCase, prId, projectName, repositoryId },
+    {
+      testCase,
+      prId,
+      projectName,
+      repositoryId,
+      projectId,
+      sourceCommitId,
+      targetCommitId
+    },
     30000 // 30s timeout — work item creation is much faster
   );
 }
