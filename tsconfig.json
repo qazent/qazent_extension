@@ -23,6 +23,12 @@
     "noFallthroughCasesInSwitch": true,
     "jsx": "react"
   },
-  "include": ["*.ts", "src/**/*"],
+  "include": [
+    "src/**/*",
+    "*.ts",
+    "*.tsx",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }

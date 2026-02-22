@@ -5,22 +5,39 @@
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { SettingsHub } from './SettingsHub';
-import * as SDK from 'azure-devops-extension-sdk';
 
 // Mock Azure DevOps SDK
-jest.mock('azure-devops-extension-sdk');
+// Mock the Azure DevOps SDK module
+jest.mock('azure-devops-extension-sdk', () => ({
+  init: jest.fn(),
+  ready: jest.fn(),
+  getService: jest.fn(),
+  getAccessToken: jest.fn(),
+  getUser: jest.fn()
+}));
 
-// Mock getClient for Git API
-const mockGetRepositories = jest.fn();
+// Import AFTER mocking
+import * as SDK from 'azure-devops-extension-sdk';
 
-jest.mock('azure-devops-extension-api', () => ({
-  getClient: jest.fn(() => ({
-    getRepositories: mockGetRepositories
-  })),
+// ---- Types for Git API mocks ----
+interface GitRepository {
+  id: string;
+  name: string;
+}
+
+type GetRepositoriesFn = () => Promise<GitRepository[]>;
+type GetClientFn = () => { getRepositories: GetRepositoriesFn };
   CommonServiceIds: {
-    ProjectPageService: 'ms.vss-tfs-web.tfs-page-data-service',
+    ProjectPageService: 'ms.vss-tfs-web.tfs-page-data-service';
     ExtensionDataService: 'ms.vss-features.extension-data-service'
   }
+
+// Mock Git API client
+const mockGetRepositories = jest.fn() as jest.MockedFunction<GetRepositoriesFn>;
+const mockGetClient = jest.fn() as jest.MockedFunction<GetClientFn>;
+mockGetClient.mockReturnValue({ getRepositories: mockGetRepositories });
+jest.mock('azure-devops-extension-api/Git', () => ({
+  getClient: () => mockGetClient()
 }));
 
 describe('SettingsHub Component', () => {

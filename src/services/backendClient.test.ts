@@ -3,9 +3,17 @@
  */
 
 import { generateTestCases } from './backendClient';
+import { afterEach, describe, it, expect, beforeEach, jest } from '@jest/globals';
 
-// Mock fetch globally
-global.fetch = jest.fn();
+// ---- Typed fetch mock ----
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<any>;
+const fetchMock = jest.fn() as jest.MockedFunction<FetchFn>;
+(global as any).fetch = fetchMock;
+
+// ---- Helper type for reading request body safely ----
+interface FetchRequestInit {
+  body: string;
+}
 
 describe('Backend Client - Custom Context', () => {
   beforeEach(() => {
@@ -34,15 +42,15 @@ describe('Backend Client - Custom Context', () => {
 
   describe('generateTestCases with customContext', () => {
     it('should include customContext in request body when provided', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
       const customContext = 'Use Jest for testing';
       await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', customContext);
 
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(fetchMock).toHaveBeenCalledWith(
         'http://localhost:3000/generate-tests',
         expect.objectContaining({
           method: 'POST',
@@ -58,14 +66,14 @@ describe('Backend Client - Custom Context', () => {
     });
 
     it('should include customContext as undefined when not provided', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
       await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000');
 
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
 
       expect(requestBody).toEqual({
@@ -77,24 +85,24 @@ describe('Backend Client - Custom Context', () => {
     });
 
     it('should handle empty string customContext', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
       await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', '');
 
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
 
       expect(requestBody.customContext).toBe('');
     });
 
     it('should handle multi-line customContext', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
       const multiLineContext = `Line 1
 Line 2
@@ -102,23 +110,23 @@ Line 3`;
 
       await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', multiLineContext);
 
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
 
       expect(requestBody.customContext).toBe(multiLineContext);
     });
 
     it('should handle special characters in customContext', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
       const specialContext = 'Config: {"test": true, "env": "dev"}';
 
       await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', specialContext);
 
-      const callArgs = (global.fetch as jest.Mock).mock.calls[0];
+      const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
 
       expect(requestBody.customContext).toBe(specialContext);
@@ -127,11 +135,11 @@ Line 3`;
 
   describe('error handling with customContext', () => {
     it('should handle 400 error with customContext', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: false,
         status: 400,
         json: async () => ({ error: 'Invalid PR data' })
-      });
+      } as any);
 
       await expect(
         generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
@@ -139,11 +147,11 @@ Line 3`;
     });
 
     it('should handle 500 error with customContext', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Internal server error' })
-      });
+      } as any);
 
       await expect(
         generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
@@ -151,13 +159,19 @@ Line 3`;
     });
 
     it('should handle timeout with customContext', async () => {
-      (global.fetch as jest.Mock).mockImplementationOnce(() =>
+      fetchMock.mockImplementationOnce(() =>
         new Promise((resolve) => {
           setTimeout(() => resolve({ ok: true, json: async () => mockSuccessResponse }), 35000);
         })
       );
 
-      const promise = generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context');
+      const promise = generateTestCases(
+        123,
+        'MyProject',
+        'repo-456',
+        'http://localhost:3000',
+        'context'
+      );
 
       jest.advanceTimersByTime(30000);
 
@@ -165,7 +179,7 @@ Line 3`;
     });
 
     it('should handle network error with customContext', async () => {
-      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network failure'));
+      fetchMock.mockRejectedValueOnce(new Error('Network failure'));
 
       await expect(
         generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
@@ -175,15 +189,20 @@ Line 3`;
 
   describe('backward compatibility', () => {
     it('should work without customContext parameter (4 parameters)', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
-      });
+      } as any);
 
-      const result = await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000');
+      const result = await generateTestCases(
+        123,
+        'MyProject',
+        'repo-456',
+        'http://localhost:3000'
+      );
 
       expect(result).toEqual(mockSuccessResponse);
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

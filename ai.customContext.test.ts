@@ -4,10 +4,37 @@
 
 import { generateTestCases } from './ai';
 import { PRMetadata, CodeDiff } from './types';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
-// Mock GoogleGenAI
-const mockGenerateContent = jest.fn();
+//
+// ---- Types for the mock ----
+//
+interface GenerateContentArgs {
+  contents: Array<{
+    parts: Array<{ text: string }>;
+  }>;
+}
 
+interface GenerateContentResponse {
+  text: string;
+}
+
+// Jest.Mock generics are NOT supported in your environment.
+// So we define the function signature ourselves:
+type GenerateContentFn = (args: GenerateContentArgs) => Promise<GenerateContentResponse>;
+
+// And cast the mock to that signature:
+const mockGenerateContent = jest.fn() as jest.MockedFunction<GenerateContentFn>;
+
+function getCallArgs(callIndex = 0) {
+  return mockGenerateContent.mock.calls[callIndex][0] as {
+    contents: { parts: { text: string }[] }[];
+  };
+}
+
+//
+// ---- Mock GoogleGenAI ----
+//
 jest.mock('@google/genai', () => {
   return {
     GoogleGenAI: jest.fn().mockImplementation(() => ({
@@ -18,7 +45,9 @@ jest.mock('@google/genai', () => {
   };
 });
 
-// Mock logger
+//
+// ---- Mock logger ----
+//
 jest.mock('./logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
@@ -26,11 +55,16 @@ jest.mock('./logger', () => ({
   warn: jest.fn()
 }));
 
-// Mock fs for system prompt loading
+//
+// ---- Mock fs ----
+//
 jest.mock('fs', () => ({
   readFileSync: jest.fn().mockReturnValue('You are a test case generator.')
 }));
 
+//
+// ---- Test Suite ----
+//
 describe('AI Custom Context Integration', () => {
   let mockPRMetadata: PRMetadata;
   let mockCodeDiff: CodeDiff;
@@ -77,20 +111,19 @@ describe('AI Custom Context Integration', () => {
     });
   });
 
+  //
+  // ---- Tests with customContext ----
+  //
   describe('with customContext parameter', () => {
     it('should include custom context in the prompt sent to AI', async () => {
       const customContext = 'Use Jest for testing. Follow TDD practices.';
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      // Verify generateContent was called
       expect(mockGenerateContent).toHaveBeenCalledTimes(1);
 
-      // Extract the prompt that was sent
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Verify custom context is included in the prompt
       expect(sentPrompt).toContain('Repository-Specific Context:');
       expect(sentPrompt).toContain(customContext);
     });
@@ -100,10 +133,8 @@ describe('AI Custom Context Integration', () => {
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Verify order: PR metadata comes before custom context
       const prTitleIndex = sentPrompt.indexOf('PR Title:');
       const contextIndex = sentPrompt.indexOf('Repository-Specific Context:');
       const jsonFormatIndex = sentPrompt.indexOf('Please provide test cases');
@@ -120,8 +151,7 @@ describe('AI Custom Context Integration', () => {
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
       expect(sentPrompt).toContain('Testing Guidelines:');
       expect(sentPrompt).toContain('TypeScript strict mode');
@@ -133,8 +163,7 @@ describe('AI Custom Context Integration', () => {
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
       expect(sentPrompt).toContain('{"verbose": true}');
     });
@@ -144,32 +173,30 @@ describe('AI Custom Context Integration', () => {
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Should not contain leading/trailing whitespace around the context section
       expect(sentPrompt).toContain('Repository-Specific Context:\n   Use TDD approach   ');
     });
   });
 
+  //
+  // ---- Tests without customContext ----
+  //
   describe('without customContext parameter', () => {
     it('should work without custom context (backward compatibility)', async () => {
       await generateTestCases(mockPRMetadata, mockCodeDiff);
 
       expect(mockGenerateContent).toHaveBeenCalledTimes(1);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Should not include custom context section
       expect(sentPrompt).not.toContain('Repository-Specific Context:');
     });
 
     it('should not include custom context when undefined', async () => {
       await generateTestCases(mockPRMetadata, mockCodeDiff, undefined);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
       expect(sentPrompt).not.toContain('Repository-Specific Context:');
     });
@@ -177,8 +204,7 @@ describe('AI Custom Context Integration', () => {
     it('should not include custom context when empty string', async () => {
       await generateTestCases(mockPRMetadata, mockCodeDiff, '');
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
       expect(sentPrompt).not.toContain('Repository-Specific Context:');
     });
@@ -186,28 +212,27 @@ describe('AI Custom Context Integration', () => {
     it('should not include custom context when only whitespace', async () => {
       await generateTestCases(mockPRMetadata, mockCodeDiff, '   \n  \t  ');
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
       expect(sentPrompt).not.toContain('Repository-Specific Context:');
     });
   });
 
+  //
+  // ---- Combined metadata + context ----
+  //
   describe('combined with existing PR metadata', () => {
     it('should include both PR details and custom context', async () => {
       const customContext = 'Use integration tests for authentication';
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Verify PR metadata is present
       expect(sentPrompt).toContain('PR Title: Add authentication');
       expect(sentPrompt).toContain('Author: developer');
       expect(sentPrompt).toContain('Source Branch: feature/auth');
 
-      // Verify custom context is present
       expect(sentPrompt).toContain('Repository-Specific Context:');
       expect(sentPrompt).toContain('Use integration tests for authentication');
     });
@@ -217,19 +242,19 @@ describe('AI Custom Context Integration', () => {
 
       await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      const callArgs = mockGenerateContent.mock.calls[0][0];
-      const sentPrompt = callArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      // Verify code diff is present
       expect(sentPrompt).toContain('File: src/auth.ts');
       expect(sentPrompt).toContain('Type: add');
       expect(sentPrompt).toContain('+function authenticate()');
 
-      // Verify custom context is present
       expect(sentPrompt).toContain('Focus on security testing');
     });
   });
 
+  //
+  // ---- Error handling ----
+  //
   describe('error handling with custom context', () => {
     it('should propagate AI errors even when custom context is provided', async () => {
       mockGenerateContent.mockRejectedValueOnce(new Error('AI service unavailable'));
@@ -255,13 +280,11 @@ describe('AI Custom Context Integration', () => {
 
       const result = await generateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      // Should have retried and succeeded
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
       expect(result.title).toBe('Test Case');
 
-      // Both calls should include the custom context
-      const firstCallPrompt = mockGenerateContent.mock.calls[0][0].contents[0].parts[0].text;
-      const secondCallPrompt = mockGenerateContent.mock.calls[1][0].contents[0].parts[0].text;
+      const firstCallPrompt = getCallArgs(0).contents[0].parts[0].text;
+      const secondCallPrompt = getCallArgs(1).contents[0].parts[0].text;
 
       expect(firstCallPrompt).toContain('Retry-safe context');
       expect(secondCallPrompt).toContain('Retry-safe context');

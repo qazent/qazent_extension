@@ -6,16 +6,42 @@
 import { generateTestCases as aiGenerateTestCases } from './ai';
 import * as backendClient from './src/services/backendClient';
 import { PRMetadata, CodeDiff } from './types';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
-// Mock Google GenAI
-const mockGenerateContent = jest.fn();
+//
+// ---- Types for the AI mock ----
+//
+interface GenerateContentArgs {
+  contents: Array<{
+    parts: Array<{ text: string }>;
+  }>;
+}
+
+interface GenerateContentResponse {
+  text: string;
+}
+
+type GenerateContentFn = (args: GenerateContentArgs) => Promise<GenerateContentResponse>;
+const mockGenerateContent = jest.fn() as jest.MockedFunction<GenerateContentFn>;
+
+function getCallArgs() {
+  return mockGenerateContent.mock.calls[0][0] as {
+    contents: { parts: { text: string }[] }[];
+  };
+}
+
+//
+// ---- Mock Google GenAI ----
+//
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
     models: { generateContent: mockGenerateContent }
   }))
 }));
 
-// Mock logger
+//
+// ---- Mock logger ----
+//
 jest.mock('./logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
@@ -23,14 +49,23 @@ jest.mock('./logger', () => ({
   warn: jest.fn()
 }));
 
-// Mock fs
+//
+// ---- Mock fs ----
+//
 jest.mock('fs', () => ({
   readFileSync: jest.fn().mockReturnValue('System prompt for testing.')
 }));
 
-// Mock fetch for backend client
-global.fetch = jest.fn();
+//
+// ---- Mock fetch (backend client) ----
+//
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<any>;
+const fetchMock = jest.fn() as jest.MockedFunction<FetchFn>;
+(global as any).fetch = fetchMock;
 
+//
+// ---- Test Suite ----
+//
 describe('Custom Context - End-to-End Integration', () => {
   const mockPRMetadata: PRMetadata = {
     prId: 123,
@@ -74,17 +109,16 @@ describe('Custom Context - End-to-End Integration', () => {
       text: JSON.stringify(mockAIResponse)
     });
 
-    (global.fetch as jest.Mock).mockResolvedValue({
+    fetchMock.mockResolvedValue({
       ok: true,
       json: async () => mockAIResponse
-    });
+    } as any);
   });
 
   describe('Frontend to Backend to AI flow', () => {
     it('should pass custom context through entire pipeline', async () => {
       const customContext = 'Use Jest for testing. Follow TDD practices.';
 
-      // Step 1: Frontend calls backend client
       await backendClient.generateTestCases(
         123,
         'MyProject',
@@ -93,27 +127,22 @@ describe('Custom Context - End-to-End Integration', () => {
         customContext
       );
 
-      // Verify frontend sent customContext to backend
-      expect(global.fetch).toHaveBeenCalledWith(
+      expect(fetchMock).toHaveBeenCalledWith(
         'http://localhost:3000/generate-tests',
         expect.objectContaining({
           body: expect.stringContaining(customContext)
         })
       );
 
-      // Step 2: Backend would call AI module (simulated)
       await aiGenerateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      // Verify AI received the custom context
-      const aiCallArgs = mockGenerateContent.mock.calls[0][0];
-      const aiPrompt = aiCallArgs.contents[0].parts[0].text;
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      expect(aiPrompt).toContain('Repository-Specific Context:');
-      expect(aiPrompt).toContain(customContext);
+      expect(sentPrompt).toContain('Repository-Specific Context:');
+      expect(sentPrompt).toContain(customContext);
     });
 
     it('should work without custom context (backward compatibility)', async () => {
-      // Frontend calls without custom context
       await backendClient.generateTestCases(
         123,
         'MyProject',
@@ -121,13 +150,10 @@ describe('Custom Context - End-to-End Integration', () => {
         'http://localhost:3000'
       );
 
-      // Should still work
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
 
-      // Backend calls AI without custom context
       await aiGenerateTestCases(mockPRMetadata, mockCodeDiff);
 
-      // AI should not receive custom context section
       const aiCallArgs = mockGenerateContent.mock.calls[0][0];
       const aiPrompt = aiCallArgs.contents[0].parts[0].text;
 
@@ -137,14 +163,12 @@ describe('Custom Context - End-to-End Integration', () => {
     it('should preserve custom context through retry logic', async () => {
       const customContext = 'Important testing context';
 
-      // Mock AI failure then success
       mockGenerateContent
         .mockRejectedValueOnce(new Error('Temporary failure'))
         .mockResolvedValueOnce({ text: JSON.stringify(mockAIResponse) });
 
       await aiGenerateTestCases(mockPRMetadata, mockCodeDiff, customContext);
 
-      // Both attempts should include custom context
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
 
       const firstPrompt = mockGenerateContent.mock.calls[0][0].contents[0].parts[0].text;
@@ -157,7 +181,6 @@ describe('Custom Context - End-to-End Integration', () => {
 
   describe('Combined context scenarios', () => {
     it('should handle project default + repo-specific context combination', async () => {
-      // Simulating combined context from frontend
       const projectDefault = 'Project-wide: Use TypeScript strict mode';
       const repoSpecific = 'Repo-specific: Focus on security testing';
       const combinedContext = `${projectDefault}\n\n${repoSpecific}`;
@@ -167,14 +190,13 @@ describe('Custom Context - End-to-End Integration', () => {
       const aiCallArgs = mockGenerateContent.mock.calls[0][0];
       const aiPrompt = aiCallArgs.contents[0].parts[0].text;
 
-      // Should contain both parts
       expect(aiPrompt).toContain(projectDefault);
       expect(aiPrompt).toContain(repoSpecific);
       expect(aiPrompt).toContain('Repository-Specific Context:');
     });
 
     it('should handle very long custom context', async () => {
-      const longContext = 'Context line\n'.repeat(100); // 1400+ characters
+      const longContext = 'Context line\n'.repeat(100);
 
       await aiGenerateTestCases(mockPRMetadata, mockCodeDiff, longContext);
 
@@ -207,11 +229,11 @@ describe('Custom Context - End-to-End Integration', () => {
     });
 
     it('should propagate backend errors to frontend', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
+      fetchMock.mockResolvedValue({
         ok: false,
         status: 500,
         json: async () => ({ error: 'Backend error' })
-      });
+      } as any);
 
       await expect(
         backendClient.generateTestCases(123, 'Project', 'repo', 'http://localhost:3000', 'context')
