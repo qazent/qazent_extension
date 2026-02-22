@@ -16,6 +16,7 @@ export const SettingsHub: React.FC = () => {
   const [repositories, setRepositories] = React.useState<GitRepository[]>([]);
   const [selectedRepoId, setSelectedRepoId] = React.useState<string>('project-default');
   const [contextText, setContextText] = React.useState<string>('');
+  const [loadedDocument, setLoadedDocument] = React.useState<any | null>(null);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [isSaving, setIsSaving] = React.useState<boolean>(false);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
@@ -117,12 +118,14 @@ export const SettingsHub: React.FC = () => {
     // Now safe to read
     const document = await dataManager.getDocument("ai-contexts", repoId);
 
+    setLoadedDocument(document); // Store full document with __etag
     setContextText((document as AIContextDocument)?.contextText ?? "");
   } catch (err: any) {
     const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
 
     if (msg.includes("DocumentNotFound")) {
       // Repo context not created yet
+      setLoadedDocument(null); // No document exists yet
       setContextText("");
     } else {
       setErrorMessage("Failed to load context: " + msg);
@@ -137,6 +140,7 @@ export const SettingsHub: React.FC = () => {
       const newRepoId = data.optionValue || 'project-default';
       setSelectedRepoId(newRepoId);
       setContextText('');
+      setLoadedDocument(null); // Clear loaded document when switching repositories
       await loadContext(newRepoId);
     };
 
@@ -157,46 +161,44 @@ const handleSave = async () => {
     const user = SDK.getUser();
     const now = new Date().toISOString();
 
-    let document: AIContextDocument;
+    // Determine safe document ID
+    const safeId = selectedRepoId === "project-default"
+      ? "project-default"
+      : `repo-${selectedRepoId}`;
 
-    if (selectedRepoId === "project-default") {
-      document = {
-        id: "project-default",
-        projectId: projectId,
-        contextText: contextText,
-        updatedAt: now,
-        updatedBy: user.displayName
-      };
-    } else {
+    // Start with loaded document (preserves __etag) or empty base for new documents
+    const baseDocument = loadedDocument || { id: safeId };
+
+    // Prepare updated fields
+    const updatedFields: Partial<AIContextDocument> = {
+      id: safeId,
+      projectId: projectId,
+      contextText: contextText,
+      updatedAt: now,
+      updatedBy: user.displayName
+    };
+
+    // Add repository-specific fields if applicable
+    if (selectedRepoId !== "project-default") {
       const repo = repositories.find(r => r.id === selectedRepoId);
       if (!repo) {
         throw new Error("Selected repository not found");
       }
-
-      document = {
-        id: `repo-${selectedRepoId}`,
-        repositoryId: selectedRepoId,
-        repositoryName: repo.name,
-        projectId: projectId,
-        contextText: contextText,
-        updatedAt: now,
-        updatedBy: user.displayName
-      };
+      updatedFields.repositoryId = selectedRepoId;
+      updatedFields.repositoryName = repo.name;
     }
 
-    // Ensure ID is safe for Azure DevOps storage
-    const safeId =
-      selectedRepoId === "project-default"
-        ? "project-default"
-        : `repo-${selectedRepoId}`;
-
-    document = {
-      ...document,
-      id: safeId
+    // Merge updated fields into base (preserves __etag from baseDocument)
+    const document = {
+      ...baseDocument,
+      ...updatedFields
     };
 
-    // Save document
-    await dataManager.setDocument("ai-contexts", document);
+    // Save document and capture response
+    const savedDocument = await dataManager.setDocument("ai-contexts", document);
+
+    // CRITICAL: Update state with saved document (contains new __etag)
+    setLoadedDocument(savedDocument);
 
     setSuccessMessage(
       "Context saved successfully for " +
