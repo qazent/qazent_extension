@@ -6,21 +6,18 @@ import * as React from 'react';
 import * as SDK from 'azure-devops-extension-sdk';
 import { getClient } from 'azure-devops-extension-api';
 import { GitRestClient } from 'azure-devops-extension-api/Git';
-import { CommonServiceIds, IExtensionDataService } from 'azure-devops-extension-api';
+import { CommonServiceIds, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
-import { TestCaseCard } from './TestCaseCard';
-import { PRData, GeneratedTestCase, AIContextDocument } from '../types/extension-types';
+import { PRData, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
 
 const PRAssistantHub: React.FC = () => {
   const [prData, setPRData] = React.useState<PRData | null>(null);
-  const [testCase, setTestCase] = React.useState<GeneratedTestCase | null>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
-  const [isCreatingWorkItem, setIsCreatingWorkItem] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
  
@@ -29,9 +26,8 @@ const PRAssistantHub: React.FC = () => {
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
+  const [projectId, setProjectId] = React.useState<string>('');
   const [customContext, setCustomContext] = React.useState<string>('');
-  const [loadingProgress, setLoadingProgress] = React.useState<number>(0);
-  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = React.useState<number>(0);
 
 
   React.useEffect(() => {
@@ -56,7 +52,14 @@ const PRAssistantHub: React.FC = () => {
         setBackendUrl(backend);
       }
 
-      // 4. Load PR context
+      // 4. Get project ID (GUID) for artifact URI construction
+      const projectService = await SDK.getService<IProjectPageService>(CommonServiceIds.ProjectPageService);
+      const project = await projectService.getProject();
+      if (project?.id) {
+        setProjectId(project.id);
+      }
+
+      // 5. Load PR context
       const config = SDK.getConfiguration();
       await loadPRContext(config);
 
@@ -189,22 +192,38 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleGenerateTests = async () => {
+    // Step 1: Validate PR data
     if (!prData) {
       setError('PR information not loaded');
-      setIsGenerating(false);
       return;
     }
 
+    // Step 2: Set loading state
     setIsGenerating(true);
     setError(null);
-    setTestCase(null);
     setSuccessMessage(null);
 
     try {
+      // Step 3: Validate metadata
       if (!repositoryId || !projectName) {
         throw new Error('Repository or project information missing. Please refresh the page.');
       }
+      if (!projectId) {
+        throw new Error('Project ID not loaded. Please refresh the page.');
+      }
 
+      // Step 4: Fetch PR details to get commit IDs
+      const gitClient = getClient(GitRestClient);
+      const prDetails = await gitClient.getPullRequest(repositoryId, prData.prId, projectName);
+
+      if (!prDetails.lastMergeSourceCommit || !prDetails.lastMergeTargetCommit) {
+        throw new Error('PR commit information not available. Please ensure PR has commits.');
+      }
+
+      const sourceCommitId = prDetails.lastMergeSourceCommit.commitId;
+      const targetCommitId = prDetails.lastMergeTargetCommit.commitId;
+
+      // Step 5: Call /generate-tests
       const generatedTestCase = await backendClient.generateTestCases(
         prData.prId,
         projectName,
@@ -213,89 +232,27 @@ const PRAssistantHub: React.FC = () => {
         customContext
       );
 
-      setTestCase(generatedTestCase);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Test case generation failed');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleCopyToClipboard = () => {
-    setSuccessMessage('Copied to clipboard!');
-    setTimeout(() => setSuccessMessage(null), 3000);
-  };
-
-  const handleCreateWorkItem = async () => {
-    if (!testCase || !prData) {
-      setError('Test case not generated or PR data not available');
-      setIsCreatingWorkItem(false);
-      return;
-    }
-
-    // Validate backendUrl is loaded from extension context
-    if (!backendUrl || backendUrl === '') {
-      setError('Backend URL not configured. Please refresh the extension.');
-      setIsCreatingWorkItem(false);
-      return;
-    }
-
-    // Validate backendUrl is not a relative URL or malformed
-    if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
-      setError('Invalid backend URL configuration. Please contact support.');
-      setIsCreatingWorkItem(false);
-      return;
-    }
-
-    setIsCreatingWorkItem(true);
-    setError(null);
-    setSuccessMessage(null);
-    setLoadingProgress(0);
-    setEstimatedTimeRemaining(35);
-
-    // Start progress simulation
-    const progressInterval = setInterval(() => {
-      setLoadingProgress(prev => {
-        // Slow down as we approach 90%
-        if (prev >= 90) return prev + 0.5;
-        if (prev >= 70) return prev + 1;
-        if (prev >= 30) return prev + 2;
-        return prev + 3;
-      });
-
-      setEstimatedTimeRemaining(prev => {
-        const newTime = prev - 0.5;
-        return newTime > 5 ? newTime : 5;
-      });
-    }, 500);
-
-    try {
-      if (!repositoryId || !projectName) {
-        throw new Error('Repository or project information missing. Please refresh the page.');
-      }
-
+      // Step 6: Immediately call /create-work-item with ALL required fields
       const result = await backendClient.createWorkItem(
-        testCase,
+        generatedTestCase,
         prData.prId,
         projectName,
         repositoryId,
-        backendUrl
+        backendUrl,
+        projectId,
+        sourceCommitId,
+        targetCommitId
       );
 
-      // Complete progress
-      clearInterval(progressInterval);
-      setLoadingProgress(100);
-      setEstimatedTimeRemaining(0);
-
+      // Step 7: Show success message
       setSuccessMessage(`Work item created successfully! View it here: ${result.workItemUrl}`);
 
+      // Auto-dismiss success message after 5 seconds
       setTimeout(() => setSuccessMessage(null), 5000);
-    } catch (err) {
-      clearInterval(progressInterval);
-      setLoadingProgress(0);
-      setEstimatedTimeRemaining(0);
 
-      let errorMessage = 'Failed to create work item';
+    } catch (err) {
+      // Step 8: Handle errors
+      let errorMessage = 'Failed to generate test cases and create work item';
 
       if (err instanceof Error) {
         if (err.message.includes('timed out')) {
@@ -312,11 +269,13 @@ const PRAssistantHub: React.FC = () => {
       }
 
       setError(errorMessage);
-      console.error('Create work item error:', err);
+      console.error('Generate and create work item error:', err);
     } finally {
-      setIsCreatingWorkItem(false);
+      // Step 9: Clear loading state
+      setIsGenerating(false);
     }
   };
+
 
   return (
     <FluentProvider theme={webLightTheme}>
@@ -347,37 +306,6 @@ const PRAssistantHub: React.FC = () => {
           </div>
         )}
 
-        {isCreatingWorkItem && (
-          <div style={{
-            backgroundColor: '#f3f2f1',
-            border: '1px solid #8a8886',
-            padding: '16px',
-            marginBottom: '16px',
-            borderRadius: '4px'
-          }}>
-            <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
-              Creating Work Item...
-            </div>
-            <div style={{
-              width: '100%',
-              height: '8px',
-              backgroundColor: '#e1dfdd',
-              borderRadius: '4px',
-              overflow: 'hidden',
-              marginBottom: '8px'
-            }}>
-              <div style={{
-                width: `${loadingProgress}%`,
-                height: '100%',
-                backgroundColor: '#0078d4',
-                transition: 'width 0.3s ease'
-              }} />
-            </div>
-            <div style={{ fontSize: '12px', color: '#605e5c' }}>
-              Estimated time remaining: {Math.ceil(estimatedTimeRemaining)} seconds
-            </div>
-          </div>
-        )}
 
         <PRInfoSection
           prTitle={prData?.prTitle}
@@ -390,13 +318,6 @@ const PRAssistantHub: React.FC = () => {
           isLoading={isGenerating}
           isDisabled={!prData}
           onClick={handleGenerateTests}
-        />
-
-        <TestCaseCard
-          testCase={testCase}
-          onCopyToClipboard={handleCopyToClipboard}
-          onCreateWorkItem={handleCreateWorkItem}
-          isCreatingWorkItem={isCreatingWorkItem}
         />
       </div>
     </FluentProvider>
