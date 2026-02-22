@@ -486,11 +486,11 @@ Respond ONLY with valid JSON matching this EXACT structure:
 ## Final Reminders
 
 - Output ONLY valid JSON with title and htmlDescription fields
-- No markdown code fences, no commentary, no additional text
+- NEVER USE markdown code fences, commentary, additional text
 - All 11 HTML sections in exact order
 - Test Steps section MUST be a 2-column table
-- Only use allowed HTML tags
-- Make every test case actionable, specific, and comprehensive
+- ONLY use allowed HTML tags
+- Make EVERY test case actionable, specific, and comprehensive
 - Tie everything back to the PR changes
 
 Your test cases directly impact product quality. Be thorough, precise, and thoughtful.

@@ -4,6 +4,7 @@
 
 import * as azdev from 'azure-devops-node-api';
 import { GitApi } from 'azure-devops-node-api/GitApi';
+ import { GitVersionType, GitVersionDescriptor } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
 import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
@@ -191,6 +192,18 @@ export async function fetchPRDiff(
     const targetCommitId = pr.lastMergeTargetCommit.commitId;
 
     logger.debug('PR commit IDs', { prId, sourceCommitId, targetCommitId });
+    
+    // Prepare version descriptors for API calls
+    const sourceDescriptor: GitVersionDescriptor = {
+      version: sourceCommitId,
+      versionType: GitVersionType.Commit
+    };
+
+    const targetDescriptor: GitVersionDescriptor = {
+      version: targetCommitId,
+      versionType: GitVersionType.Commit
+    };
+
 
     // Step 2: Get PR iterations to find changed files
     const iterations = await gitApi.getPullRequestIterations(repositoryId, prId, projectName);
@@ -201,6 +214,7 @@ export async function fetchPRDiff(
 
     const latestIteration = iterations[iterations.length - 1];
     const iterationId = latestIteration.id;
+    
 
     if (!iterationId) {
       throw new Error('Latest iteration has no ID');
@@ -256,7 +270,7 @@ export async function fetchPRDiff(
             undefined, // includeContentMetadata
             undefined, // latestProcessedChange
             undefined, // download
-            targetCommitId // versionDescriptor - target (before PR)
+            targetDescriptor // versionDescriptor - target (before PR)
           );
 
           const oldContent = oldItem.content || '[Binary or empty file]';
@@ -265,6 +279,8 @@ export async function fetchPRDiff(
 
         } else if (changeType === 'add') {
           // For added files, fetch new content only
+          
+
           const newItem = await gitApi.getItem(
             repositoryId,
             filePath,
@@ -274,7 +290,7 @@ export async function fetchPRDiff(
             undefined,
             undefined,
             undefined,
-            sourceCommitId // versionDescriptor - source (after PR)
+            sourceDescriptor // versionDescriptor - source (after PR)
           );
 
           const newContent = newItem.content || '[Binary or empty file]';
@@ -284,8 +300,8 @@ export async function fetchPRDiff(
         } else {
           // For edited files, fetch both old and new content
           const [oldItem, newItem] = await Promise.all([
-            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, targetCommitId),
-            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceCommitId)
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, targetDescriptor),
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceDescriptor)
           ]);
 
           const oldContent = oldItem.content || '';
