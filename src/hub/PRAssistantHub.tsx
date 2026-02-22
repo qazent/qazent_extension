@@ -29,6 +29,9 @@ const PRAssistantHub: React.FC = () => {
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
+  const [customContext, setCustomContext] = React.useState<string>('');
+  const [loadingProgress, setLoadingProgress] = React.useState<number>(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = React.useState<number>(0);
 
 
   React.useEffect(() => {
@@ -186,12 +189,10 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleGenerateTests = async () => {
-    setIsGenerating(true);
     if (!prData) {
       setError('PR information not loaded');
       setIsGenerating(false);
       return;
-      }
     }
 
     setIsGenerating(true);
@@ -226,16 +227,47 @@ const PRAssistantHub: React.FC = () => {
   };
 
   const handleCreateWorkItem = async () => {
-    setIsCreatingWorkItem(true);
     if (!testCase || !prData) {
       setError('Test case not generated or PR data not available');
+      setIsCreatingWorkItem(false);
+      return;
+    }
+
+    // Validate backendUrl is loaded from extension context
+    if (!backendUrl || backendUrl === '') {
+      setError('Backend URL not configured. Please refresh the extension.');
+      setIsCreatingWorkItem(false);
+      return;
+    }
+
+    // Validate backendUrl is not a relative URL or malformed
+    if (!backendUrl.startsWith('http://') && !backendUrl.startsWith('https://')) {
+      setError('Invalid backend URL configuration. Please contact support.');
+      setIsCreatingWorkItem(false);
       return;
     }
 
     setIsCreatingWorkItem(true);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate work item creation delay
     setError(null);
     setSuccessMessage(null);
+    setLoadingProgress(0);
+    setEstimatedTimeRemaining(35);
+
+    // Start progress simulation
+    const progressInterval = setInterval(() => {
+      setLoadingProgress(prev => {
+        // Slow down as we approach 90%
+        if (prev >= 90) return prev + 0.5;
+        if (prev >= 70) return prev + 1;
+        if (prev >= 30) return prev + 2;
+        return prev + 3;
+      });
+
+      setEstimatedTimeRemaining(prev => {
+        const newTime = prev - 0.5;
+        return newTime > 5 ? newTime : 5;
+      });
+    }, 500);
 
     try {
       if (!repositoryId || !projectName) {
@@ -246,15 +278,41 @@ const PRAssistantHub: React.FC = () => {
         testCase,
         prData.prId,
         projectName,
-        customContext,
         repositoryId,
+        backendUrl
       );
+
+      // Complete progress
+      clearInterval(progressInterval);
+      setLoadingProgress(100);
+      setEstimatedTimeRemaining(0);
 
       setSuccessMessage(`Work item created successfully! View it here: ${result.workItemUrl}`);
 
       setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create work item');
+      clearInterval(progressInterval);
+      setLoadingProgress(0);
+      setEstimatedTimeRemaining(0);
+
+      let errorMessage = 'Failed to create work item';
+
+      if (err instanceof Error) {
+        if (err.message.includes('timed out')) {
+          errorMessage = 'Request timed out. The backend is taking longer than expected. Please try again.';
+        } else if (err.message.includes('Unable to connect')) {
+          errorMessage = 'Cannot connect to backend service. Please check your network connection.';
+        } else if (err.message.includes('403')) {
+          errorMessage = 'Access forbidden. Please check backend URL configuration.';
+        } else if (err.message.includes('404')) {
+          errorMessage = 'Backend endpoint not found. Please verify backend service is running.';
+        } else {
+          errorMessage = `Error: ${err.message}`;
+        }
+      }
+
+      setError(errorMessage);
+      console.error('Create work item error:', err);
     } finally {
       setIsCreatingWorkItem(false);
     }
@@ -286,6 +344,38 @@ const PRAssistantHub: React.FC = () => {
             borderRadius: '4px'
           }}>
             {successMessage}
+          </div>
+        )}
+
+        {isCreatingWorkItem && (
+          <div style={{
+            backgroundColor: '#f3f2f1',
+            border: '1px solid #8a8886',
+            padding: '16px',
+            marginBottom: '16px',
+            borderRadius: '4px'
+          }}>
+            <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>
+              Creating Work Item...
+            </div>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: '#e1dfdd',
+              borderRadius: '4px',
+              overflow: 'hidden',
+              marginBottom: '8px'
+            }}>
+              <div style={{
+                width: `${loadingProgress}%`,
+                height: '100%',
+                backgroundColor: '#0078d4',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+            <div style={{ fontSize: '12px', color: '#605e5c' }}>
+              Estimated time remaining: {Math.ceil(estimatedTimeRemaining)} seconds
+            </div>
           </div>
         )}
 

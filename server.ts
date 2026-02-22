@@ -202,6 +202,18 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
 
       const customContext = payload.customContext; // Optional field
 
+      // Validate custom context length
+      const MAX_CONTEXT_LENGTH = 50000; // 50KB limit
+      if (customContext && typeof customContext === 'string' && customContext.length > MAX_CONTEXT_LENGTH) {
+        const errorResponse: ErrorResponse = {
+          error: 'Custom context too large',
+          details: `Custom context exceeds maximum length of ${MAX_CONTEXT_LENGTH} characters`
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
       logger.info('Generate tests request', {
         prId: payload.prId,
         projectName: payload.projectName,
@@ -429,7 +441,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
 
   // Generate tests endpoint
-  if (normalizedUrl || url === '/generate-tests' && method === 'POST') {
+  if (normalizedUrl === '/generate-tests' && method === 'POST') {
     logger.info("POST /generate-tests hit");
 
     const contentType = req.headers['content-type'];
@@ -494,7 +506,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
   }
 
   // Wrong method for webhook
-  if (normalizedUrl || url === '/webhook' && method !== 'POST') {
+  if (normalizedUrl === '/webhook' && method !== 'POST') {
     logger.warn('Method not allowed', { method, url: normalizedUrl });
 
     const errorResponse: ErrorResponse = {
