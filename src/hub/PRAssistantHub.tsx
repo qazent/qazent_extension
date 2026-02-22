@@ -138,7 +138,7 @@ const PRAssistantHub: React.FC = () => {
         prTitle: prDetails.title || `PR #${pullRequestId}`,
         prId: pullRequestId,
         author: authorName,
-        filesChanged: fileCount
+        filesChanged: fileCount,
       });
 
       if (!loadCustomContext) {

@@ -10,12 +10,7 @@ export interface PRData {
   prId: number;
   author: string;
   filesChanged: number;
-  repositoryId: string;
-  repositoryName: string;
-  projectName: string;
-  contextText: string; // Combined context used for test generation 
 }
-
 /**
  * AI-generated test case structure (copied from backend types.ts)
  */
