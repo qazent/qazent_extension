@@ -119,7 +119,7 @@ export const SettingsHub: React.FC = () => {
 
     setContextText((document as AIContextDocument)?.contextText ?? "");
   } catch (err: any) {
-    const msg = String(err);
+    const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
 
     if (msg.includes("DocumentNotFound")) {
       // Repo context not created yet
@@ -136,6 +136,7 @@ export const SettingsHub: React.FC = () => {
       const handleRepoChange = async (_event: any, data: any) => {
       const newRepoId = data.optionValue || 'project-default';
       setSelectedRepoId(newRepoId);
+      setContextText('');
       await loadContext(newRepoId);
     };
 
