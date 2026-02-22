@@ -140,60 +140,82 @@ export const SettingsHub: React.FC = () => {
       await loadContext(newRepoId);
     };
 
-  const handleSave = async () => {
-    try {
-      setIsSaving(true);
-      setErrorMessage(null);
-      setSuccessMessage(null);
+const handleSave = async () => {
+  try {
+    setIsSaving(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
 
-      const dataService = await SDK.getService<IExtensionDataService>(
-        CommonServiceIds.ExtensionDataService
-      );
-      const dataManager = await dataService.getExtensionDataManager(
-        'QAZent.pr-assistant-extension',
-        await SDK.getAccessToken()
-      );
+    const dataService = await SDK.getService<IExtensionDataService>(
+      CommonServiceIds.ExtensionDataService
+    );
+    const dataManager = await dataService.getExtensionDataManager(
+      "QAZent.pr-assistant-extension",
+      await SDK.getAccessToken()
+    );
 
-      const user = SDK.getUser();
-      const now = new Date().toISOString();
+    const user = SDK.getUser();
+    const now = new Date().toISOString();
 
-      let document: AIContextDocument;
+    let document: AIContextDocument;
 
-      if (selectedRepoId === 'project-default') {
-        document = {
-          id: 'project-default',
-          projectId: projectId,
-          contextText: contextText,
-          updatedAt: now,
-          updatedBy: user.displayName
-        };
-      } else {
-        const repo = repositories.find(r => r.id === selectedRepoId);
-        if (!repo) {
-          throw new Error('Selected repository not found');
-        }
-
-        document = {
-          id: selectedRepoId,
-          repositoryId: selectedRepoId,
-          repositoryName: repo.name,
-          projectId: projectId,
-          contextText: contextText,
-          updatedAt: now,
-          updatedBy: user.displayName
-        };
+    if (selectedRepoId === "project-default") {
+      document = {
+        id: "project-default",
+        projectId: projectId,
+        contextText: contextText,
+        updatedAt: now,
+        updatedBy: user.displayName
+      };
+    } else {
+      const repo = repositories.find(r => r.id === selectedRepoId);
+      if (!repo) {
+        throw new Error("Selected repository not found");
       }
 
-      await dataManager.setDocument('ai-contexts', document);
-
-      setSuccessMessage('Context saved successfully for ' + (selectedRepoId === 'project-default' ? 'project default' : 'repository "' + document.repositoryName + '"') + '!');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setErrorMessage('Failed to save context. Please try again! ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsSaving(false);
+      document = {
+        id: `repo-${selectedRepoId}`,
+        repositoryId: selectedRepoId,
+        repositoryName: repo.name,
+        projectId: projectId,
+        contextText: contextText,
+        updatedAt: now,
+        updatedBy: user.displayName
+      };
     }
-  };
+
+    // Ensure ID is safe for Azure DevOps storage
+    const safeId =
+      selectedRepoId === "project-default"
+        ? "project-default"
+        : `repo-${selectedRepoId}`;
+
+    document = {
+      ...document,
+      id: safeId
+    };
+
+    // Save document
+    await dataManager.setDocument("ai-contexts", document);
+
+    setSuccessMessage(
+      "Context saved successfully for " +
+        (selectedRepoId === "project-default"
+          ? "project default"
+          : `repository "${document.repositoryName}"`) +
+        "!"
+    );
+
+    setTimeout(() => setSuccessMessage(null), 3000);
+  } catch (err) {
+    setErrorMessage(
+      "Failed to save context. Please try again! " +
+        JSON.stringify(err, Object.getOwnPropertyNames(err))
+    );
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const handleClear = () => {
     setContextText('');

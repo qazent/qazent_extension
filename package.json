@@ -15,8 +15,8 @@
     "start": "node dist/server.js",
     "test:local": "ts-node test-local.ts",
     "lint": "tsc --noEmit",
-    "test:jest": "jest --config jest.config.ts"
-  },
+    "test:jest": "jest --config jest.config.ts",
+    "test:context": "jest --config jest.config.ts --testPathPatterns=customContext"  },
   "keywords": [
     "azure-devops",
     "test-case",
