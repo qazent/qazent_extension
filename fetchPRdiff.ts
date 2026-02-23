@@ -134,7 +134,7 @@ export async function fetchPRDiff(
     }
 
     const diffChanges: DiffChange[] = [];
-    const MAX_FILES = 50; // Limit files to prevent overwhelming AI and API rate limits
+    const MAX_FILES = 100; // Limit files to prevent overwhelming AI and API rate limits
 
     // Step 4: Process each changed file and fetch actual content via REST
     for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
