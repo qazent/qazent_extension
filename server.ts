@@ -10,12 +10,22 @@ import * as logger from './logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
+import { fetchPRDiff } from './src/utils/fetchPRdiff';
+import { GitApi } from 'azure-devops-node-api/GitApi';
+import { getConnection } from './ado-client';
 
 // Load environment variables
 dotenv.config();
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
+
+
+export async function getGitApi(): Promise<GitApi> {
+  const conn = getConnection();
+  return await conn.getGitApi();
+}
+
 
 
 /**
@@ -271,8 +281,8 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
         contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext)
       });
 
-      // Fetch PR diff
-      const codeDiff = await adoClient.fetchPRDiff(
+      // Fetch PR diff from utils
+      const codeDiff = await fetchPRDiff(
         payload.projectName,
         payload.repositoryId,
         payload.prId

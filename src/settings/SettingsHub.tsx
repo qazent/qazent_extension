@@ -22,127 +22,151 @@ export const SettingsHub: React.FC = () => {
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    const init = async () => {
-      try {
-        // Initialize Azure DevOps SDK
+// -----------------------------
+// Helpers
+// -----------------------------
+
+const normalizeId = (id: string) =>
+  id === "project-default" ? "project-default" : `repo-${id}`;
+
+const now = () => new Date().toISOString();
+
+// Cached services
+const dataServiceRef = React.useRef<IExtensionDataService | null>(null);
+const projectServiceRef = React.useRef<IProjectPageService | null>(null);
+
+// -----------------------------
+// Component Initialization
+// -----------------------------
+
+React.useEffect(() => {
+  const init = async () => {
+    try {
+      if (!(SDK as any)._initialized) {
         await SDK.init();
         await SDK.ready();
+        (SDK as any)._initialized = true;
+      }
 
-        // Get project context
-        const projectService = await SDK.getService<IProjectPageService>(
+      if (!projectServiceRef.current) {
+        projectServiceRef.current = await SDK.getService<IProjectPageService>(
           CommonServiceIds.ProjectPageService
         );
-        const project = await projectService.getProject();
-        
-        if (!project) {
-          setErrorMessage('Unable to determine current project context');
-          setIsLoading(false);
-          return;
-        }
-
-        setProjectId(project.id);
-
-        // Get repositories
-        const gitClient = getClient(GitRestClient);
-        const repos = await gitClient.getRepositories(project.id);
-        setRepositories(repos);
-
-        // Load context for project default initially
-        await loadContext('project-default');
-
-        setIsLoading(false);
-      } catch (err) {
-        setErrorMessage('Failed to initialize: ' + (err instanceof Error ? err.message : String(err)));
-        setIsLoading(false);
       }
-    };
 
-    init();
-  }, []);
-  /**
-   * Ensures the ai-contexts collection exists.
-   * If missing, seeds it with an empty project-default document.
-   */
-    const ensureCollectionExists = async (dataManager: IExtensionDataManager) => {
+      const project = await projectServiceRef.current.getProject();
+      if (!project) {
+        setErrorMessage("Unable to determine current project context");
+        setIsLoading(false);
+        return;
+      }
+
+      setProjectId(project.id);
+
+      const gitClient = getClient(GitRestClient);
+      const repos = await gitClient.getRepositories(project.id);
+      setRepositories(repos);
+
+      await loadContext("project-default");
+
+      setIsLoading(false);
+    } catch (err) {
+      setErrorMessage(
+        "Failed to initialize: " +
+          (err instanceof Error ? err.message : String(err))
+      );
+      setIsLoading(false);
+    }
+  };
+
+  init();
+}, []);
+
+// -----------------------------
+// Ensure collection exists
+// -----------------------------
+
+const ensureCollectionExists = async (dataManager: IExtensionDataManager) => {
   try {
     await dataManager.getDocument("ai-contexts", "project-default");
   } catch (err: any) {
-    const msg = String(err);
+    const typeKey = err?.typeKey || "";
 
-    // Detect missing collection
-    if (msg.includes("The collection does not exist")) {
-      // Seed the collection
+    if (
+      typeKey === "CollectionNotFoundException" ||
+      typeKey === "DocumentNotFoundException"
+    ) {
       await dataManager.setDocument("ai-contexts", {
         id: "project-default",
         contextText: "",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now(),
         updatedBy: SDK.getUser().displayName
       });
       return;
     }
 
-    // Detect missing document (collection exists but project-default missing)
-    if (msg.includes("DocumentNotFound")) {
-      await dataManager.setDocument("ai-contexts", {
-        id: "project-default",
-        contextText: "",
-        updatedAt: new Date().toISOString(),
-        updatedBy: SDK.getUser().displayName
-      });
-      return;
-    }
-
-    // Unknown error → rethrow
     throw err;
   }
 };
 
+// -----------------------------
+// Load context
+// -----------------------------
 
-    const loadContext = async (repoId: string) => {
+const loadContext = async (repoId: string) => {
   try {
     setIsLoading(true);
     setErrorMessage(null);
 
-    const dataService = await SDK.getService<IExtensionDataService>(
-      CommonServiceIds.ExtensionDataService
-    );
-    const dataManager = await dataService.getExtensionDataManager(
+    if (!dataServiceRef.current) {
+      dataServiceRef.current = await SDK.getService<IExtensionDataService>(
+        CommonServiceIds.ExtensionDataService
+      );
+    }
+
+    const dataManager = await dataServiceRef.current.getExtensionDataManager(
       "QAZent.pr-assistant-extension",
       await SDK.getAccessToken()
     );
 
-    // Ensure collection exists
     await ensureCollectionExists(dataManager);
 
-    // Now safe to read
-    const document = await dataManager.getDocument("ai-contexts", repoId);
+    const safeId = normalizeId(repoId);
 
-    setLoadedDocument(document); // Store full document with __etag
+    const document = await dataManager.getDocument("ai-contexts", safeId);
+
+    setLoadedDocument(document);
     setContextText((document as AIContextDocument)?.contextText ?? "");
   } catch (err: any) {
-    const msg = err instanceof Error ? err.message : (typeof err === 'object' && err !== null ? JSON.stringify(err) : String(err));
+    const typeKey = err?.typeKey || "";
 
-    if (msg.includes("DocumentNotFound")) {
-      // Repo context not created yet
-      setLoadedDocument(null); // No document exists yet
+    if (typeKey === "DocumentNotFoundException") {
+      setLoadedDocument(null);
       setContextText("");
     } else {
-      setErrorMessage("Failed to load context: " + msg);
+      setErrorMessage(
+        "Failed to load context: " +
+          (err instanceof Error ? err.message : JSON.stringify(err))
+      );
     }
   } finally {
     setIsLoading(false);
   }
 };
 
+// -----------------------------
+// Repo change
+// -----------------------------
 
-      const handleRepoChange = async (_event: any, data: any) => {
-      const newRepoId = data.optionValue || 'project-default';
-      setSelectedRepoId(newRepoId);
-      setContextText('');
-      setLoadedDocument(null); // Clear loaded document when switching repositories
-      await loadContext(newRepoId);
-    };
+const handleRepoChange = async (_event: any, data: any) => {
+  const newRepoId = data.optionValue || "project-default";
+  setSelectedRepoId(newRepoId);
+  await loadContext(newRepoId);
+};
+
+// -----------------------------
+// Save context (with retry)
+// -----------------------------
 
 const handleSave = async () => {
   try {
@@ -150,62 +174,65 @@ const handleSave = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const dataService = await SDK.getService<IExtensionDataService>(
-      CommonServiceIds.ExtensionDataService
-    );
-    const dataManager = await dataService.getExtensionDataManager(
+    if (!dataServiceRef.current) {
+      dataServiceRef.current = await SDK.getService<IExtensionDataService>(
+        CommonServiceIds.ExtensionDataService
+      );
+    }
+
+    const dataManager = await dataServiceRef.current.getExtensionDataManager(
       "QAZent.pr-assistant-extension",
       await SDK.getAccessToken()
     );
 
     const user = SDK.getUser();
-    const now = new Date().toISOString();
+    const safeId = normalizeId(selectedRepoId);
 
-    // Determine safe document ID
-    const safeId = selectedRepoId === "project-default"
-      ? "project-default"
-      : `repo-${selectedRepoId}`;
-
-    // Start with loaded document (preserves __etag) or empty base for new documents
     const baseDocument = loadedDocument || { id: safeId };
 
-    // Prepare updated fields
     const updatedFields: Partial<AIContextDocument> = {
       id: safeId,
-      projectId: projectId,
-      contextText: contextText,
-      updatedAt: now,
+      projectId,
+      contextText,
+      updatedAt: now(),
       updatedBy: user.displayName
     };
 
-    // Add repository-specific fields if applicable
     if (selectedRepoId !== "project-default") {
-      const repo = repositories.find(r => r.id === selectedRepoId);
-      if (!repo) {
-        throw new Error("Selected repository not found");
-      }
+      const repo = repositories.find((r) => r.id === selectedRepoId);
+      if (!repo) throw new Error("Selected repository not found");
+
       updatedFields.repositoryId = selectedRepoId;
       updatedFields.repositoryName = repo.name;
     }
 
-    // Merge updated fields into base (preserves __etag from baseDocument)
-    const document = {
-      ...baseDocument,
-      ...updatedFields
-    };
+    const document = { ...baseDocument, ...updatedFields };
 
-    // Save document and capture response
-    const savedDocument = await dataManager.setDocument("ai-contexts", document);
+    let savedDocument;
 
-    // CRITICAL: Update state with saved document (contains new __etag)
+    try {
+      // First attempt — uses document.__etag if present
+      savedDocument = await dataManager.setDocument("ai-contexts", document);
+    } catch (err: any) {
+      if (err?.typeKey === "InvalidDocumentVersionException") {
+        const latest = await dataManager.getDocument("ai-contexts", safeId);
+
+        const merged = { ...latest, ...updatedFields };
+
+        savedDocument = await dataManager.setDocument("ai-contexts", merged);
+      } else {
+        throw err;
+      }
+    }
+
     setLoadedDocument(savedDocument);
 
     setSuccessMessage(
-      "Context saved successfully for " +
-        (selectedRepoId === "project-default"
+      `Context saved successfully for ${
+        selectedRepoId === "project-default"
           ? "project default"
-          : `repository "${document.repositoryName}"`) +
-        "!"
+          : `repository "${document.repositoryName}"`
+      }!`
     );
 
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -219,9 +246,14 @@ const handleSave = async () => {
   }
 };
 
-  const handleClear = () => {
-    setContextText('');
-  };
+// -----------------------------
+// Clear
+// -----------------------------
+
+const handleClear = () => {
+  setContextText("");
+  setLoadedDocument(null);
+};
 
   return (
     <FluentProvider theme={webLightTheme}>

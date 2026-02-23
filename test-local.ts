@@ -9,6 +9,7 @@ import { WebhookPayload, PRMetadata, CodeDiff } from './types';
 import * as logger from './logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
+import { fetchPRDiff } from './src/utils/fetchPRdiff';
 
 // Load environment variables
 dotenv.config();
@@ -111,7 +112,7 @@ async function runTest(): Promise<void> {
     } else {
       console.log('Step 2: Fetching real PR diff from Azure DevOps...');
       adoClient.initializeAdoConnection();
-      codeDiff = await adoClient.fetchPRDiff(
+      codeDiff = await fetchPRDiff(
         prMetadata.projectName,
         prMetadata.repositoryId,
         prMetadata.prId

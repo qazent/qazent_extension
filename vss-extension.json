@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.27",
+  "version": "1.2.31",
   "publisher": "QAZent",
   "targets": [
     {

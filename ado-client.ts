@@ -4,7 +4,6 @@
 
 import * as azdev from 'azure-devops-node-api';
 import { GitApi } from 'azure-devops-node-api/GitApi';
- import { GitVersionType, GitVersionDescriptor } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
 import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
@@ -88,12 +87,13 @@ export function initializeAdoConnection(): azdev.WebApi {
 /**
  * Get cached connection or create new one
  */
-function getConnection(): azdev.WebApi {
+export function getConnection(): azdev.WebApi {
   if (!connection) {
     return initializeAdoConnection();
   }
   return connection;
 }
+
 
 
 /**
@@ -178,7 +178,7 @@ export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
 /**
  * Generate unified diff format from two text contents
  */
-function generateUnifiedDiff(
+export function generateUnifiedDiff(
   filePath: string,
   oldContent: string,
   newContent: string
@@ -245,6 +245,7 @@ function generateUnifiedDiff(
  * This function retrieves actual line-by-line diffs for PR changes using the Git Items API.
  * It fetches file contents at both source and target commits and generates unified diffs.
  */
+/**
 export async function fetchPRDiff(
   projectName: string,
   repositoryId: string,
@@ -327,7 +328,7 @@ export async function fetchPRDiff(
     }
 
     const diffChanges: DiffChange[] = [];
-    const MAX_FILES = 20; // Limit files to prevent overwhelming AI and API rate limits
+    const MAX_FILES = 50; // Limit files to prevent overwhelming AI and API rate limits
 
     // Step 4: Process each changed file and fetch actual content
     for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
@@ -365,12 +366,10 @@ export async function fetchPRDiff(
             repositoryId,
             filePath,
             projectName,
-            undefined, // scopePath
-            undefined, // recursionLevel
-            undefined, // includeContentMetadata
-            undefined, // latestProcessedChange
-            undefined, // download
-            targetDescriptor // versionDescriptor - target (before PR)
+            {
+              includeContent: true,
+              versionDescriptor: targetDescriptor
+            }
           );
 
           if (!oldItem) {
@@ -397,13 +396,12 @@ export async function fetchPRDiff(
             repositoryId,
             filePath,
             projectName,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            sourceDescriptor // versionDescriptor - source (after PR)
+            {
+              includeContent: true,
+              versionDescriptor: sourceDescriptor
+            }
           );
+            // versionDescriptor - source (after PR)
 
           if (!newItem) {
             throw new Error(`Azure DevOps returned no content for file: ${filePath}`);
@@ -518,12 +516,12 @@ export async function fetchPRDiff(
     throw new Error(`Failed to fetch diff for PR ${prId}: ${errorMessage}. Repo: ${repositoryId}, Project: ${projectName}`);
   }
 }
-
+*/
 /**
  * Fallback diff fetching when commit IDs are unavailable
  * Returns basic file change information without actual content
  */
-async function fetchPRDiffFallback(
+export async function fetchPRDiffFallback(
   projectName: string,
   repositoryId: string,
   prId: number,
