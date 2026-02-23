@@ -2,8 +2,11 @@
  * Backend API client for Manual Test Case Generation Extension
  * Provides functions to interact with the backend service for generating test cases
  * and creating work items.
+ *
+ * Security: All requests include Azure DevOps OAuth token in Authorization header
  */
 
+import * as SDK from 'azure-devops-extension-sdk';
 import {
   GeneratedTestCase,
   WorkItemResponse,
@@ -39,20 +42,70 @@ function buildUrl(base: string, path: string): string {
 }
 
 /**
+ * Token cache for Azure DevOps OAuth tokens
+ * Cache tokens for 10 minutes (they're valid for 1 hour)
+ */
+let cachedToken: { token: string; expiresAt: number } | null = null;
+const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Get Azure DevOps OAuth token from SDK
+ * Caches token to avoid repeated SDK calls
+ */
+async function getAuthToken(): Promise<string> {
+  // Check cache first
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    return cachedToken.token;
+  }
+
+  // Get fresh token from SDK
+  try {
+    const token = await SDK.getAccessToken();
+
+    // Cache the token
+    cachedToken = {
+      token,
+      expiresAt: Date.now() + TOKEN_CACHE_TTL_MS
+    };
+
+    return token;
+  } catch (error) {
+    console.error('Failed to get access token from Azure DevOps SDK:', error);
+    throw new Error('Failed to authenticate. Please refresh the page.');
+  }
+}
+
+/**
+ * Clear cached token (used on 401 errors to force refresh)
+ */
+function clearTokenCache(): void {
+  cachedToken = null;
+}
+
+/**
  * Generic helper for backend POST requests with timeout + unified error handling
+ * Includes Azure DevOps OAuth token in Authorization header
+ * Implements auto-retry on 401 errors (token expiration)
  */
 async function postJson<T>(
   url: string,
   body: unknown,
-  timeoutMs: number
+  timeoutMs: number,
+  retryCount: number = 0
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Get authentication token
+    const token = await getAuthToken();
+
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify(body),
       signal: controller.signal
     });
@@ -74,13 +127,30 @@ async function postJson<T>(
         errorData?.error ||
         `Backend error (${response.status})`;
 
+      // Handle authentication errors with auto-retry
+      if (response.status === 401 && retryCount === 0) {
+        console.warn('Authentication failed, clearing token cache and retrying...');
+        clearTokenCache();
+        // Retry once with fresh token
+        return postJson<T>(url, body, timeoutMs, retryCount + 1);
+      }
+
+      // Map status codes to user-friendly messages
       switch (response.status) {
         case 400:
           throw new Error('Invalid request data');
+        case 401:
+          throw new Error('Authentication failed. Please refresh the page.');
+        case 403:
+          throw new Error('You don\'t have permission to perform this action.');
         case 404:
           throw new Error('Resource not found');
+        case 429:
+          throw new Error('Too many requests. Please wait and try again.');
         case 500:
           throw new Error('Backend service failed. Please try again.');
+        case 503:
+          throw new Error('Service temporarily unavailable. Please try again later.');
         default:
           throw new Error(message);
       }
