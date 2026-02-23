@@ -3,9 +3,9 @@
  * Tests the complete flow from frontend to backend to AI
  */
 
-import { generateTestCases as aiGenerateTestCases } from './ai';
-import * as backendClient from './src/services/backendClient';
-import { PRMetadata, CodeDiff } from './types';
+import { generateTestCases as aiGenerateTestCases } from '.././ai';
+import * as backendClient from '.././backendClient';
+import { PRMetadata, CodeDiff } from '.././types';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 //
