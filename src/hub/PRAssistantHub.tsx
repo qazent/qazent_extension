@@ -261,14 +261,16 @@ const PRAssistantHub: React.FC = () => {
         console.warn('PR comment failed but work item was created:', err);
       });
 
+      
+
       // Step 7: Show success message
       setSuccessMessage(
         `Work item created successfully! View it here: ${result.workItemUrl}\n\n` +
         `A comment has been posted on this PR with the test case details.`
       );
 
-      // Auto-dismiss success message after 5 seconds
-      setTimeout(() => setSuccessMessage(null), 5000);
+      // Auto-dismiss success message after 20 seconds
+      setTimeout(() => setSuccessMessage(null), 20000);
 
     } catch (err) {
       // Step 8: Handle errors

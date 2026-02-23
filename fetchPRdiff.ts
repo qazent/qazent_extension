@@ -6,8 +6,17 @@ import { GitApi } from 'azure-devops-node-api/GitApi';
 import { getConnection, fetchPRDiffFallback } from "./ado-client";
 
 
-const AZDO_ORG = process.env.AZURE_DEVOPS_ORG!;
-const AZDO_PAT = process.env.AZURE_DEVOPS_PAT!;
+function getOrg() {
+  const org = process.env.ADO_ORG;
+  if (!org) throw new Error("ADO_ORG is undefined");
+  return org;
+}
+
+function getPat() {
+  const pat = process.env.ADO_PAT;
+  if (!pat) throw new Error("ADO_PAT is undefined");
+  return pat;
+}
 
 
 
@@ -19,6 +28,9 @@ export async function fetchFileContentFromRest(
   filePath: string,
   commitId: string
 ): Promise<string> {
+  if (!organization) {
+  throw new Error(`Organization is undefined. URL would be invalid.`);
+}
   const url =
     `https://dev.azure.com/${encodeURIComponent(organization)}/${encodeURIComponent(projectName)}` +
     `/_apis/git/repositories/${encodeURIComponent(repositoryId)}/items` +
@@ -32,7 +44,7 @@ export async function fetchFileContentFromRest(
 
   const response = await fetch(url, {
     headers: {
-      Authorization: `Basic ${Buffer.from(":" + AZDO_PAT).toString("base64")}`,
+      Authorization: `Basic ${Buffer.from(":" + getPat()).toString("base64")}`,
     },
   });
 
@@ -122,7 +134,7 @@ export async function fetchPRDiff(
     }
 
     const diffChanges: DiffChange[] = [];
-    const MAX_FILES = 20; // Limit files to prevent overwhelming AI and API rate limits
+    const MAX_FILES = 50; // Limit files to prevent overwhelming AI and API rate limits
 
     // Step 4: Process each changed file and fetch actual content via REST
     for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
@@ -154,16 +166,49 @@ export async function fetchPRDiff(
             commitId: targetCommitId,
           });
 
-          const oldContent =
-            (await fetchFileContentFromRest(
-              AZDO_ORG,
-              projectName,
-              repositoryId,
-              filePath,
-              targetCommitId
-            )) || "[Binary or empty file]";
+          // Validate org before calling REST
+          if (!getOrg()) {
+            throw new Error(`ADO_ORG is undefined. Cannot fetch file content.`);
+          }
+
+          // Validate projectName
+          if (!projectName) {
+            throw new Error(`projectName is undefined for file ${filePath}`);
+          }
+
+          // Validate repositoryId
+          if (!repositoryId) {
+            throw new Error(`repositoryId is undefined for file ${filePath}`);
+          }
+
+          // Validate commitId
+          if (!targetCommitId) {
+            throw new Error(`targetCommitId is undefined for file ${filePath}`);
+          }
+
+          // Fetch old content (deleted file)
+          const oldContent = await fetchFileContentFromRest(
+            getOrg(),
+            projectName,
+            repositoryId,
+            filePath,
+            targetCommitId
+          );
+
+          // Validate returned content
+          if (!oldContent) {
+            throw new Error(`fetchFileContentFromRest returned empty content for ${filePath}`);
+          }
+
+          if (oldContent.startsWith("<!DOCTYPE html") || oldContent.includes("<script class=\"options\"")) {
+            throw new Error(
+              `Azure DevOps returned HTML login page instead of file content for ${filePath}. ` +
+              `Check PAT, org, project, and URL.`
+            );
+          }
 
           linesDeleted = oldContent.split("\n").length;
+
           diffContent =
             `--- a/${filePath}\n` +
             `+++ /dev/null\n` +
@@ -172,6 +217,7 @@ export async function fetchPRDiff(
               .map((line) => `- ${line}`)
               .slice(0, 50)
               .join("\n");
+
         } else if (changeType === "add") {
           // For added files, fetch new content only (source commit = after PR)
           logger.debug("Fetching new content via REST for added file", {
@@ -179,16 +225,29 @@ export async function fetchPRDiff(
             commitId: sourceCommitId,
           });
 
-          const newContent =
-            (await fetchFileContentFromRest(
-              AZDO_ORG,
-              projectName,
-              repositoryId,
-              filePath,
-              sourceCommitId
-            )) || "[Binary or empty file]";
+          if (!getOrg()) throw new Error("ADO_ORG is undefined");
+          if (!sourceCommitId) throw new Error(`sourceCommitId undefined for ${filePath}`);
+
+          const newContent = await fetchFileContentFromRest(
+            getOrg(),
+            projectName,
+            repositoryId,
+            filePath,
+            sourceCommitId
+          );
+
+          if (!newContent) {
+            throw new Error(`fetchFileContentFromRest returned empty content for ${filePath}`);
+          }
+
+          if (newContent.startsWith("<!DOCTYPE html") || newContent.includes("<script class=\"options\"")) {
+            throw new Error(
+              `Azure DevOps returned HTML login page instead of file content for ${filePath}.`
+            );
+          }
 
           linesAdded = newContent.split("\n").length;
+
           diffContent =
             `--- /dev/null\n` +
             `+++ b/${filePath}\n` +
@@ -207,14 +266,14 @@ export async function fetchPRDiff(
 
           const [oldContentRaw, newContentRaw] = await Promise.all([
             fetchFileContentFromRest(
-              AZDO_ORG,
+              getOrg(),
               projectName,
               repositoryId,
               filePath,
               targetCommitId
             ),
             fetchFileContentFromRest(
-              AZDO_ORG,
+              getOrg(),
               projectName,
               repositoryId,
               filePath,

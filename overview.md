@@ -16,7 +16,7 @@ Transform your pull request workflow with AI‑powered test case generation that
 1. **Open a Pull Request**  
    Navigate to any pull request in Azure Repos to activate the PR Assistant tab.
 
-   ![PR Assistant Tab](./public/pr-assistant-tab.png)
+   ![PR Assistant Tab](https://ibb.co/gFvMrJkB)
 
 2. **Generate Work Items Automatically**  
    The assistant instantly creates structured work items containing:
@@ -30,18 +30,20 @@ Transform your pull request workflow with AI‑powered test case generation that
    - Data requirements  
    - Automation notes — including suggestions on how to automate the test, recommended tools, and implementation hints  
 
-   ![Generated Test Cases](./public/generated-test-case.png)
+   ![Generated Test Cases](https://ibb.co/S43L5GJs)
 
 3. **Recommended: Add Custom Context**  
    Provide additional project or domain context to help the AI better understand your codebase and generate more accurate, relevant test cases.
 
-   ![Custom Context Overview](./public/custom-context.png)  
-   ![Repository-Specific Context](./public/custom-context-dropdown.png)
+   ![Where Do I Enter Custom Context?](https://ibb.co/qGWsFYW)
+
+   ![Custom Context Overview](https://ibb.co/YFc1Yy2g)  
+   ![Repository-Specific Context](https://ibb.co/ZzVqNd1w)  
 
 4. **Create Work Items**  
    Convert generated test cases into Azure DevOps Test Case work items by only opening a PR!.
 
-   ![Work Item Created](./public/work-item-created.png)
+   ![Work Item Created](https://ibb.co/S43L5GJs)
 
 ---
 
@@ -122,5 +124,5 @@ This helps the AI tailor test cases to your organization’s standards and workf
 ---
 
 **Publisher:** QAZent  
-**Version:** 1.2.4  
+**Version:** 1.2.34  
 **Category:** Azure Repos
