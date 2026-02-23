@@ -56,6 +56,8 @@ export interface PRMetadata {
 export interface CodeDiff {
   changes: DiffChange[];
   totalChanges: number;
+  sourceCommitId?: string;  // Optional for fallback scenarios
+  targetCommitId?: string;   // Optional for fallback scenarios
 }
 
 /**

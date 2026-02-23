@@ -10,7 +10,7 @@ import * as logger from './logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
-import { fetchPRDiff } from './src/utils/fetchPRdiff';
+import { fetchPRDiff } from './fetchPRdiff';
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { getConnection } from './ado-client';
 
@@ -259,8 +259,13 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
       // Generate test cases
       const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff, customContext);
 
+      // Return test case + commit IDs for work item creation
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(taskOutput));
+      res.end(JSON.stringify({
+        ...taskOutput,
+        sourceCommitId: codeDiff.sourceCommitId,
+        targetCommitId: codeDiff.targetCommitId
+      }));
 
     } catch (error) {
       logger.error('Failed to generate tests', { error: String(error) });
@@ -360,6 +365,74 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
 
       const errorResponse: ErrorResponse = {
         error: 'Work item creation failed',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
+ * Handle post PR comment POST request
+ */
+async function handlePostPRComment(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      // Validate request body
+      if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId || typeof payload.workItemId !== 'number') {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing required fields',
+          details: 'prId, projectName, repositoryId, workItemId are required'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.info('Post PR comment request', {
+        prId: payload.prId,
+        projectName: payload.projectName,
+        workItemId: payload.workItemId
+      });
+
+      // Call backend function to post comment
+      await adoClient.postPRComment(
+        payload.projectName,
+        payload.repositoryId,
+        payload.prId,
+        payload.workItemId
+      );
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+
+    } catch (error) {
+      logger.error('Failed to post PR comment', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Failed to post comment',
         message: error instanceof Error ? error.message : String(error)
       };
 
@@ -491,6 +564,22 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     }
 
     handleCreateWorkItem(req, res);
+    return;
+  }
+
+  // Post PR comment endpoint
+  if (normalizedUrl === '/post-pr-comment' && method === 'POST') {
+    logger.info("POST /post-pr-comment hit");
+
+    const contentType = req.headers['content-type'];
+    if (!contentType || !contentType.includes('application/json')) {
+      logger.warn("Invalid content type", { contentType });
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid content type' }));
+      return;
+    }
+
+    handlePostPRComment(req, res);
     return;
   }
 

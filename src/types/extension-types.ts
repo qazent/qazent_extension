@@ -16,16 +16,17 @@ export interface PRData {
  */
 export interface GeneratedTestCase {
   title: string;
-  purpose: string;
-  scopeOfChange: string;
-  preconditions: string[];
-  testSteps: string[];
-  expectedResults: string[];
-  negativeScenarios: string[];
-  edgeCases: string[];
-  regressionAreas: string[];
-  dataRequirements: string[];
-  automationNotes: string;
+  htmlDescription: string;
+  purpose?: string;
+  scopeOfChange?: string;
+  preconditions?: string[];
+  testSteps?: string[];
+  expectedResults?: string[];
+  negativeScenarios?: string[];
+  edgeCases?: string[];
+  regressionAreas?: string[];
+  dataRequirements?: string[];
+  automationNotes?: string;
 }
 
 /**

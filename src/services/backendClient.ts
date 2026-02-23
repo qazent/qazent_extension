@@ -111,6 +111,7 @@ async function postJson<T>(
 
 /**
  * Generate test cases for a PR
+ * Returns test case data plus commit IDs needed for work item creation
  */
 export async function generateTestCases(
   prId: number,
@@ -118,10 +119,10 @@ export async function generateTestCases(
   repositoryId: string,
   backendUrl: string,
   customContext?: string
-): Promise<GeneratedTestCase> {
+): Promise<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }> {
   const url = buildUrl(backendUrl, '/generate-tests');
 
-  return postJson<GeneratedTestCase>(
+  return postJson<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }>(
     url,
     { prId, projectName, repositoryId, customContext },
     60000 // 60s timeout — backend can take 35–40s for large PRs
@@ -155,5 +156,26 @@ export async function createWorkItem(
       targetCommitId
     },
     30000 // 30s timeout — work item creation is much faster
+  );
+}
+
+/**
+ * Post comment on PR linking to created work item
+ */
+export async function postPRComment(
+  prId: number,
+  projectName: string,
+  repositoryId: string,
+  workItemId: number,
+  _workItemUrl: string,
+  _testCaseTitle: string,
+  backendUrl: string
+): Promise<void> {
+  const url = buildUrl(backendUrl, '/post-pr-comment');
+
+  await postJson<{ success: boolean }>(
+    url,
+    { prId, projectName, repositoryId, workItemId },
+    10000 // 10s timeout
   );
 }

@@ -80,7 +80,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
       </div>
 
       {/* Preconditions */}
-      {testCase.preconditions?.length > 0 && (
+      {testCase.preconditions && testCase.preconditions.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
           <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
             Preconditions
@@ -94,7 +94,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
       )}
 
       {/* Test Steps */}
-      {testCase.testSteps?.length > 0 && (
+      {testCase.testSteps && testCase.testSteps.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
           <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', textTransform: 'uppercase' }}>
             Test Steps
@@ -108,7 +108,7 @@ export const TestCaseCard: React.FC<TestCaseCardProps> = ({
       )}
 
       {/* Expected Results */}
-      {testCase.expectedResults?.length > 0 && (
+      {testCase.expectedResults && testCase.expectedResults.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
           <div style={{
             fontWeight: 'bold',
