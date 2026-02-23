@@ -40,7 +40,7 @@ export async function fetchFileContentFromRest(
     `&includeContent=true` +
     `&api-version=7.1-preview.1`;
 
-  logger.debug("Fetching file content via REST", { filePath, commitId, url });
+  logger.debug("Fetching file content via REST", { organization, projectName, repositoryId, filePath, commitId, url });
 
   const response = await fetch(url, {
     headers: {
@@ -96,7 +96,7 @@ export async function fetchPRDiff(
 
     if (!pr || !pr.lastMergeSourceCommit || !pr.lastMergeTargetCommit) {
       logger.warn("PR missing commit information, falling back to iteration changes", { prId });
-      // You can still keep your existing fallback if you want:
+      // FALLBACK IF COMMIT INFO IS INVALID:
       return fetchPRDiffFallback(projectName, repositoryId, prId, gitApi);
 
     }
