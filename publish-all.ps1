@@ -32,7 +32,7 @@ Write-Host '📦 Packaging extension (auto version bump via --rev-version)...'
 npm run package:extension
 
 # Find newest VSIX file
-$vsix = Get-ChildItem -Filter "QAZent.pr-assistant-extension-*.vsix" |
+$vsix = Get-ChildItem -Path ./output -Filter "QAZent.pr-assistant-extension-*.vsix" |
         Sort-Object Name |
         Select-Object -Last 1
 
@@ -50,9 +50,11 @@ if (-not $env:ADO_PAT) {
 
 Write-Host '🚀 Publishing extension...'
 
+Write-Host '🚀 Publishing extension...'
+
 tfx extension publish `
     --publisher $publisher `
-    --vsix $vsix.Name `
+    --vsix $vsix.FullName `
     --auth-type pat `
     -t $env:ADO_PAT
 

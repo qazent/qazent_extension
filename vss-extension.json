@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.35",
+  "version": "1.2.42",
   "publisher": "QAZent",
   "targets": [
     {
@@ -45,9 +45,9 @@
       "addressable": true
     },
     {
-      "public": "false",
+       "path": "output",
       "addressable": true 
-    }
+      }
   ],
   "scopes": ["vso.code"]
 }
