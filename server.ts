@@ -23,19 +23,56 @@ const startTime = Date.now();
  */
 function validateEnvironment(): void {
   const required = ['ADO_ORG_URL', 'ADO_PAT', 'GEMINI_API_KEY'];
-  const missing: string[] = [];
+  const errors: string[] = [];
 
   for (const envVar of required) {
-    if (!process.env[envVar]) {
-      missing.push(envVar);
+    const value = process.env[envVar];
+
+    // Check if variable is missing
+    if (!value) {
+      errors.push(`Environment variable ${envVar} is required`);
+      continue;
+    }
+
+    // Check if variable is empty string
+    if (value === '') {
+      errors.push(`Environment variable ${envVar} cannot be empty`);
+      continue;
+    }
+
+    // Check if variable contains literal "undefined"
+    if (value === 'undefined') {
+      errors.push(`Environment variable ${envVar} contains 'undefined' - check .env file`);
+      continue;
+    }
+
+    // Additional validation for ADO_ORG_URL
+    if (envVar === 'ADO_ORG_URL' && !value.startsWith('https://')) {
+      errors.push(`Environment variable ${envVar} must be a valid https:// URL`);
+      continue;
+    }
+
+    // Additional validation for ADO_PAT (minimum length check)
+    if (envVar === 'ADO_PAT' && value.length < 20) {
+      errors.push(`Environment variable ${envVar} appears invalid (must be at least 20 characters)`);
+      continue;
     }
   }
 
-  if (missing.length > 0) {
-    logger.error('Missing required environment variables', { missing });
-    console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
+  if (errors.length > 0) {
+    logger.error('Environment variable validation failed', { errors });
+    console.error('FATAL: Environment variable validation failed:');
+    errors.forEach(err => console.error(`  - ${err}`));
     process.exit(1);
   }
+
+  // Log successful validation (redact sensitive values)
+  logger.info('Environment validated', {
+    ADO_ORG_URL: process.env.ADO_ORG_URL,
+    ADO_PAT: '<redacted>',
+    GEMINI_API_KEY: '<redacted>'
+  });
+  console.log('Environment variables validated successfully');
 }
 
 /**
@@ -193,7 +230,19 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
       // Validate request body
       if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
         const errorResponse: ErrorResponse = {
-          error: 'Missing required fields: prId, projectName, repositoryId'
+          error: 'Missing required fields',
+          details: 'prId (number), projectName, and repositoryId are required'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      // Check for undefined literal values
+      if (payload.projectName === 'undefined' || payload.repositoryId === 'undefined') {
+        const errorResponse: ErrorResponse = {
+          error: 'Invalid parameters',
+          details: 'Parameters contain literal "undefined" value'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -255,13 +304,59 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
     } catch (error) {
       logger.error('Failed to generate tests', { error: String(error) });
 
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Categorize Azure DevOps errors
+      if (errorMessage.includes('HTML login page')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Authentication failed - received HTML instead of data. Check ADO_PAT, ADO_ORG_URL, and ensure all parameters are defined.',
+          details: 'ADO_HTML_RESPONSE'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (errorMessage.includes('authentication failed') || errorMessage.includes('401')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Authentication failed - check PAT token',
+          details: 'ADO_AUTH_FAILURE'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (errorMessage.includes('not found') || errorMessage.includes('404')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Resource not found',
+          message: errorMessage
+        };
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (errorMessage.includes('Access denied') || errorMessage.includes('403')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Access denied - check PAT permissions',
+          details: 'ADO_PERMISSION_DENIED'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      // Generic error
       const errorResponse: ErrorResponse = {
         error: 'Test case generation failed',
-        message: error instanceof Error ? error.message : String(error)
+        message: errorMessage
       };
 
-      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 : 500;
-      res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(errorResponse));
     }
   });
@@ -298,6 +393,17 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
         const errorResponse: ErrorResponse = {
           error: 'Invalid test case data',
           details: 'Missing required fields: testCase, prId, projectName, repositoryId, projectId, sourceCommitId, targetCommitId'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      // Check for undefined literal values
+      if (payload.projectName === 'undefined' || payload.repositoryId === 'undefined' || payload.projectId === 'undefined') {
+        const errorResponse: ErrorResponse = {
+          error: 'Invalid parameters',
+          details: 'Parameters contain literal "undefined" value'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -348,9 +454,46 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
     } catch (error) {
       logger.error('Failed to create work item', { error: String(error) });
 
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Categorize Azure DevOps errors
+      if (errorMessage.includes('HTML login page')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Authentication failed - received HTML instead of data. Check ADO_PAT, ADO_ORG_URL, and ensure all parameters are defined.',
+          details: 'ADO_HTML_RESPONSE'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (errorMessage.includes('authentication failed') || errorMessage.includes('401')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Authentication failed - check PAT token',
+          details: 'ADO_AUTH_FAILURE'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (errorMessage.includes('Access denied') || errorMessage.includes('403')) {
+        const errorResponse: ErrorResponse = {
+          error: 'Azure DevOps API Error',
+          message: 'Access denied - check PAT permissions',
+          details: 'ADO_PERMISSION_DENIED'
+        };
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      // Generic error
       const errorResponse: ErrorResponse = {
         error: 'Work item creation failed',
-        message: error instanceof Error ? error.message : String(error)
+        message: errorMessage
       };
 
       res.writeHead(500, { 'Content-Type': 'application/json' });

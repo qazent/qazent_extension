@@ -12,7 +12,48 @@ import * as logger from './logger';
 
 let connection: azdev.WebApi | null = null;
 
+/**
+ * Detect if response content is HTML login page instead of actual data
+ * @param content - Response content to check
+ * @param context - Context description for error message (e.g., "fetchPRDiff", "getItem for file.ts")
+ * @throws Error if HTML response detected
+ */
+function detectHtmlResponse(content: string | undefined, context: string): void {
+  if (!content) {
+    return; // null/undefined content will be handled separately
+  }
 
+  // Check for HTML markers that indicate login page or OAuth redirect
+  const htmlMarkers = [
+    '<script class="options">',
+    '__RequestVerificationToken',
+    '<!DOCTYPE',
+    '<html',
+    '<HTML',
+    '<title>Sign in to your account</title>',
+    'oauth',
+    'login-form',
+    'sign in'
+  ];
+
+  const contentLower = content.toLowerCase();
+  const hasHtmlMarker = htmlMarkers.some(marker =>
+    contentLower.includes(marker.toLowerCase())
+  );
+
+  if (hasHtmlMarker) {
+    logger.error('[ADO Client] HTML response detected', {
+      context,
+      contentPreview: content.substring(0, 200)
+    });
+
+    throw new Error(
+      `Azure DevOps returned HTML login page. Authentication failed. ` +
+      `Check ADO_PAT, ADO_ORG_URL, and ensure all parameters (org, project, repo, file) are defined. ` +
+      `Context: ${context}`
+    );
+  }
+}
 
 /**
  * Initialize connection to Azure DevOps
@@ -21,15 +62,26 @@ export function initializeAdoConnection(): azdev.WebApi {
   const orgUrl = process.env.ADO_ORG_URL;
   const pat = process.env.ADO_PAT;
 
-
   if (!orgUrl || !pat) {
     throw new Error('ADO_ORG_URL and ADO_PAT environment variables are required');
+  }
+
+  // Validate PAT format (Azure DevOps PATs are typically 52 characters)
+  if (pat.length < 20) {
+    throw new Error('ADO_PAT appears invalid (must be at least 20 characters)');
+  }
+
+  // Validate orgUrl format
+  if (!orgUrl.startsWith('https://')) {
+    throw new Error('ADO_ORG_URL must be a valid https:// URL');
   }
 
   const authHandler = azdev.getPersonalAccessTokenHandler(pat);
   connection = new azdev.WebApi(orgUrl, authHandler);
 
-  logger.info('Azure DevOps connection initialized', { orgUrl });
+  logger.info('[ADO Client] Azure DevOps connection initialized', { orgUrl });
+  console.log(`[ADO Client] Azure DevOps connection initialized for: ${orgUrl}`);
+
   return connection;
 }
 
@@ -53,10 +105,18 @@ function getConnection(): azdev.WebApi {
  */
 export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
   try {
-    logger.info("Fetching PR metadata", { prId });
+    // Validate parameters
+    if (!prId || prId === undefined || prId === null) {
+      throw new Error('prId parameter is invalid or undefined');
+    }
+
+    logger.info("[ADO Client] fetchPRMetadata called", { prId });
 
     const conn = getConnection();
     const gitApi: GitApi = await conn.getGitApi();
+
+    // Log API call
+    logger.info("[ADO Client] Calling gitApi.getPullRequestById", { prId });
 
     // Fetch PR by ID (project is optional if connection already scoped)
     const pr = await gitApi.getPullRequestById(prId);
@@ -84,18 +144,34 @@ export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
       branchName: sourceBranch.split('/').pop() ?? "",
     };
 
-    logger.info("PR metadata fetched successfully", {
+    logger.info("[ADO Client] PR metadata fetched successfully", {
       prId,
       title: metadata.title
     });
 
     return metadata;
   } catch (error) {
-    logger.error("Failed to fetch PR metadata", {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error("[ADO Client] Failed to fetch PR metadata", {
       prId,
-      error: String(error)
+      error: errorMessage
     });
-    throw new Error(`Failed to fetch metadata for PR ${prId}: ${error}`);
+
+    // Provide clearer error messages
+    if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+      throw new Error(`Azure DevOps authentication failed. Check ADO_PAT token. PR: ${prId}`);
+    }
+
+    if (errorMessage.includes('404') || errorMessage.toLowerCase().includes('not found')) {
+      throw new Error(`PR not found in Azure DevOps: PR ${prId}`);
+    }
+
+    if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden')) {
+      throw new Error(`Access denied to Azure DevOps resource. Check PAT permissions. PR: ${prId}`);
+    }
+
+    throw new Error(`Failed to fetch metadata for PR ${prId}: ${errorMessage}`);
   }
 }
 
@@ -175,12 +251,29 @@ export async function fetchPRDiff(
   prId: number
 ): Promise<CodeDiff> {
   try {
-    logger.info('Fetching PR diff', { projectName, repositoryId, prId });
+    // Validate parameters
+    if (!projectName || projectName === 'undefined') {
+      throw new Error('projectName parameter is invalid or undefined');
+    }
+    if (!repositoryId || repositoryId === 'undefined') {
+      throw new Error('repositoryId parameter is invalid or undefined');
+    }
+    if (!prId || prId === undefined || prId === null) {
+      throw new Error('prId parameter is invalid or undefined');
+    }
+
+    logger.info('[ADO Client] fetchPRDiff called', { projectName, repositoryId, prId });
 
     const conn = getConnection();
     const gitApi: GitApi = await conn.getGitApi();
 
     // Step 1: Get PR details to find source and target commits
+    logger.info('[ADO Client] Calling gitApi.getPullRequest', {
+      repositoryId,
+      prId,
+      projectName
+    });
+
     const pr = await gitApi.getPullRequest(repositoryId, prId, projectName);
 
     if (!pr || !pr.lastMergeSourceCommit || !pr.lastMergeTargetCommit) {
@@ -261,11 +354,13 @@ export async function fetchPRDiff(
       try {
         if (changeType === 'delete') {
           // For deleted files, fetch old content only
-          logger.debug("Fetching olditem", {
-          filePath,
-          commitId: targetCommitId,
-          descriptor: targetDescriptor
-        });
+          logger.info("[ADO Client] Fetching file content for deleted file", {
+            filePath,
+            repositoryId,
+            projectName,
+            commitId: targetCommitId
+          });
+
           const oldItem = await gitApi.getItem(
             repositoryId,
             filePath,
@@ -278,16 +373,24 @@ export async function fetchPRDiff(
             targetDescriptor // versionDescriptor - target (before PR)
           );
 
+          if (!oldItem) {
+            throw new Error(`Azure DevOps returned no content for file: ${filePath}`);
+          }
+
+          // Detect HTML response
+          detectHtmlResponse(oldItem.content, `getItem for deleted file ${filePath}`);
+
           const oldContent = oldItem.content || '[Binary or empty file]';
           linesDeleted = oldContent.split('\n').length;
           diffContent = `--- a/${filePath}\n+++ /dev/null\n${oldContent.split('\n').map(line => `- ${line}`).slice(0, 50).join('\n')}`;
 
         } else if (changeType === 'add') {
           // For added files, fetch new content only
-          logger.debug("Fetching newitem", {
+          logger.info("[ADO Client] Fetching file content for added file", {
             filePath,
-            commitId: sourceCommitId,
-            descriptor: sourceDescriptor
+            repositoryId,
+            projectName,
+            commitId: sourceCommitId
           });
 
           const newItem = await gitApi.getItem(
@@ -302,26 +405,39 @@ export async function fetchPRDiff(
             sourceDescriptor // versionDescriptor - source (after PR)
           );
 
+          if (!newItem) {
+            throw new Error(`Azure DevOps returned no content for file: ${filePath}`);
+          }
+
+          // Detect HTML response
+          detectHtmlResponse(newItem.content, `getItem for added file ${filePath}`);
+
           const newContent = newItem.content || '[Binary or empty file]';
           linesAdded = newContent.split('\n').length;
           diffContent = `--- /dev/null\n+++ b/${filePath}\n${newContent.split('\n').map(line => `+ ${line}`).slice(0, 50).join('\n')}`;
 
         } else {
-          logger.info("Fetching bot old and newitem", {
-          filePath,
-          commitId: targetCommitId,
-          descriptor: targetDescriptor
-        });
           // For edited files, fetch both old and new content
+          logger.info("[ADO Client] Fetching file content for edited file", {
+            filePath,
+            repositoryId,
+            projectName,
+            sourceCommitId,
+            targetCommitId
+          });
+
           const [oldItem, newItem] = await Promise.all([
             gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, targetDescriptor),
-            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceDescriptor),
-            logger.debug("getItem response", {
-            filePath,
-            commitId: targetCommitId,
-            item: sourceDescriptor
-          }),
+            gitApi.getItem(repositoryId, filePath, projectName, undefined, undefined, undefined, undefined, undefined, sourceDescriptor)
           ]);
+
+          if (!oldItem || !newItem) {
+            throw new Error(`Azure DevOps returned no content for file: ${filePath}`);
+          }
+
+          // Detect HTML response in both old and new content
+          detectHtmlResponse(oldItem.content, `getItem for edited file ${filePath} (old version)`);
+          detectHtmlResponse(newItem.content, `getItem for edited file ${filePath} (new version)`);
 
           const oldContent = oldItem.content || '';
           const newContent = newItem.content || '';
@@ -372,13 +488,34 @@ export async function fetchPRDiff(
     };
 
   } catch (error) {
-    logger.error('Failed to fetch PR diff', {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('[ADO Client] Failed to fetch PR diff', {
       projectName,
       repositoryId,
       prId,
-      error: String(error)
+      error: errorMessage
     });
-    throw new Error(`Failed to fetch diff for PR ${prId}: ${error}`);
+
+    // Provide clearer error messages based on error type
+    if (errorMessage.includes('HTML login page')) {
+      throw error; // Re-throw HTML detection errors as-is
+    }
+
+    if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+      throw new Error(`Azure DevOps authentication failed. Check ADO_PAT token. PR: ${prId}`);
+    }
+
+    if (errorMessage.includes('404') || errorMessage.toLowerCase().includes('not found')) {
+      throw new Error(`PR or file not found in Azure DevOps: PR ${prId}. Repo: ${repositoryId}, Project: ${projectName}`);
+    }
+
+    if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden')) {
+      throw new Error(`Access denied to Azure DevOps resource. Check PAT permissions. PR: ${prId}`);
+    }
+
+    // Generic error with context
+    throw new Error(`Failed to fetch diff for PR ${prId}: ${errorMessage}. Repo: ${repositoryId}, Project: ${projectName}`);
   }
 }
 
@@ -478,7 +615,22 @@ export async function createTaskWorkItem(
   prMetadata: PRMetadata
 ): Promise<number> {
   try {
-    logger.info('Creating task work item', { projectName, prId: prMetadata.prId });
+    // Validate parameters
+    if (!projectName || projectName === 'undefined') {
+      throw new Error('projectName parameter is invalid or undefined');
+    }
+    if (!taskOutput) {
+      throw new Error('taskOutput parameter is required');
+    }
+    if (!prMetadata || !prMetadata.projectId || !prMetadata.repositoryId) {
+      throw new Error('prMetadata is missing required fields (projectId, repositoryId)');
+    }
+
+    logger.info('[ADO Client] createTaskWorkItem called', {
+      projectName,
+      prId: prMetadata.prId,
+      title: taskOutput.title
+    });
 
     const conn = getConnection();
     const witApi: WorkItemTrackingApi = await conn.getWorkItemTrackingApi();
@@ -544,12 +696,24 @@ export async function createTaskWorkItem(
     return workItem.id;
 
   } catch (error) {
-    logger.error('Failed to create work item', {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('[ADO Client] Failed to create work item', {
       projectName,
       prId: prMetadata.prId,
-      error: String(error)
+      error: errorMessage
     });
-    throw new Error(`Failed to create work item: ${error}`);
+
+    // Provide clearer error messages
+    if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+      throw new Error(`Azure DevOps authentication failed. Check ADO_PAT token.`);
+    }
+
+    if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden')) {
+      throw new Error(`Access denied to Azure DevOps. Check PAT permissions for work item creation.`);
+    }
+
+    throw new Error(`Failed to create work item: ${errorMessage}`);
   }
 }
 
@@ -561,7 +725,15 @@ export async function createFallbackWorkItem(
   prMetadata: PRMetadata
 ): Promise<number> {
   try {
-    logger.info('Creating fallback work item', { projectName, prId: prMetadata.prId });
+    // Validate parameters
+    if (!projectName || projectName === 'undefined') {
+      throw new Error('projectName parameter is invalid or undefined');
+    }
+    if (!prMetadata || !prMetadata.projectId || !prMetadata.repositoryId) {
+      throw new Error('prMetadata is missing required fields (projectId, repositoryId)');
+    }
+
+    logger.info('[ADO Client] createFallbackWorkItem called', { projectName, prId: prMetadata.prId });
 
     const conn = getConnection();
     const witApi: WorkItemTrackingApi = await conn.getWorkItemTrackingApi();
@@ -635,12 +807,24 @@ export async function createFallbackWorkItem(
     return workItem.id;
 
   } catch (error) {
-    logger.error('Failed to create fallback work item', {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('[ADO Client] Failed to create fallback work item', {
       projectName,
       prId: prMetadata.prId,
-      error: String(error)
+      error: errorMessage
     });
-    throw new Error(`Failed to create fallback work item: ${error}`);
+
+    // Provide clearer error messages
+    if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+      throw new Error(`Azure DevOps authentication failed. Check ADO_PAT token.`);
+    }
+
+    if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden')) {
+      throw new Error(`Access denied to Azure DevOps. Check PAT permissions for work item creation.`);
+    }
+
+    throw new Error(`Failed to create fallback work item: ${errorMessage}`);
   }
 }
 
@@ -655,7 +839,21 @@ export async function postPRComment(
 
 ): Promise<void> {
   try {
-    logger.info('Posting PR comment', { projectName, prId, workItemId });
+    // Validate parameters
+    if (!projectName || projectName === 'undefined') {
+      throw new Error('projectName parameter is invalid or undefined');
+    }
+    if (!repositoryId || repositoryId === 'undefined') {
+      throw new Error('repositoryId parameter is invalid or undefined');
+    }
+    if (!prId || prId === undefined || prId === null) {
+      throw new Error('prId parameter is invalid or undefined');
+    }
+    if (!workItemId || workItemId === undefined || workItemId === null) {
+      throw new Error('workItemId parameter is invalid or undefined');
+    }
+
+    logger.info('[ADO Client] postPRComment called', { projectName, repositoryId, prId, workItemId });
 
     const conn = getConnection();
     const gitApi: GitApi = await conn.getGitApi();
@@ -686,12 +884,24 @@ export async function postPRComment(
     logger.info('PR comment posted successfully', { projectName, prId, workItemId });
 
   } catch (error) {
-    logger.error('Failed to post PR comment', {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    logger.error('[ADO Client] Failed to post PR comment', {
       projectName,
       prId,
       workItemId,
-      error: String(error)
+      error: errorMessage
     });
-    throw new Error(`Failed to post PR comment: ${error}`);
+
+    // Provide clearer error messages
+    if (errorMessage.includes('401') || errorMessage.toLowerCase().includes('unauthorized')) {
+      throw new Error(`Azure DevOps authentication failed. Check ADO_PAT token.`);
+    }
+
+    if (errorMessage.includes('403') || errorMessage.toLowerCase().includes('forbidden')) {
+      throw new Error(`Access denied to Azure DevOps. Check PAT permissions for posting comments.`);
+    }
+
+    throw new Error(`Failed to post PR comment: ${errorMessage}`);
   }
 }
