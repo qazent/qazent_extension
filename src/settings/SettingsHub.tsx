@@ -145,8 +145,9 @@ const loadContext = async (repoId: string) => {
       setContextText("");
     } else {
       setErrorMessage(
-        "Failed to load context: " +
-          (err instanceof Error ? err.message : JSON.stringify(err))
+      `We couldn't load your saved context.  
+    Please try again in a moment.`
+
       );
     }
   } finally {
@@ -238,8 +239,7 @@ const handleSave = async () => {
     setTimeout(() => setSuccessMessage(null), 3000);
   } catch (err) {
     setErrorMessage(
-      "Failed to save context. Please try again! " +
-        JSON.stringify(err, Object.getOwnPropertyNames(err))
+      "Failed to save context. Please try again!"
     );
   } finally {
     setIsSaving(false);

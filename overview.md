@@ -16,7 +16,7 @@ Transform your pull request workflow with AI‑powered test case generation that
 1. **Open a Pull Request**  
    Navigate to any pull request in Azure Repos to activate the PR Assistant tab.
 
-   ![PR Assistant Tab](https://ibb.co/gFvMrJkB)
+   
 
 2. **Generate Work Items Automatically**  
    The assistant instantly creates structured work items containing:
@@ -37,7 +37,8 @@ Transform your pull request workflow with AI‑powered test case generation that
 
    ![Where Do I Enter Custom Context?](https://ibb.co/qGWsFYW)
 
-   ![Custom Context Overview](https://ibb.co/YFc1Yy2g)  
+   ![Custom Context Overview](https://ibb.co/YFc1Yy2g)
+     
    ![Repository-Specific Context](https://ibb.co/ZzVqNd1w)  
 
 4. **Create Work Items**  

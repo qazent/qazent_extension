@@ -2,32 +2,35 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.42",
+  "version": "1.2.46",
   "publisher": "QAZent",
+  "description": "AI-powered PR test case generation assistant",
   "targets": [
     {
       "id": "Microsoft.VisualStudio.Services"
     }
   ],
-  "description": "AI-powered PR test case generation assistant",
+  "icons": {
+    "default": "128x128.png"
+  },
+  "branding": {
+        "color": "#00BFFF"
+    },
+
   "categories": ["Azure Repos"],
-  "tags": ["pull-request", "testing", "ai"],
+  
+  "tags": ["pull-request", "testing", "ai", "test", "utility", "automatic", "agile"],
+  
   "content": {
     "details": {
       "path": "overview.md"
+    },
+    "license":{
+      "path":"license-terms.md"
     }
   },
   "contributions": [
-    {
-      "id": "pr-assistant-tab",
-      "type": "ms.vss-web.tab",
-      "targets": ["ms.vss-code-web.pr-tabs"],
-      "properties": {
-        "name": "QAZent PR Assistant",
-        "uri": "dist/hub.html",
-        "order": 100,
-        "backendUrl": "https://rathely-rubidic-katelin.ngrok-free.dev/"      }
-    },
+
     {
       "id": "ai-context-settings-hub",
       "type": "ms.vss-web.hub",

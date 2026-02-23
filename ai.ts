@@ -156,7 +156,7 @@ function safeParseAIResponse(response: string) {
 /**
  * Validate Task work item output from AI
  */
-function validateTaskOutput(data: any): TaskWorkItemOutput {
+export function validateTaskOutput(data: any): TaskWorkItemOutput {
   // Check title field
   if (!data.title || typeof data.title !== 'string' || data.title.trim() === '') {
     throw new Error('Missing required field: title');
@@ -213,7 +213,10 @@ export async function generateTestCases(
         ],
         config: {
           temperature: 1,
-          maxOutputTokens: 16384, // Increased from 4096; comprehensive 11-section test cases require ~5000-7000 tokens
+          maxOutputTokens: 16384, // Increased from 4096; comprehensive 11-section test cases require ~5000-7000 tokens 
+          // Maximum input tokens: 1,048,576
+          // Maximum output tokens: 65,535 (default)
+
           responseMimeType: 'application/json'
         }
       });
