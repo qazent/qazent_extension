@@ -1,5 +1,5 @@
 /**
- * Structured JSON logging utility with sensitive data filtering
+ * Structured JSON logging utility with safety guards
  */
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
@@ -11,70 +11,95 @@ interface LogEntry {
   context?: Record<string, unknown>;
 }
 
-const SENSITIVE_KEYS = ['password', 'token', 'secret', 'apikey', 'pat', 'key'];
-
 /**
- * Check if a key name contains sensitive information
+ * Maximum allowed size for context JSON before redaction
  */
-function isSensitiveKey(key: string): boolean {
-  const lowerKey = key.toLowerCase();
-  return SENSITIVE_KEYS.some(sensitive => lowerKey.includes(sensitive));
-}
+const MAX_CONTEXT_LENGTH = 100_000; // 100 KB
 
+const MAX_FIELD_LENGTH = 20_000; // 20 KB per field
 /**
- * Recursively filter sensitive data from objects
+ * Sanitizes context to prevent leaking DOM, window, VSS config, or huge blobs.
  */
-function filterSensitiveData(obj: unknown): unknown {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
+function sanitizeContext(context?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!context) return undefined;
 
-  if (Array.isArray(obj)) {
-    return obj.map(item => filterSensitiveData(item));
-  }
+  const safe: Record<string, unknown> = {};
 
-  if (typeof obj === 'object') {
-    const filtered: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (isSensitiveKey(key)) {
-        filtered[key] = '[REDACTED]';
-      } else {
-        filtered[key] = filterSensitiveData(value);
-      }
+  for (const [key, value] of Object.entries(context)) {
+    // Prevent DOM/window leaks
+    if (key.toLowerCase().includes('window') || key.toLowerCase().includes('document')) {
+      safe[key] = '[REDACTED: DOM object]';
+      continue;
     }
-    return filtered;
+
+    // Prevent VSS config leaks
+    if (key.toLowerCase().includes('vss') || key.toLowerCase().includes('config')) {
+      safe[key] = '[REDACTED: VSS configuration]';
+      continue;
+    }
+
+    // Prevent logging entire HTML pages
+    if (typeof value === 'string' && value.length > MAX_CONTEXT_LENGTH) {
+      safe[key] = '[REDACTED: Large string content]';
+      continue;
+    }
+
+    // Prevent logging huge fields (like fetch responses, DOM nodes, etc.)
+    if (typeof value === 'string' && value.length > MAX_FIELD_LENGTH) {
+      safe[key] = '[REDACTED: Large field content]';
+      continue;
+    }
+    try {
+      const json = JSON.stringify(value);
+      if (json.length > MAX_CONTEXT_LENGTH) {
+        safe[key] = '[REDACTED: Large object]';
+        continue;
+      }
+      safe[key] = value;
+    } catch {
+      safe[key] = '[REDACTED: Unserializable object]';
+    }
   }
 
-  return obj;
+  return safe;
 }
 
 /**
  * Create a log entry
  */
-function createLogEntry(level: LogLevel, message: string, context?: Record<string, unknown>): LogEntry {
-  const entry: LogEntry = {
-    timestamp: new Date().toISOString(),
+export function createLogEntry(
+  level: LogLevel,
+  message: string,
+  context?: Record<string, unknown>
+): LogEntry {
+  return {
+    timestamp: new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' }),
     level,
-    message
+    message,
+    context: sanitizeContext(context)
   };
-
-  if (context) {
-    entry.context = filterSensitiveData(context) as Record<string, unknown>;
-  }
-
-  return entry;
 }
 
 /**
  * Write log entry to appropriate stream
  */
-function writeLog(entry: LogEntry): void {
-  const output = JSON.stringify(entry);
-
-  if (entry.level === 'error' || entry.level === 'warn') {
-    process.stderr.write(output + '\n');
-  } else {
-    process.stdout.write(output + '\n');
+export function writeLog(entry: LogEntry): void {
+  try {
+    const output = JSON.stringify(entry);
+    if (entry.level === 'error' || entry.level === 'warn') {
+      process.stderr.write(output + '\n');
+    } else {
+      process.stdout.write(output + '\n');
+    }
+  } catch {
+    // Fallback if JSON serialization fails
+    const fallback = {
+      timestamp: entry.timestamp,
+      level: entry.level,
+      message: entry.message,
+      context: '[REDACTED: Failed to serialize context]'
+    };
+    process.stderr.write(JSON.stringify(fallback) + '\n');
   }
 }
 
@@ -82,24 +107,21 @@ function writeLog(entry: LogEntry): void {
  * Log info level message
  */
 export function info(message: string, context?: Record<string, unknown>): void {
-  const entry = createLogEntry('info', message, context);
-  writeLog(entry);
+  writeLog(createLogEntry('info', message, context));
 }
 
 /**
  * Log warning level message
  */
 export function warn(message: string, context?: Record<string, unknown>): void {
-  const entry = createLogEntry('warn', message, context);
-  writeLog(entry);
+  writeLog(createLogEntry('warn', message, context));
 }
 
 /**
  * Log error level message
  */
 export function error(message: string, context?: Record<string, unknown>): void {
-  const entry = createLogEntry('error', message, context);
-  writeLog(entry);
+  writeLog(createLogEntry('error', message, context));
 }
 
 /**
@@ -107,7 +129,6 @@ export function error(message: string, context?: Record<string, unknown>): void 
  */
 export function debug(message: string, context?: Record<string, unknown>): void {
   if (process.env.DEBUG === 'true') {
-    const entry = createLogEntry('debug', message, context);
-    writeLog(entry);
+    writeLog(createLogEntry('debug', message, context));
   }
 }

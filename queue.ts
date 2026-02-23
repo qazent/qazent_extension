@@ -7,6 +7,7 @@ import { QueueJob, QueueStatus, WebhookPayload, PRMetadata } from './types';
 import * as logger from './logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
+import { fetchPRDiff } from './src/utils/fetchPRdiff';
 
 const queue: QueueJob[] = [];
 let isProcessing = false;
@@ -51,7 +52,7 @@ async function processJob(job: QueueJob): Promise<void> {
   try {
     // Step 1: Fetch PR diff from Azure DevOps
     logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId });
-    const codeDiff = await adoClient.fetchPRDiff(
+    const codeDiff = await fetchPRDiff(
       prMetadata.projectName,
       prMetadata.repositoryId,
       prMetadata.prId
