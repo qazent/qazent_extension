@@ -200,6 +200,8 @@ export async function generateTestCases(
       logger.debug('Sending prompt to AI', {
         systemPromptLength: sysPrompt.length,
         userPromptLength: userPrompt.length,
+        totalPromptLength: sysPrompt.length + userPrompt.length,
+        maxOutputTokens: 16384,
         attempt
       });
 
@@ -211,7 +213,7 @@ export async function generateTestCases(
         ],
         config: {
           temperature: 1,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 16384, // Increased from 4096; comprehensive 11-section test cases require ~5000-7000 tokens
           responseMimeType: 'application/json'
         }
       });
@@ -226,6 +228,8 @@ export async function generateTestCases(
         prId: prMetadata.prId,
         responseLength: text?.length || 0,
         textPreview: text?.substring(0, 100) || 'null',
+        textEnding: text?.substring(text.length - 100) || 'null',
+        hasCompleteJSON: text?.endsWith('}'),
         attempt
       });
 
@@ -249,10 +253,27 @@ export async function generateTestCases(
       // Validate task output
       const taskOutput = validateTaskOutput(parsed);
 
+      // Validate response completeness to detect truncation
+      const htmlLength = taskOutput.htmlDescription.length;
+      const hasAllSections = taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>');
+
+      if (htmlLength < 1000 || !hasAllSections) {
+        logger.warn('AI response appears truncated', {
+          prId: prMetadata.prId,
+          htmlLength,
+          hasAllSections,
+          attempt
+        });
+        throw new Error('AI response truncated - missing sections');
+      }
+
       logger.info("Task work item output generated successfully", {
         prId: prMetadata.prId,
         title: taskOutput.title,
         htmlLength: taskOutput.htmlDescription.length,
+        hasPurpose: taskOutput.htmlDescription.includes('<h2>Purpose</h2>'),
+        hasAutomationNotes: taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>'),
+        sectionCount: (taskOutput.htmlDescription.match(/<h2>/g) || []).length,
         attempt
       });
 
