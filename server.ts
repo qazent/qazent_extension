@@ -693,53 +693,26 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
 
-  // Webhook endpoint (PROTECTED - authentication + rate limiting)
-  if (normalizedUrl === '/webhook' && method === 'POST') {
-    // Check content type
-    const contentType = req.headers['content-type'];
 
-    if (!contentType || !contentType.includes('application/json')) {
-      logger.warn('Invalid content type', { contentType });
+// Webhook endpoint (PUBLIC + rate limiting)
+if (normalizedUrl === '/webhook' && method === 'POST') {
+  const contentType = req.headers['content-type'];
 
-      const errorResponse: ErrorResponse = {
-        error: 'Invalid content type',
-        details: 'Expected application/json'
-      };
+  if (!contentType || !contentType.includes('application/json')) {
+    logger.warn('Invalid content type', { contentType });
 
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(errorResponse));
-      return;
-    }
-
-    await applyMiddleware(rateLimitWebhook, handleWebhook)(req, res);
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: 'Invalid content type',
+      details: 'Expected application/json'
+    }));
     return;
   }
 
-  // Wrong method for webhook
-  if (normalizedUrl === '/webhook' && method !== 'POST') {
-    logger.warn('Method not allowed', { method, url: normalizedUrl });
-
-    const errorResponse: ErrorResponse = {
-      error: 'Method not allowed',
-      details: 'Only POST requests are accepted'
-    };
-
-    res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(errorResponse));
-    return;
-  }
-
-  // 404 for all other routes
-  logger.warn('Route not found', { method, url, normalizedUrl, origin, headers: req.headers, statusCode: res.statusCode });
-
-  const errorResponse: ErrorResponse = {
-    error: 'Not found',
-    details: `Route ${normalizedUrl} or URL ${url} not found`
-  };
-
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(errorResponse));
-}
+  await rateLimitWebhook(req, res, () => handleWebhook(req, res));
+  return;
+      } // closes public webhook
+  } // closes handleRequest()
 
 /**
  * Start the server
