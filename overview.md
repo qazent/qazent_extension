@@ -1,4 +1,4 @@
-# PR Assistant – AI‑Powered Test Case Generation
+# PR Assistant – AI‑Powered Automatic Test Case Generation
 
 Transform your pull request workflow with AI‑powered test case generation that ensures comprehensive testing coverage. PR Assistant analyzes your code changes and automatically generates structured, thorough test cases, helping development and QA teams maintain high quality standards.
 
