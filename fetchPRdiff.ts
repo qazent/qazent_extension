@@ -1,9 +1,9 @@
 import fetch from "node-fetch";
-import { CodeDiff, DiffChange, } from '../../types';
-import * as logger from '../../logger';
-import {generateUnifiedDiff} from "../../ado-client";
+import { CodeDiff, DiffChange, } from './types';
+import * as logger from './logger';
+import {generateUnifiedDiff} from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
-import { getConnection, fetchPRDiffFallback } from "../../ado-client"; 
+import { getConnection, fetchPRDiffFallback } from "./ado-client";
 
 
 const AZDO_ORG = process.env.AZURE_DEVOPS_ORG!;
@@ -86,7 +86,7 @@ export async function fetchPRDiff(
       logger.warn("PR missing commit information, falling back to iteration changes", { prId });
       // You can still keep your existing fallback if you want:
       return fetchPRDiffFallback(projectName, repositoryId, prId, gitApi);
-  
+
     }
 
     const sourceCommitId = pr.lastMergeSourceCommit.commitId!;
@@ -271,6 +271,8 @@ export async function fetchPRDiff(
     return {
       changes: diffChanges,
       totalChanges: changes.changeEntries.length,
+      sourceCommitId,
+      targetCommitId,
     };
   } catch (error) {
     logger.error("Failed to fetch PR diff", {

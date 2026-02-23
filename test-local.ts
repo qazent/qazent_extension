@@ -9,7 +9,7 @@ import { WebhookPayload, PRMetadata, CodeDiff } from './types';
 import * as logger from './logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
-import { fetchPRDiff } from './src/utils/fetchPRdiff';
+import { fetchPRDiff } from './fetchPRdiff';
 
 // Load environment variables
 dotenv.config();

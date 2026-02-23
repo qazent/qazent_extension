@@ -7,7 +7,7 @@ import { QueueJob, QueueStatus, WebhookPayload, PRMetadata } from './types';
 import * as logger from './logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
-import { fetchPRDiff } from './src/utils/fetchPRdiff';
+import { fetchPRDiff } from './fetchPRdiff';
 
 const queue: QueueJob[] = [];
 let isProcessing = false;
