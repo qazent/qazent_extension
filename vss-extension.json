@@ -45,7 +45,7 @@
       "addressable": true
     },
     {
-      "path": "public",
+      "public": "false",
       "addressable": true 
     }
   ],
