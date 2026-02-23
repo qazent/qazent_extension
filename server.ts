@@ -1,11 +1,13 @@
 /**
  * HTTP webhook server for Azure DevOps PR events
+ *
+ * Security: All endpoints (except /health) require Azure DevOps OAuth token validation
  */
 
 import * as http from 'http';
 import * as dotenv from 'dotenv';
 
-import { WebhookPayload, WebhookResponse, ErrorResponse, HealthResponse, PRMetadata, TaskWorkItemOutput } from './types';
+import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
@@ -13,6 +15,14 @@ import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { getConnection } from './ado-client';
+import { createAuthMiddleware, AuthenticatedRequest } from './src/middleware/authenticate';
+import {
+  rateLimitGenerateTests,
+  rateLimitCreateWorkItem,
+  rateLimitPostPRComment,
+  rateLimitWebhook,
+  rateLimitHealth
+} from './src/middleware/rateLimiter';
 
 // Load environment variables
 dotenv.config();
@@ -30,6 +40,9 @@ export async function getGitApi(): Promise<GitApi> {
 
 /**
  * Validate required environment variables
+ *
+ * Security note: For production, migrate ADO_PAT and GEMINI_API_KEY to Azure Key Vault
+ * PAT and API keys should never be stored in App Service configuration
  */
 function validateEnvironment(): void {
   const required = ['ADO_ORG_URL', 'ADO_PAT', 'GEMINI_API_KEY'];
@@ -93,8 +106,9 @@ function validatePayload(payload: any): { valid: boolean; error?: string } {
 
 /**
  * Handle webhook POST request
+ * Security: User identity verified by authentication middleware
  */
-async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
   // Read request body
   let body = '';
 
@@ -109,7 +123,10 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
 
       logger.info('Webhook received', {
         eventType: payload.eventType,
-        prId: payload.resource?.pullRequestId
+        prId: payload.resource?.pullRequestId,
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
       });
 
       // Validate payload
@@ -168,28 +185,30 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
 
 /**
  * Handle health check GET request
+ * Public endpoint (no authentication required) for monitoring
+ * Sensitive queue information removed for security
  */
 function handleHealth(_req: http.IncomingMessage, res: http.ServerResponse): void {
   const uptime = Math.floor((Date.now() - startTime) / 1000);
-  const queueStatus = queue.getQueueStatus();
 
-  const response: HealthResponse = {
+  // Security: Don't expose internal queue details publicly
+  const response = {
     status: 'healthy',
     uptime,
-    queue: queueStatus,
     timestamp: new Date().toISOString()
   };
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(response));
 
-  logger.debug('Health check', { uptime, queueStatus });
+  logger.debug('Health check', { uptime });
 }
 
 /**
  * Handle generate tests POST request
+ * Security: User identity verified by authentication middleware
  */
-async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
   let body = '';
 
   req.on('data', chunk => {
@@ -229,7 +248,10 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
         projectName: payload.projectName,
         repositoryId: payload.repositoryId,
         hasCustomContext: !!customContext,
-        contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext)
+        contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext),
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
       });
 
       // Fetch PR diff from utils
@@ -296,8 +318,9 @@ async function handleGenerateTests(req: http.IncomingMessage, res: http.ServerRe
 
 /**
  * Handle create work item POST request
+ * Security: User identity verified by authentication middleware
  */
-async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
   let body = '';
 
   req.on('data', chunk => {
@@ -321,7 +344,10 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
 
       logger.info('Create work item request', {
         prId: payload.prId,
-        projectName: payload.projectName
+        projectName: payload.projectName,
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
       });
 
       // Create minimal PR metadata for work item creation
@@ -388,8 +414,9 @@ async function handleCreateWorkItem(req: http.IncomingMessage, res: http.ServerR
 
 /**
  * Handle post PR comment POST request
+ * Security: User identity verified by authentication middleware
  */
-async function handlePostPRComment(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
   let body = '';
 
   req.on('data', chunk => {
@@ -414,7 +441,10 @@ async function handlePostPRComment(req: http.IncomingMessage, res: http.ServerRe
       logger.info('Post PR comment request', {
         prId: payload.prId,
         projectName: payload.projectName,
-        workItemId: payload.workItemId
+        workItemId: payload.workItemId,
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
       });
 
       // Call backend function to post comment
@@ -456,43 +486,120 @@ async function handlePostPRComment(req: http.IncomingMessage, res: http.ServerRe
 
 /**
  * Apply CORS headers
+ * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
 function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   logger.info("CORS: Incoming origin", { origin });
 
-  // Allow Azure DevOps origins and localhost for development
-  const allowedOrigins = [
+  // Base allowed origins for production
+  const baseOrigins = [
     'https://dev.azure.com',
     'https://visualstudio.com',
-    'https://qazent.azurewebsites.net', // For Azure Functions if used
-    'https://rathely-rubidic-katelin.ngrok-free.dev', // For ngrok tunnels during development
-    'https://qazent.gallerycdn.vsassets.io' // For Azure DevOps hosted extensions
+    'https://qazent.azurewebsites.net',
+    'https://qazent.gallerycdn.vsassets.io'
   ];
 
-  // Allow localhost for development
-  if (origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'))) {
-    logger.info("CORS: Allowing localhost origin", { origin });
-    allowedOrigins.push(origin);
-  }
+  // Add development origins only in development mode
+  const allowedOrigins = [
+    ...baseOrigins,
+    ...(process.env.NODE_ENV === 'development' ? [
+      'http://localhost:3000',
+      'https://rathely-rubidic-katelin.ngrok-free.dev',
+      process.env.NGROK_URL
+    ].filter(Boolean) as string[] : [])
+  ];
 
-  // Check if origin is allowed
-  const allowOrigin = origin && allowedOrigins.some(allowed =>
-    origin === allowed || origin.endsWith(allowed)
-  ) ? origin : allowedOrigins[0];
+  // Security: Only exact matches allowed (no wildcard matching or endsWith)
+  const allowOrigin = origin && allowedOrigins.includes(origin)
+    ? origin
+    : allowedOrigins[0];
 
   res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true'); // Required for Authorization header
   res.setHeader('Access-Control-Max-Age', '86400');
 
-  logger.info("CORS: Headers applied");
+  if (origin && !allowedOrigins.includes(origin)) {
+    logger.warn("CORS: Origin not in allowed list", { origin, allowedOrigins });
+  } else {
+    logger.info("CORS: Headers applied", { origin, allowOrigin });
+  }
+}
 
+/**
+ * Audit logging: Log all authenticated requests
+ */
+function logAuthenticatedRequest(
+  req: AuthenticatedRequest,
+  res: http.ServerResponse,
+  startTime: number
+): void {
+  const duration = Date.now() - startTime;
+
+  // Capture status code by hooking into writeHead
+  const originalWriteHead = res.writeHead.bind(res);
+  let statusCode = 200;
+
+  res.writeHead = function(code: number, ...args: any[]): http.ServerResponse {
+    statusCode = code;
+    return originalWriteHead(code, ...args);
+  };
+
+  // Log on response finish
+  res.on('finish', () => {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      level: statusCode >= 400 ? 'WARN' : 'INFO',
+      type: 'API_REQUEST',
+      userId: req.user?.id || 'anonymous',
+      userDisplayName: req.user?.displayName || 'Anonymous',
+      method: req.method,
+      path: req.url,
+      statusCode,
+      duration,
+      ip: req.socket.remoteAddress,
+      userAgent: req.headers['user-agent'],
+      requestId: req.requestId
+    };
+
+    if (statusCode >= 400) {
+      logger.warn('Request completed with error', logData);
+    } else {
+      logger.info('Request completed successfully', logData);
+    }
+  });
+}
+
+/**
+ * Helper to apply middleware chain: rate limiting + authentication + audit logging + handler
+ */
+function applyMiddleware(
+  rateLimiter: (req: http.IncomingMessage, res: http.ServerResponse, next: () => void) => void,
+  handler: (req: AuthenticatedRequest, res: http.ServerResponse) => Promise<void>
+) {
+  return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    const startTime = Date.now();
+
+    // Apply rate limiting first
+    rateLimiter(req, res, async () => {
+      // Then apply authentication
+      await createAuthMiddleware(async (authReq: AuthenticatedRequest) => {
+        // Add audit logging
+        logAuthenticatedRequest(authReq, res, startTime);
+
+        // Finally call the handler
+        await handler(authReq, res);
+      })(req, res);
+    });
+  };
 }
 
 /**
  * Main request handler
+ * Security: All endpoints (except /health) protected with authentication
  */
-function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const method = req.method;
   const url = req.url;
   const origin = req.headers.origin;
@@ -518,14 +625,16 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
     return;
   }
 
-  // Health check endpoint
+  // Health check endpoint (PUBLIC - no authentication, only rate limiting)
   if (normalizedUrl === '/health' && method === 'GET') {
     logger.info("Health check hit");
-    handleHealth(req, res);
+    rateLimitHealth(req, res, () => {
+      handleHealth(req, res);
+    });
     return;
   }
 
-  // Generate tests endpoint
+  // Generate tests endpoint (PROTECTED - authentication + rate limiting)
   if (normalizedUrl === '/generate-tests' && method === 'POST') {
     logger.info("POST /generate-tests hit");
 
@@ -544,12 +653,12 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       return;
     }
 
-    logger.info("Calling handleGenerateTests...");
-    handleGenerateTests(req, res);
+    logger.info("Applying authentication and rate limiting...");
+    await applyMiddleware(rateLimitGenerateTests, handleGenerateTests)(req, res);
     return;
   }
 
-  // Create work item endpoint
+  // Create work item endpoint (PROTECTED - authentication + rate limiting)
   if (normalizedUrl === '/create-work-item' && method === 'POST') {
     logger.info("POST /create-work-item hit");
 
@@ -563,11 +672,11 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       return;
     }
 
-    handleCreateWorkItem(req, res);
+    await applyMiddleware(rateLimitCreateWorkItem, handleCreateWorkItem)(req, res);
     return;
   }
 
-  // Post PR comment endpoint
+  // Post PR comment endpoint (PROTECTED - authentication + rate limiting)
   if (normalizedUrl === '/post-pr-comment' && method === 'POST') {
     logger.info("POST /post-pr-comment hit");
 
@@ -579,12 +688,12 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       return;
     }
 
-    handlePostPRComment(req, res);
+    await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
     return;
   }
 
 
-  // Webhook endpoint
+  // Webhook endpoint (PROTECTED - authentication + rate limiting)
   if (normalizedUrl === '/webhook' && method === 'POST') {
     // Check content type
     const contentType = req.headers['content-type'];
@@ -602,7 +711,7 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): voi
       return;
     }
 
-    handleWebhook(req, res);
+    await applyMiddleware(rateLimitWebhook, handleWebhook)(req, res);
     return;
   }
 
