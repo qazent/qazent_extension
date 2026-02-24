@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "ts-node server.ts",
-    "build": "tsc && cpx system-prompt.txt dist && cpx public/**/* dist/public",
+    "build": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist && cpx public/**/* dist/public",
     "build:extension": "webpack --config webpack.config.js --mode production",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version --output-path ./output",
