@@ -5,7 +5,7 @@
  */
 
 import * as http from 'http';
-import * as dotenv from 'dotenv';
+// import * as dotenv from 'dotenv';
 
 import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
@@ -23,7 +23,7 @@ import {
 } from './src/middleware/rateLimiter';
 
 // Load environment variables
-dotenv.config();
+// dotenv.config(); // FOR CLOUD DEPLOYMENT, ENV VARS SHOULD BE SET IN THE APP SERVICE CONFIGURATION, NOT IN A .env FILE
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const startTime = Date.now();

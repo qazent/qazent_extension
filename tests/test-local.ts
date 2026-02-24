@@ -2,17 +2,17 @@
  * Local testing script for PR test case generation
  */
 
-import * as dotenv from 'dotenv';
-import * as fs from 'fs';
-import * as path from 'path';
-import { WebhookPayload, PRMetadata, CodeDiff } from './types';
-import * as logger from './logger';
-import * as adoClient from './ado-client';
-import * as ai from './ai';
-import { fetchPRDiff } from './fetchPRdiff';
+// import * as dotenv from 'dotenv';
+//import * as fs from 'fs';
+//import * as path from 'path';
+//import { WebhookPayload, PRMetadata, CodeDiff } from './types';
+//import * as logger from './logger';
+//import * as adoClient from './ado-client';
+//import * as ai from './ai';
+//import { fetchPRDiff } from './fetchPRdiff';
 
 // Load environment variables
-dotenv.config();
+// dotenv.config();
 
 /**
  * Extract PR metadata from webhook payload

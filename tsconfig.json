@@ -26,9 +26,7 @@
   "include": [
     "src/**/*",
     "*.ts",
-    "*.tsx",
-    "**/*.test.ts",
-    "**/*.test.tsx"
+    "*.tsx"
   ],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx", "jest.config.ts", "webpack.config.js"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx", "jest.config.ts", "webpack.config.js", "tests/**"]
 }
