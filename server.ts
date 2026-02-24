@@ -5,8 +5,6 @@
  */
 
 import * as http from 'http';
-// import * as dotenv from 'dotenv';
-
 import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 import * as queue from './queue';
@@ -22,8 +20,11 @@ import {
   rateLimitHealth
 } from './src/middleware/rateLimiter';
 
-// Load environment variables
-// dotenv.config(); // FOR CLOUD DEPLOYMENT, ENV VARS SHOULD BE SET IN THE APP SERVICE CONFIGURATION, NOT IN A .env FILE
+// Azure diagnostic logging
+console.log('[STARTUP] Current working directory:', process.cwd());
+console.log('[STARTUP] Node version:', process.version);
+console.log('[STARTUP] Environment:', process.env.NODE_ENV || 'not set');
+console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const startTime = Date.now();
@@ -71,6 +72,8 @@ function validateEnvironment(): void {
   if (missing.length > 0) {
     logger.error('Missing required environment variables', { missing });
     console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
+    console.error('On Azure: Set these in Application Settings -> Configuration -> Application settings');
+    console.error('Current working directory:', process.cwd());
     process.exit(1);
   }
 }

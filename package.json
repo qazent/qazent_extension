@@ -4,11 +4,12 @@
   "description": "Generates AI-powered test cases from Azure DevOps PRs",
   "main": "dist/server.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "24.x",
+    "npm": ">=10.0.0"
   },
   "scripts": {
     "dev": "ts-node server.ts",
-    "build": "tsc && cpx system-prompt.txt dist && cpx test-local.ts dist && cpx public/**/* dist/public",
+    "build": "tsc && cpx system-prompt.txt dist && cpx public/**/* dist/public",
     "build:extension": "webpack --config webpack.config.js --mode production",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version --output-path ./output",
@@ -37,7 +38,6 @@
     "azure-devops-extension-sdk": "^4.2.0",
     "azure-devops-node-api": "^12.5.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.0",
     "jsonrepair": "^3.13.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -56,6 +56,7 @@
     "@types/uuid": "^9.0.0",
     "copy-webpack-plugin": "^11.0.0",
     "cpx": "^1.5.0",
+    "dotenv": "^16.4.0",
     "html-webpack-plugin": "^5.5.3",
     "jest": "^30.2.0",
     "jest-dom": "^4.0.0",

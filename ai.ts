@@ -35,14 +35,19 @@ export function loadSystemPrompt(): string {
   }
 
   const promptPath = path.join(process.cwd(), 'system-prompt.txt');
+  console.log('[AI] Loading system prompt from:', promptPath);
 
   try {
     systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+    console.log('[AI] System prompt loaded successfully, length:', systemPrompt.length);
     logger.info('System prompt loaded', { length: systemPrompt.length });
     return systemPrompt;
   } catch (error) {
     logger.error('Failed to load system prompt', { promptPath, error: String(error) });
     console.error(`FATAL: Cannot load system-prompt.txt from ${promptPath}`);
+    console.error('Current working directory:', process.cwd());
+    console.error('Error details:', error);
+    console.error('Ensure system-prompt.txt is in the dist/ folder alongside server.js');
     process.exit(1);
   }
 }
