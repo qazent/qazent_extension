@@ -85,6 +85,7 @@ function clearTokenCache(): void {
 /**
  * Generic helper for backend POST requests with timeout + unified error handling
  * Includes Azure DevOps OAuth token in Authorization header
+ * Includes organization URL in X-Ado-Org-Url header for multi-tenant support
  * Implements auto-retry on 401 errors (token expiration)
  */
 async function postJson<T>(
@@ -100,11 +101,15 @@ async function postJson<T>(
     // Get authentication token
     const token = await getAuthToken();
 
+    // Get organization URL from Azure DevOps SDK
+    const orgUrl = SDK.getHost().uri; // e.g., https://dev.azure.com/myorg
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${token}`,
+        'X-Ado-Org-Url': orgUrl
       },
       body: JSON.stringify(body),
       signal: controller.signal
@@ -138,7 +143,11 @@ async function postJson<T>(
       // Map status codes to user-friendly messages
       switch (response.status) {
         case 400:
-          throw new Error('Invalid request data');
+          // Provide more specific error for missing organization URL
+          if (message.includes('X-Ado-Org-Url') || message.includes('organization')) {
+            throw new Error('Organization information missing. Please refresh the page.');
+          }
+          throw new Error(message || 'Invalid request data');
         case 401:
           throw new Error('Authentication failed. Please refresh the page.');
         case 403:

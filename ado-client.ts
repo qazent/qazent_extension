@@ -9,35 +9,16 @@ import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/
 import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './logger';
 
-let connection: azdev.WebApi | null = null;
-
-
-
 /**
- * Initialize connection to Azure DevOps
+ * Create a new Azure DevOps connection using user's token and organization URL
+ * @param token User's OAuth token
+ * @param orgUrl Organization URL (e.g., https://dev.azure.com/myorg)
+ * @returns Azure DevOps WebApi connection
  */
-export function initializeAdoConnection(): azdev.WebApi {
-  const orgUrl = process.env.ADO_ORG_URL;
-  const pat = process.env.ADO_PAT;
-
-  if (!orgUrl || !pat) {
-    throw new Error('ADO_ORG_URL and ADO_PAT environment variables are required');
-  }
-
-  const authHandler = azdev.getPersonalAccessTokenHandler(pat);
-  connection = new azdev.WebApi(orgUrl, authHandler);
-
-  logger.info('Azure DevOps connection initialized', { orgUrl });
-  return connection;
-}
-
-/**
- * Get cached connection or create new one
- */
-export function getConnection(): azdev.WebApi {
-  if (!connection) {
-    return initializeAdoConnection();
-  }
+export function createConnection(token: string, orgUrl: string): azdev.WebApi {
+  const authHandler = azdev.getBearerHandler(token);
+  const connection = new azdev.WebApi(orgUrl, authHandler);
+  logger.debug('Created Azure DevOps connection', { orgUrl });
   return connection;
 }
 
@@ -50,12 +31,11 @@ export function getConnection(): azdev.WebApi {
 /**
  * GET PR metadata (title, description, author) from Azure DevOps
  */
-export async function fetchPRMetadata(prId: number): Promise<PRMetadata> {
+export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): Promise<PRMetadata> {
   try {
     logger.info("Fetching PR metadata", { prId });
 
-    const conn = getConnection();
-    const gitApi: GitApi = await conn.getGitApi();
+    const gitApi: GitApi = await connection.getGitApi();
 
     // Fetch PR by ID (project is optional if connection already scoped)
     const pr = await gitApi.getPullRequestById(prId);
@@ -203,10 +183,11 @@ export async function fetchPRDiffFallback(
   projectName: string,
   repositoryId: string,
   prId: number,
-  gitApi: GitApi
+  connection: azdev.WebApi
 ): Promise<CodeDiff> {
   logger.info('Using fallback diff fetching', { prId });
 
+  const gitApi: GitApi = await connection.getGitApi();
   const iterations = await gitApi.getPullRequestIterations(repositoryId, prId, projectName);
   if (!iterations || iterations.length === 0) {
     return { changes: [], totalChanges: 0 };
@@ -288,13 +269,13 @@ export function buildPRArtifactUri(prMetadata: PRMetadata): string {
 export async function createTaskWorkItem(
   projectName: string,
   taskOutput: TaskWorkItemOutput,
-  prMetadata: PRMetadata
+  prMetadata: PRMetadata,
+  connection: azdev.WebApi
 ): Promise<number> {
   try {
     logger.info('Creating task work item', { projectName, prId: prMetadata.prId });
 
-    const conn = getConnection();
-    const witApi: WorkItemTrackingApi = await conn.getWorkItemTrackingApi();
+    const witApi: WorkItemTrackingApi = await connection.getWorkItemTrackingApi();
 
     // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
     const prArtifactUri = buildPRArtifactUri(prMetadata);
@@ -373,13 +354,13 @@ export async function createTaskWorkItem(
  */
 export async function createFallbackWorkItem(
   projectName: string,
-  prMetadata: PRMetadata
+  prMetadata: PRMetadata,
+  connection: azdev.WebApi
 ): Promise<number> {
   try {
     logger.info('Creating fallback work item', { projectName, prId: prMetadata.prId });
 
-    const conn = getConnection();
-    const witApi: WorkItemTrackingApi = await conn.getWorkItemTrackingApi();
+    const witApi: WorkItemTrackingApi = await connection.getWorkItemTrackingApi();
 
     const title = `Test Case: ${prMetadata.title} (Auto-generated - AI unavailable)`;
 
@@ -467,13 +448,12 @@ export async function postPRComment(
   repositoryId: string,
   prId: number,
   workItemId: number,
-
+  connection: azdev.WebApi
 ): Promise<void> {
   try {
     logger.info('Posting PR comment', { projectName, prId, workItemId });
 
-    const conn = getConnection();
-    const gitApi: GitApi = await conn.getGitApi();
+    const gitApi: GitApi = await connection.getGitApi();
 
     // Build comment text with @mention and #workitem reference
     const commentText = `Testcase workitem has been created! #${workItemId}`;

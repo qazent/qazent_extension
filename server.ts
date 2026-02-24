@@ -14,7 +14,6 @@ import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
 import { GitApi } from 'azure-devops-node-api/GitApi';
-import { getConnection } from './ado-client';
 import { createAuthMiddleware, AuthenticatedRequest } from './src/middleware/authenticate';
 import {
   rateLimitGenerateTests,
@@ -31,9 +30,25 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
 
 
-export async function getGitApi(): Promise<GitApi> {
-  const conn = getConnection();
-  return await conn.getGitApi();
+
+/**
+ * Extract organization name from Azure DevOps URL
+ * Examples:
+ *   https://dev.azure.com/myorg => myorg
+ *   https://myorg.visualstudio.com => myorg
+ */
+function extractOrgName(orgUrl: string): string {
+  const url = new URL(orgUrl);
+
+  if (url.hostname === 'dev.azure.com') {
+    return url.pathname.split('/')[1];
+  }
+
+  if (url.hostname.endsWith('.visualstudio.com')) {
+    return url.hostname.split('.')[0];
+  }
+
+  throw new Error(`Invalid Azure DevOps URL format: ${orgUrl}`);
 }
 
 
@@ -41,11 +56,11 @@ export async function getGitApi(): Promise<GitApi> {
 /**
  * Validate required environment variables
  *
- * Security note: For production, migrate ADO_PAT and GEMINI_API_KEY to Azure Key Vault
- * PAT and API keys should never be stored in App Service configuration
+ * Security note: For production, migrate GEMINI_API_KEY to Azure Key Vault
+ * API keys should never be stored in App Service configuration
  */
 function validateEnvironment(): void {
-  const required = ['ADO_ORG_URL', 'ADO_PAT', 'GEMINI_API_KEY'];
+  const required = ['GEMINI_API_KEY'];
   const missing: string[] = [];
 
   for (const envVar of required) {
@@ -254,11 +269,21 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         requestId: req.requestId
       });
 
+      // Create connection using user's token and organization
+      const token = req.headers['authorization']!.split(' ')[1];
+      const connection = adoClient.createConnection(token, req.orgUrl!);
+
+      // Extract organization name from URL for fetchPRDiff
+      const orgName = extractOrgName(req.orgUrl!);
+
       // Fetch PR diff from utils
       const codeDiff = await fetchPRDiff(
         payload.projectName,
         payload.repositoryId,
-        payload.prId
+        payload.prId,
+        connection,
+        orgName,
+        token
       );
 
       // Create minimal PR metadata for AI generation
@@ -350,6 +375,10 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
         requestId: req.requestId
       });
 
+      // Create connection using user's token and organization
+      const token = req.headers['authorization']!.split(' ')[1];
+      const connection = adoClient.createConnection(token, req.orgUrl!);
+
       // Create minimal PR metadata for work item creation
       const prMetadata: PRMetadata = {
         prId: payload.prId,
@@ -373,11 +402,12 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
       const workItemId = await adoClient.createTaskWorkItem(
         payload.projectName,
         payload.testCase,
-        prMetadata
+        prMetadata,
+        connection
       );
 
-      // Build work item URL
-      const orgUrl = process.env.ADO_ORG_URL;
+      // Build work item URL using user's organization
+      const orgUrl = req.orgUrl!;
       const workItemUrl = `${orgUrl}/${payload.projectName}/_workitems/edit/${workItemId}`;
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -447,12 +477,17 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
         requestId: req.requestId
       });
 
+      // Create connection using user's token and organization
+      const token = req.headers['authorization']!.split(' ')[1];
+      const connection = adoClient.createConnection(token, req.orgUrl!);
+
       // Call backend function to post comment
       await adoClient.postPRComment(
         payload.projectName,
         payload.repositoryId,
         payload.prId,
-        payload.workItemId
+        payload.workItemId,
+        connection
       );
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -516,7 +551,7 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
 
   res.setHeader('Access-Control-Allow-Origin', allowOrigin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Ado-Org-Url');
   res.setHeader('Access-Control-Allow-Credentials', 'true'); // Required for Authorization header
   res.setHeader('Access-Control-Max-Age', '86400');
 
@@ -721,14 +756,8 @@ function startServer(): void {
   // Validate environment
   validateEnvironment();
 
-  // Initialize Azure DevOps connection
-  try {
-    adoClient.initializeAdoConnection();
-  } catch (error) {
-    logger.error('Failed to initialize Azure DevOps connection', { error: String(error) });
-    console.error('FATAL: Failed to initialize Azure DevOps connection');
-    process.exit(1);
-  }
+  // Azure DevOps connections created per-request using user's OAuth token
+  // No global connection initialization needed
 
   // Load AI system prompt
   try {

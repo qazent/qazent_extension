@@ -17,10 +17,11 @@ import * as logger from '../../logger';
 import { validateAzureDevOpsToken, UserIdentity } from '../utils/tokenValidator';
 
 /**
- * Extended request with user identity
+ * Extended request with user identity and organization context
  */
 export interface AuthenticatedRequest extends http.IncomingMessage {
   user?: UserIdentity;
+  orgUrl?: string;  // Organization URL from X-Ado-Org-Url header
   requestId?: string;
 }
 
@@ -108,11 +109,48 @@ export async function authenticate(
     return;
   }
 
-  // Validate token with Azure DevOps API
-  const orgUrl = process.env.ADO_ORG_URL;
-  if (!orgUrl) {
-    logger.error('ADO_ORG_URL not configured', { requestId });
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Server configuration error', requestId);
+  // Extract and validate X-Ado-Org-Url header
+  const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
+
+  if (!orgUrlHeader) {
+    logger.warn('Authentication failed - missing X-Ado-Org-Url header', { requestId });
+    sendErrorResponse(res, 400, 'BAD_REQUEST', 'Missing X-Ado-Org-Url header', requestId);
+    return;
+  }
+
+  // Trim whitespace from organization URL
+  const orgUrl = orgUrlHeader.trim();
+
+  if (orgUrl === '') {
+    logger.warn('Authentication failed - empty organization URL', { requestId });
+    sendErrorResponse(res, 400, 'BAD_REQUEST', 'Empty organization URL', requestId);
+    return;
+  }
+
+  // Validate organization URL format
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(orgUrl);
+  } catch (error) {
+    logger.warn('Authentication failed - invalid URL format', { requestId, orgUrl });
+    sendErrorResponse(res, 400, 'BAD_REQUEST', 'Invalid organization URL format', requestId);
+    return;
+  }
+
+  // Validate Azure DevOps URL pattern
+  const isDevAzureCom = parsedUrl.hostname === 'dev.azure.com';
+  const isVisualStudioCom = parsedUrl.hostname.endsWith('.visualstudio.com');
+  const isHttps = parsedUrl.protocol === 'https:';
+
+  if (!isHttps) {
+    logger.warn('Authentication failed - non-HTTPS organization URL', { requestId, orgUrl });
+    sendErrorResponse(res, 400, 'BAD_REQUEST', 'Organization URL must use HTTPS', requestId);
+    return;
+  }
+
+  if (!isDevAzureCom && !isVisualStudioCom) {
+    logger.warn('Authentication failed - invalid Azure DevOps domain', { requestId, orgUrl, hostname: parsedUrl.hostname });
+    sendErrorResponse(res, 400, 'BAD_REQUEST', 'Invalid organization URL format. Expected: https://dev.azure.com/{org} or https://{org}.visualstudio.com', requestId);
     return;
   }
 
@@ -137,13 +175,15 @@ export async function authenticate(
       return;
     }
 
-    // Attach user identity to request
+    // Attach user identity and organization URL to request
     req.user = identity;
+    req.orgUrl = orgUrl;
 
     logger.info('User authenticated successfully', {
       requestId,
       userId: identity.id,
       displayName: identity.displayName,
+      orgUrl,
       method: req.method,
       url: req.url
     });

@@ -3,20 +3,8 @@ import { CodeDiff, DiffChange, } from './types';
 import * as logger from './logger';
 import {generateUnifiedDiff} from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
-import { getConnection, fetchPRDiffFallback } from "./ado-client";
-
-
-function getOrg() {
-  const org = process.env.ADO_ORG;
-  if (!org) throw new Error("ADO_ORG is undefined");
-  return org;
-}
-
-function getPat() {
-  const pat = process.env.ADO_PAT;
-  if (!pat) throw new Error("ADO_PAT is undefined");
-  return pat;
-}
+import { fetchPRDiffFallback } from "./ado-client";
+import * as azdev from 'azure-devops-node-api';
 
 
 
@@ -26,7 +14,8 @@ export async function fetchFileContentFromRest(
   projectName: string,
   repositoryId: string,
   filePath: string,
-  commitId: string
+  commitId: string,
+  token: string
 ): Promise<string> {
   if (!organization) {
   throw new Error(`Organization is undefined. URL would be invalid.`);
@@ -44,7 +33,7 @@ export async function fetchFileContentFromRest(
 
   const response = await fetch(url, {
     headers: {
-      Authorization: `Basic ${Buffer.from(":" + getPat()).toString("base64")}`,
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -81,15 +70,15 @@ return JSON.stringify(json, null, 2);
 export async function fetchPRDiff(
   projectName: string,
   repositoryId: string,
-  prId: number
+  prId: number,
+  connection: azdev.WebApi,
+  organization: string,
+  token: string
 ): Promise<CodeDiff> {
   try {
     logger.info("Fetching PR diff", { projectName, repositoryId, prId });
 
-    const conn = getConnection();
-    const gitApi: GitApi = await conn.getGitApi(
-
-    );
+    const gitApi: GitApi = await connection.getGitApi();
 
     // Step 1: Get PR details to find source and target commits
     const pr = await gitApi.getPullRequest(repositoryId, prId, projectName);
@@ -97,7 +86,7 @@ export async function fetchPRDiff(
     if (!pr || !pr.lastMergeSourceCommit || !pr.lastMergeTargetCommit) {
       logger.warn("PR missing commit information, falling back to iteration changes", { prId });
       // FALLBACK IF COMMIT INFO IS INVALID:
-      return fetchPRDiffFallback(projectName, repositoryId, prId, gitApi);
+      return fetchPRDiffFallback(projectName, repositoryId, prId, connection);
 
     }
 
@@ -166,33 +155,31 @@ export async function fetchPRDiff(
             commitId: targetCommitId,
           });
 
-          // Validate org before calling REST
-          if (!getOrg()) {
-            throw new Error(`ADO_ORG is undefined. Cannot fetch file content.`);
+          // Validate parameters before calling REST
+          if (!organization) {
+            throw new Error(`Organization is undefined. Cannot fetch file content.`);
           }
 
-          // Validate projectName
           if (!projectName) {
             throw new Error(`projectName is undefined for file ${filePath}`);
           }
 
-          // Validate repositoryId
           if (!repositoryId) {
             throw new Error(`repositoryId is undefined for file ${filePath}`);
           }
 
-          // Validate commitId
           if (!targetCommitId) {
             throw new Error(`targetCommitId is undefined for file ${filePath}`);
           }
 
           // Fetch old content (deleted file)
           const oldContent = await fetchFileContentFromRest(
-            getOrg(),
+            organization,
             projectName,
             repositoryId,
             filePath,
-            targetCommitId
+            targetCommitId,
+            token
           );
 
           // Validate returned content
@@ -225,15 +212,16 @@ export async function fetchPRDiff(
             commitId: sourceCommitId,
           });
 
-          if (!getOrg()) throw new Error("ADO_ORG is undefined");
+          if (!organization) throw new Error("Organization is undefined");
           if (!sourceCommitId) throw new Error(`sourceCommitId undefined for ${filePath}`);
 
           const newContent = await fetchFileContentFromRest(
-            getOrg(),
+            organization,
             projectName,
             repositoryId,
             filePath,
-            sourceCommitId
+            sourceCommitId,
+            token
           );
 
           if (!newContent) {
@@ -266,18 +254,20 @@ export async function fetchPRDiff(
 
           const [oldContentRaw, newContentRaw] = await Promise.all([
             fetchFileContentFromRest(
-              getOrg(),
+              organization,
               projectName,
               repositoryId,
               filePath,
-              targetCommitId
+              targetCommitId,
+              token
             ),
             fetchFileContentFromRest(
-              getOrg(),
+              organization,
               projectName,
               repositoryId,
               filePath,
-              sourceCommitId
+              sourceCommitId,
+              token
             ),
           ]);
 
