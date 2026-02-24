@@ -525,13 +525,24 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
  * Apply CORS headers
  * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
-/**
- * Apply CORS headers with wildcard + credential support
- */
 function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
+  // Normalize origin
+  if (typeof origin !== "string") {
+    logger.warn("CORS: Non-string or missing origin", { origin });
+    origin = undefined;
+  }
+
   logger.info("CORS: Incoming origin", { origin });
 
-  // Allowed patterns (wildcards supported)
+  // Allow server-to-server or health checks
+  if (!origin) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Credentials", "false");
+    logger.info("CORS: No origin header, allowing request without credentials");
+    return;
+  }
+
+  // Allowed patterns
   const basePatterns = [
     "https://dev.azure.com/*",
     "https://*.azurewebsites.net",
@@ -540,7 +551,6 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
     "https://qazent.gallerycdn.vsassets.io"
   ];
 
-  // Add dev-only patterns
   const devPatterns =
     process.env.NODE_ENV === "development"
       ? [
@@ -552,56 +562,41 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
 
   const allowedPatterns = [...basePatterns, ...devPatterns];
 
-  /**
-   * Wildcard-aware origin matcher
-   * Supports:
-   *   - https://*.domain.com
-   *   - https://dev.azure.com/*
-   *   - exact matches
-   */
+  // Wildcard matcher
   function matchesPattern(origin: string, pattern: string): boolean {
     if (!pattern) return false;
 
-    // Allow everything (not recommended with credentials)
     if (pattern === "*") return true;
 
-    // dev.azure.com/*
     if (pattern.endsWith("/*")) {
       const base = pattern.replace("/*", "");
       return origin.startsWith(base);
     }
 
-    // https://*.domain.com
     if (pattern.includes("*.")) {
       const domain = pattern.replace("*.", "");
       return origin.endsWith(domain);
     }
 
-    // Exact match
     return origin === pattern;
   }
 
-  // Determine if origin is allowed
-  const isAllowed =
-    origin && allowedPatterns.some((p) => matchesPattern(origin, p));
+  const isAllowed = allowedPatterns.some((p) => matchesPattern(origin!, p));
 
-  // With credentials, we MUST echo back the origin (not "*")
-  if (origin && isAllowed) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+  if (isAllowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin!);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
     logger.info("CORS: Allowed origin", { origin });
   } else {
-    // Safe fallback: block or allow a known safe origin
     const fallback = "https://dev.azure.com";
     res.setHeader("Access-Control-Allow-Origin", fallback);
+    res.setHeader("Access-Control-Allow-Credentials", "false");
     logger.warn("CORS: Blocked origin, using fallback", {
       origin,
       fallback,
       allowedPatterns
     });
   }
-
-  // Required for Authorization header
-  res.setHeader("Access-Control-Allow-Credentials", "true");
 
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader(
@@ -822,8 +817,8 @@ function startServer(): void {
   // Create HTTP server
   const server = http.createServer(handleRequest);
 
-  server.listen(PORT, () => {
-    logger.info('Server started', { port: PORT });
+    server.listen(PORT, "0.0.0.0", () => {
+    logger.info("Server started", { port: PORT });
     console.log(`Server listening on port ${PORT}`);
   });
 
