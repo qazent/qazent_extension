@@ -53,5 +53,5 @@
       "addressable": true 
       }
   ],
-  "scopes": ["vso.code"]
+  "scopes": ["vso.code", "vso.serviceendpoint_manage"]
 }
