@@ -26,7 +26,7 @@ console.log('[STARTUP] Node version:', process.version);
 console.log('[STARTUP] Environment:', process.env.NODE_ENV || 'not set');
 console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 
-const PORT = parseInt(process.env.PORT || '8080', 10);
+const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
 
 
