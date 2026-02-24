@@ -13,7 +13,6 @@ import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
-import { GitApi } from 'azure-devops-node-api/GitApi';
 import { createAuthMiddleware, AuthenticatedRequest } from './src/middleware/authenticate';
 import {
   rateLimitGenerateTests,
@@ -160,8 +159,9 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
         return;
       }
 
-      // Add job to queue
-      const jobId = queue.addJob(payload as WebhookPayload);
+      // Add job to queue with authentication credentials
+      const token = req.headers['authorization']!.split(' ')[1];
+      const jobId = queue.addJob(payload as WebhookPayload, token, req.orgUrl!);
 
       // Return 202 Accepted
       const response: WebhookResponse = {

@@ -17,7 +17,8 @@
     "test:local": "ts-node test-local.ts",
     "lint": "tsc --noEmit",
     "test:jest": "jest --config jest.config.ts",
-    "test:context": "jest --config jest.config.ts --testPathPatterns= ./test/customContext"  },
+    "test:context": "jest --config jest.config.ts --testPathPatterns= ./test/customContext"
+  },
   "keywords": [
     "azure-devops",
     "test-case",
@@ -47,7 +48,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/cors": "^2.8.13",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.10.0",
+    "@types/node": "^20.19.33",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/uuid": "^9.0.0",

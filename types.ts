@@ -26,6 +26,8 @@ export interface WebhookPayload {
       uniqueName: string;
     };
   };
+  token: string;
+  orgUrl: string;
 }
 
 /**
