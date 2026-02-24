@@ -14,6 +14,23 @@ let isProcessing = false;
 const MAX_RETRIES = 3;
 
 /**
+ * Extract organization name from Azure DevOps URL
+ */
+function extractOrgName(orgUrl: string): string {
+  const url = new URL(orgUrl);
+
+  if (url.hostname === 'dev.azure.com') {
+    return url.pathname.split('/')[1];
+  }
+
+  if (url.hostname.endsWith('.visualstudio.com')) {
+    return url.hostname.split('.')[0];
+  }
+
+  throw new Error(`Invalid Azure DevOps URL format: ${orgUrl}`);
+}
+
+/**
  * Extract PR metadata from webhook payload
  */
 function extractPRMetadata(payload: WebhookPayload): PRMetadata {
@@ -42,6 +59,10 @@ async function processJob(job: QueueJob): Promise<void> {
   const { payload, attempt } = job;
   const prMetadata = extractPRMetadata(payload);
 
+  // Create Azure DevOps connection from stored credentials
+  const connection = adoClient.createConnection(payload.token, payload.orgUrl);
+  const orgName = extractOrgName(payload.orgUrl);
+
   logger.info('Processing job', {
     jobId: job.id,
     prId: prMetadata.prId,
@@ -55,7 +76,10 @@ async function processJob(job: QueueJob): Promise<void> {
     const codeDiff = await fetchPRDiff(
       prMetadata.projectName,
       prMetadata.repositoryId,
-      prMetadata.prId
+      prMetadata.prId,
+      connection,
+      orgName,
+      payload.token
     );
 
     // Step 2: Generate test cases using AI
@@ -67,7 +91,8 @@ async function processJob(job: QueueJob): Promise<void> {
     const workItemId = await adoClient.createTaskWorkItem(
       prMetadata.projectName,
       taskOutput,
-      prMetadata
+      prMetadata,
+      connection
     );
 
     // Step 4: Post PR comment
@@ -78,6 +103,7 @@ async function processJob(job: QueueJob): Promise<void> {
         prMetadata.repositoryId,
         prMetadata.prId,
         workItemId,
+        connection
       );
     } catch (commentError) {
       // Log warning but don't fail job - work item already created
@@ -135,7 +161,8 @@ async function processJob(job: QueueJob): Promise<void> {
       try {
         const fallbackWorkItemId = await adoClient.createFallbackWorkItem(
           prMetadata.projectName,
-          prMetadata
+          prMetadata,
+          connection
         );
 
         logger.info('Fallback work item created', {
@@ -151,6 +178,7 @@ async function processJob(job: QueueJob): Promise<void> {
             prMetadata.repositoryId,
             prMetadata.prId,
             fallbackWorkItemId,
+            connection
           );
         } catch (commentError) {
           logger.warn('Failed to post PR comment for fallback work item', {
@@ -200,8 +228,12 @@ async function worker(): Promise<void> {
 /**
  * Add a job to the queue
  */
-export function addJob(payload: WebhookPayload): string {
+export function addJob(payload: WebhookPayload, token: string, orgUrl: string): string {
   const jobId = uuidv4();
+
+  // Store credentials in payload for background processing
+  payload.token = token;
+  payload.orgUrl = orgUrl;
 
   const job: QueueJob = {
     id: jobId,

@@ -102,7 +102,7 @@ async function postJson<T>(
     const token = await getAuthToken();
 
     // Get organization URL from Azure DevOps SDK
-    const orgUrl = SDK.getHost().uri; // e.g., https://dev.azure.com/myorg
+    const orgUrl = SDK.getHost().name; // e.g., https://dev.azure.com/myorg
 
     const response = await fetch(url, {
       method: 'POST',
