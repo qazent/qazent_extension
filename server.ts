@@ -25,7 +25,7 @@ import {
 // Load environment variables
 dotenv.config();
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '8080', 10);
 const startTime = Date.now();
 
 

@@ -8,7 +8,7 @@ import { CommonServiceIds, IExtensionDataService } from "azure-devops-extension-
 
 const CONFIG_COLLECTION = "config";
 const CONFIG_DOCUMENT_ID = "backend-settings";
-const DEFAULT_BACKEND_URL = "https://rathely-rubidic-katelin.ngrok-free.dev";
+const DEFAULT_BACKEND_URL = "qazent-bacecueyctepaege.northeurope-01.azurewebsites.net";
 
 interface BackendConfigDocument {
   id: string;
