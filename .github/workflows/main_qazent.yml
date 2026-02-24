@@ -47,6 +47,9 @@ jobs:
           name: node-app
           path: .
 
+      - name: Zip artifact
+        run: zip -r app.zip dist
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -59,4 +62,4 @@ jobs:
         with:
           app-name: 'qazent'
           slot-name: 'Production'
-          package: dist
+          package: app.zip
