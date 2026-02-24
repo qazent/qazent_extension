@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "engines": {
     "node": "24.x",
-    "npm": ">=10.0.0"
+    "npm": ">=11.0.0"
   },
   "scripts": {
     "dev": "ts-node server.ts",
