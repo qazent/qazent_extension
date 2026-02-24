@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,11 +13,22 @@
     "sourceMap": true
   },
   "include": [
-    "*.ts"
+    "server.ts",
+    "logger.ts",
+    "types.ts",
+    "queue.ts",
+    "ai.ts",
+    "ado-client.ts",
+    "fetchPRdiff.ts"
   ],
   "exclude": [
     "src",
     "node_modules",
-    "dist"
+    "dist",
+    "*.test.ts",
+    "jest.config.ts",
+    "jest.setup.ts",
+    "jest-check.ts",
+    "test-local.ts"
   ]
 }
