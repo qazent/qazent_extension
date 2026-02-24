@@ -525,45 +525,91 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
  * Apply CORS headers
  * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
+/**
+ * Apply CORS headers with wildcard + credential support
+ */
 function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   logger.info("CORS: Incoming origin", { origin });
 
-  // Base allowed origins for production
-  const baseOrigins = [
-    'https://dev.azure.com',
-    'https://visualstudio.com',
-    'https://qazent.azurewebsites.net',
-    'https://qazent.gallerycdn.vsassets.io'
+  // Allowed patterns (wildcards supported)
+  const basePatterns = [
+    "https://dev.azure.com/*",
+    "https://*.azurewebsites.net",
+    "https://*.gallerycdn.vsassets.io",
+    "https://qazent.azurewebsites.net",
+    "https://qazent.gallerycdn.vsassets.io"
   ];
 
-  // Add development origins only in development mode
-  const allowedOrigins = [
-    ...baseOrigins,
-    ...(process.env.NODE_ENV === 'development' ? [
-      'http://localhost:3000',
-      'https://rathely-rubidic-katelin.ngrok-free.dev',
-      process.env.NGROK_URL
-    ].filter(Boolean) as string[] : [])
-  ];
+  // Add dev-only patterns
+  const devPatterns =
+    process.env.NODE_ENV === "development"
+      ? [
+          "http://localhost:3000",
+          "https://rathely-rubidic-katelin.ngrok-free.dev",
+          process.env.NGROK_URL
+        ].filter(Boolean) as string[]
+      : [];
 
-  // Security: Only exact matches allowed (no wildcard matching or endsWith)
-  const allowOrigin = origin && allowedOrigins.includes(origin)
-    ? origin
-    : allowedOrigins[0];
+  const allowedPatterns = [...basePatterns, ...devPatterns];
 
-  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Ado-Org-Url');
-  res.setHeader('Access-Control-Allow-Credentials', 'true'); // Required for Authorization header
-  res.setHeader('Access-Control-Max-Age', '86400');
+  /**
+   * Wildcard-aware origin matcher
+   * Supports:
+   *   - https://*.domain.com
+   *   - https://dev.azure.com/*
+   *   - exact matches
+   */
+  function matchesPattern(origin: string, pattern: string): boolean {
+    if (!pattern) return false;
 
-  if (origin && !allowedOrigins.includes(origin)) {
-    logger.warn("CORS: Origin not in allowed list", { origin, allowedOrigins });
-  } else {
-    logger.info("CORS: Headers applied", { origin, allowOrigin });
+    // Allow everything (not recommended with credentials)
+    if (pattern === "*") return true;
+
+    // dev.azure.com/*
+    if (pattern.endsWith("/*")) {
+      const base = pattern.replace("/*", "");
+      return origin.startsWith(base);
+    }
+
+    // https://*.domain.com
+    if (pattern.includes("*.")) {
+      const domain = pattern.replace("*.", "");
+      return origin.endsWith(domain);
+    }
+
+    // Exact match
+    return origin === pattern;
   }
-}
 
+  // Determine if origin is allowed
+  const isAllowed =
+    origin && allowedPatterns.some((p) => matchesPattern(origin, p));
+
+  // With credentials, we MUST echo back the origin (not "*")
+  if (origin && isAllowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    logger.info("CORS: Allowed origin", { origin });
+  } else {
+    // Safe fallback: block or allow a known safe origin
+    const fallback = "https://dev.azure.com";
+    res.setHeader("Access-Control-Allow-Origin", fallback);
+    logger.warn("CORS: Blocked origin, using fallback", {
+      origin,
+      fallback,
+      allowedPatterns
+    });
+  }
+
+  // Required for Authorization header
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Ado-Org-Url"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
 /**
  * Audit logging: Log all authenticated requests
  */
