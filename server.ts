@@ -271,7 +271,7 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
-      const connection = adoClient.createConnection(token, req.orgUrl!);
+      const connection = adoClient.getConnection //(token, req.orgUrl!);
 
       // Extract organization name from URL for fetchPRDiff
       const orgName = extractOrgName(req.orgUrl!);

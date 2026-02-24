@@ -40,7 +40,7 @@
         "name": "QAZent PR Assistant",
         "order": 100,
         "uri": "dist/settings.html",
-        "backendUrl": "https://rathely-rubidic-katelin.ngrok-free.dev/"      }
+        "backendUrl": "qazent-bacecueyctepaege.northeurope-01.azurewebsites.net"      }
     }
   ],
   "files": [
@@ -53,5 +53,12 @@
       "addressable": true 
       }
   ],
-  "scopes": ["vso.code"]
+  "scopes": ["vso.code", 
+  "vso.serviceendpoint_manage", 
+  "vso.work_write",
+  "vso.notification_write", 
+  "vso.hooks_write", 
+  "vso.threads_full", 
+  "user_impersonation"
+  ]
 }
