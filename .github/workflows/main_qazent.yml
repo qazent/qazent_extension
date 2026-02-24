@@ -22,8 +22,11 @@ jobs:
 
       - name: Install dependencies and build
         run: |
+          rm -rf node_modules package-lock.json
+          npm cache clean --force
           npm install
           npm run build
+          
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -58,3 +61,4 @@ jobs:
           app-name: 'qazent'
           slot-name: 'Production'
           package: dist
+
