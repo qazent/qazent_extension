@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.58",
+  "version": "1.2.59",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
   "targets": [
@@ -58,7 +58,6 @@
     }
   ],
   "scopes": ["vso.code", 
-  "vso.serviceendpoint_manage", 
   "vso.work_write",
   "vso.notification_write", 
   "vso.hooks_write", 
