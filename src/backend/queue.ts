@@ -4,7 +4,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { QueueJob, QueueStatus, WebhookPayload, PRMetadata } from './types';
-import * as logger from '@logger';
+import * as logger from './utils/logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';

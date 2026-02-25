@@ -1,6 +1,6 @@
 import fetch from "node-fetch";
 import { CodeDiff, DiffChange, } from './types';
-import * as logger from '@logger';
+import * as logger from './utils/logger';
 import {generateUnifiedDiff} from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { fetchPRDiffFallback } from "./ado-client";

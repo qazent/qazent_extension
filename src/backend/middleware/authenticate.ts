@@ -13,7 +13,7 @@
  */
 
 import * as http from 'http';
-import * as logger from '@logger';
+import * as logger from './utils/logger';
 import { validateAzureDevOpsToken, UserIdentity } from '../utils/tokenValidator';
 
 /**

@@ -7,7 +7,7 @@ import { GitApi } from 'azure-devops-node-api/GitApi';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
 import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
-import * as logger from '@logger';
+import * as logger from './utils/logger';
 
 /**
  * Create a new Azure DevOps connection using user's token and organization URL
