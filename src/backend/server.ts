@@ -437,7 +437,7 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
       // In production, this should be fetched from secure storage (database/Key Vault)
       // based on the organization that the webhook came from.
       // For now, we look it up from environment as a placeholder.
-      const serviceToken = process.env.AZURE_DEVOPS_PAT ||
+      const serviceToken = process.env.ADO_PAT ||
         await getStoredTokenForOrg(orgUrl); // TODO: Implement secure token storage
 
       if (!serviceToken) {
