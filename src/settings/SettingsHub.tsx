@@ -28,7 +28,6 @@ export const SettingsHub: React.FC = () => {
   // Webhook management state
   const [webhooks, setWebhooks] = React.useState<WebhookSubscription[]>([]);
   const [webhookLoading, setWebhookLoading] = React.useState<boolean>(false);
-  const [backendUrl, setBackendUrl] = React.useState<string>('');
   const [isAutoGenEnabled, setIsAutoGenEnabled] = React.useState<boolean>(false);
   const [webhookStatusMessage, setWebhookStatusMessage] = React.useState<{
     type: 'success' | 'error' | 'info';
@@ -44,6 +43,19 @@ const normalizeId = (id: string) =>
   id === "project-default" ? "project-default" : `repo-${id}`;
 
 const now = () => new Date().toISOString();
+
+/**
+ * Extract user-friendly error message from error objects
+ */
+const errorMessageFromError = (error: any): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return 'An unexpected error occurred';
+};
 
 // Cached services
 const dataServiceRef = React.useRef<IExtensionDataService | null>(null);
@@ -103,21 +115,16 @@ React.useEffect(() => {
 const loadWebhookData = async () => {
   setWebhookLoading(true);
   try {
-    const url = await configService.getBackendUrl();
-    setBackendUrl(url);
-
-    const allWebhooks = await webhookService.listWebhookSubscriptions(url);
+    const allWebhooks = await webhookService.listWebhookSubscriptions();
     setWebhooks(allWebhooks);
 
-    const enabled = await webhookService.isAutoGenerationEnabled(
-      projectId,
-      url
-    );
+    const enabled = await webhookService.isAutoGenerationEnabled(projectId);
     setIsAutoGenEnabled(enabled);
   } catch (error) {
+    const errorMsg = errorMessageFromError(error);
     setWebhookStatusMessage({
       type: 'error',
-      text: `Failed to load webhooks: ${error instanceof Error ? error.message : String(error)}`
+      text: `Failed to load webhooks: ${errorMsg}`
     });
   } finally {
     setWebhookLoading(false);
@@ -312,37 +319,36 @@ const handleEnableAutoGeneration = async () => {
   setWebhookStatusMessage(null);
 
   try {
-    const result = await webhookService.enableAutoGeneration(
-      projectId,
-      backendUrl
-    );
+    const result = await webhookService.enableAutoGeneration(projectId);
 
     if (result.skipped) {
       setWebhookStatusMessage({
         type: 'info',
-        text: 'Webhooks already configured'
+        text: 'Webhooks already configured for this project'
       });
     } else {
       const count = result.created.length + result.updated.length;
       setWebhookStatusMessage({
         type: 'success',
-        text: `✅ Auto-generation enabled! Created ${count} webhook(s).`
+        text: `✅ Successfully created ${count} webhook subscription(s). Auto-generation is now enabled!`
       });
     }
 
     await loadWebhookData(); // Refresh list
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (errorMsg.includes('403') || errorMsg.includes('Permission denied')) {
+    const errorMsg = errorMessageFromError(error);
+
+    // Check error type to provide contextual guidance
+    if (error instanceof webhookService.AuthError) {
       setWebhookStatusMessage({
         type: 'error',
-        text: 'Permission denied. You need Project Administrator or Service Hook Administrator role. See manual setup below.'
+        text: `${errorMsg} See manual setup instructions below for an alternative approach.`
       });
       setShowManualSetup(true);
     } else {
       setWebhookStatusMessage({
         type: 'error',
-        text: `Failed to enable auto-generation: ${errorMsg}`
+        text: `Failed to create webhooks: ${errorMsg}`
       });
     }
   } finally {
@@ -364,38 +370,13 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
     });
     await loadWebhookData();
   } catch (error) {
+    const errorMsg = errorMessageFromError(error);
     setWebhookStatusMessage({
       type: 'error',
-      text: `Failed to delete webhook: ${error instanceof Error ? error.message : String(error)}`
+      text: `Failed to delete webhook: ${errorMsg}`
     });
   } finally {
     setWebhookLoading(false);
-  }
-};
-
-const handleUpdateBackendUrl = async (newUrl: string) => {
-  const validation = configService.validateBackendUrl(newUrl);
-  if (!validation.valid) {
-    setWebhookStatusMessage({
-      type: 'error',
-      text: validation.error!
-    });
-    return;
-  }
-
-  try {
-    await configService.setBackendUrl(newUrl);
-    setBackendUrl(newUrl);
-    setWebhookStatusMessage({
-      type: 'success',
-      text: 'Backend URL updated'
-    });
-    await loadWebhookData();
-  } catch (error) {
-    setWebhookStatusMessage({
-      type: 'error',
-      text: `Failed to update URL: ${error instanceof Error ? error.message : String(error)}`
-    });
   }
 };
 
@@ -523,25 +504,17 @@ const handleUpdateBackendUrl = async (newUrl: string) => {
           Automatic Test Generation
         </h2>
 
-        {/* Backend URL Configuration */}
-        <div style={{ marginBottom: "20px" }}>
-          <Field label="Backend Service URL" hint="URL of the deployed backend service that will receive webhooks">
-            <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
-              <Input
-                style={{ width: "400px" }}
-                value={backendUrl}
-                onChange={(_e, data) => setBackendUrl(data.value)}
-                placeholder="https://your-backend.azurewebsites.net"
-              />
-              <Button
-                appearance="primary"
-                onClick={() => handleUpdateBackendUrl(backendUrl)}
-                disabled={webhookLoading}
-              >
-                Update URL
-              </Button>
-            </div>
-          </Field>
+        {/* Webhook Endpoint Display */}
+        <div style={{ marginBottom: "20px", backgroundColor: "#f3f9fd", border: "1px solid #0078d4", padding: "12px", borderRadius: "4px" }}>
+          <div style={{ fontSize: "14px", color: "#0078d4", marginBottom: "4px" }}>
+            <strong>Webhook Endpoint:</strong>
+          </div>
+          <div style={{ fontFamily: "monospace", fontSize: "13px", color: "#323130", wordBreak: "break-all" }}>
+            {configService.WEBHOOK_ENDPOINT}
+          </div>
+          <div style={{ fontSize: "12px", color: "#605e5c", marginTop: "8px" }}>
+            This endpoint is fixed and cannot be changed. All webhooks send events to this address.
+          </div>
         </div>
 
         {/* Status Message */}
@@ -714,7 +687,7 @@ const handleUpdateBackendUrl = async (newUrl: string) => {
                 <li>Set repository filter to <strong>All repositories</strong> (or choose specific repository)</li>
                 <li>
                   Enter URL: <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px', fontFamily: 'monospace' }}>
-                    {backendUrl}/webhook
+                    {configService.WEBHOOK_ENDPOINT}
                   </code>
                 </li>
                 <li>Click <strong>Finish</strong></li>

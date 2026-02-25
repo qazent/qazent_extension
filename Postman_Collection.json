@@ -1,0 +1,721 @@
+{
+  "info": {
+    "_postman_id": "test-extension-api-collection",
+    "name": "Azure DevOps PR Test Case Generator API",
+    "description": "Complete API testing for PR test case generation with test cases and scripts",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Health Check",
+      "item": [
+        {
+          "name": "GET - Health Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains healthy status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.equal(\"healthy\");",
+                  "});",
+                  "",
+                  "pm.test(\"Rate limit headers present\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"X-RateLimit-Limit\")).to.exist;",
+                  "    pm.expect(pm.response.headers.get(\"X-RateLimit-Remaining\")).to.exist;",
+                  "    pm.expect(pm.response.headers.get(\"X-RateLimit-Reset\")).to.exist;",
+                  "});",
+                  "",
+                  "pm.test(\"Response has uptime field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.uptime).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.uptime).to.be.greaterThanOrEqualTo(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Check if the backend API server is running and healthy"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Webhook",
+      "item": [
+        {
+          "name": "POST - PR Created Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 202\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains jobId\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.jobId).to.exist;",
+                  "    pm.expect(jsonData.status).to.equal(\"accepted\");",
+                  "});",
+                  "",
+                  "pm.test(\"Rate limit headers present\", function () {",
+                  "    pm.expect(pm.response.headers.get(\"X-RateLimit-Remaining\")).to.exist;",
+                  "});",
+                  "",
+                  "// Save jobId for reference",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"lastJobId\", jsonData.jobId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"git.pullrequest.created\",\n  \"resource\": {\n    \"pullRequestId\": 123,\n    \"title\": \"Add new authentication feature\",\n    \"description\": \"Implements OAuth2 authentication for the API\",\n    \"repository\": {\n      \"id\": \"repo-abc-123\",\n      \"name\": \"MyRepository\",\n      \"url\": \"https://dev.azure.com/myorg/myproject/_git/MyRepository\",\n      \"project\": {\n        \"name\": \"MyProject\",\n        \"id\": \"proj-xyz-789\"\n      }\n    },\n    \"sourceRefName\": \"refs/heads/feature/auth\",\n    \"targetRefName\": \"refs/heads/main\",\n    \"createdBy\": {\n      \"displayName\": \"John Doe\",\n      \"uniqueName\": \"john.doe@example.com\",\n      \"id\": \"user-123\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook"
+              ]
+            },
+            "description": "Receive a pull request created event from Azure DevOps webhook"
+          },
+          "response": []
+        },
+        {
+          "name": "POST - PR Updated Event",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 202\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains jobId\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.jobId).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"git.pullrequest.updated\",\n  \"resource\": {\n    \"pullRequestId\": 124,\n    \"title\": \"Update authentication feature - add JWT support\",\n    \"description\": \"Updated OAuth2 implementation with JWT tokens\",\n    \"repository\": {\n      \"id\": \"repo-abc-123\",\n      \"name\": \"MyRepository\",\n      \"url\": \"https://dev.azure.com/myorg/myproject/_git/MyRepository\",\n      \"project\": {\n        \"name\": \"MyProject\",\n        \"id\": \"proj-xyz-789\"\n      }\n    },\n    \"sourceRefName\": \"refs/heads/feature/auth\",\n    \"targetRefName\": \"refs/heads/main\",\n    \"createdBy\": {\n      \"displayName\": \"Jane Smith\",\n      \"uniqueName\": \"jane.smith@example.com\",\n      \"id\": \"user-456\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook"
+              ]
+            },
+            "description": "Receive a pull request updated event from Azure DevOps webhook"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Generate Test Cases",
+      "item": [
+        {
+          "name": "POST - Generate with Custom Context",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains test case title\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.title).to.exist;",
+                  "    pm.expect(jsonData.title.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test(\"Test case has required fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.htmlDescription).to.exist;",
+                  "    pm.expect(jsonData.htmlDescription.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test(\"Optional fields are present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.purpose || jsonData.scopeOfChange).to.exist;",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is reasonable (< 60s)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(60000);",
+                  "});",
+                  "",
+                  "// Save test case for next request",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"generatedTestCase\", JSON.stringify(jsonData));",
+                  "pm.collectionVariables.set(\"sourceCommitId\", jsonData.sourceCommitId || \"\");",
+                  "pm.collectionVariables.set(\"targetCommitId\", jsonData.targetCommitId || \"\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": {{prId}},\n  \"projectName\": \"{{projectName}}\",\n  \"repositoryId\": \"{{repositoryId}}\",\n  \"customContext\": \"This PR adds a new REST API endpoint for user authentication. Focus on security, input validation, error handling, and edge cases in test cases.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-tests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "generate-tests"
+              ]
+            },
+            "description": "Generate test cases from PR code changes using AI"
+          },
+          "response": []
+        },
+        {
+          "name": "POST - Generate without Custom Context",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains test case\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.title).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": {{prId}},\n  \"projectName\": \"{{projectName}}\",\n  \"repositoryId\": \"{{repositoryId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-tests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "generate-tests"
+              ]
+            },
+            "description": "Generate test cases from PR code changes without custom context"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Create Work Item",
+      "item": [
+        {
+          "name": "POST - Create Task Work Item",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains workItemId and URL\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.workItemId).to.exist;",
+                  "    pm.expect(jsonData.workItemUrl).to.exist;",
+                  "    pm.expect(jsonData.workItemId).to.be.a(\"number\");",
+                  "});",
+                  "",
+                  "pm.test(\"Work item URL contains proper format\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.workItemUrl).to.include(\"dev.azure.com\");",
+                  "    pm.expect(jsonData.workItemUrl).to.include(\"_workitems/edit/\");",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is reasonable (< 30s)\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(30000);",
+                  "});",
+                  "",
+                  "// Save workItemId and URL for next request",
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"workItemId\", jsonData.workItemId);",
+                  "pm.collectionVariables.set(\"workItemUrl\", jsonData.workItemUrl);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"testCase\": {\n    \"title\": \"Test OAuth2 Authentication Endpoint\",\n    \"htmlDescription\": \"<h2>Test Case: OAuth2 Authentication</h2><p>This test case validates the OAuth2 authentication flow and token generation.</p>\",\n    \"purpose\": \"Validate OAuth2 token generation and expiration\",\n    \"scopeOfChange\": \"Added new /auth/oauth/token endpoint with JWT support\",\n    \"preconditions\": [\n      \"API server is running\",\n      \"Database with test users is available\",\n      \"OAuth provider is accessible\"\n    ],\n    \"testSteps\": [\n      \"1. Send POST request to /auth/oauth/token with valid credentials\",\n      \"2. Verify token is generated and contains required claims\",\n      \"3. Use token in Authorization header for subsequent requests\",\n      \"4. Verify token expiration time is 1 hour\"\n    ],\n    \"expectedResults\": [\n      \"Token endpoint returns 200 OK\",\n      \"Response contains access_token and expires_in fields\",\n      \"Token can be decoded and verified with server public key\"\n    ],\n    \"negativeScenarios\": [\n      \"Invalid credentials return 401 Unauthorized\",\n      \"Missing credentials return 400 Bad Request\",\n      \"Expired token returns 401 Unauthorized\"\n    ],\n    \"edgeCases\": [\n      \"Very long password (>1000 chars)\",\n      \"Special characters in username\",\n      \"Simultaneous token requests from same user\"\n    ],\n    \"regressionAreas\": [\n      \"Existing login endpoint compatibility\",\n      \"Session management\",\n      \"CORS for authentication endpoints\"\n    ],\n    \"dataRequirements\": [\n      \"Test user with known credentials\",\n      \"Test OAuth provider access\",\n      \"Database reset capability\"\n    ],\n    \"automationNotes\": \"Can be automated using REST API calls and JWT verification helpers\"\n  },\n  \"prId\": {{prId}},\n  \"projectName\": \"{{projectName}}\",\n  \"repositoryId\": \"{{repositoryId}}\",\n  \"projectId\": \"{{projectId}}\",\n  \"sourceCommitId\": \"{{sourceCommitId}}\",\n  \"targetCommitId\": \"{{targetCommitId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/create-work-item",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "create-work-item"
+              ]
+            },
+            "description": "Create a Task work item in Azure DevOps from the generated test case"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Post PR Comment",
+      "item": [
+        {
+          "name": "POST - Link Work Item to PR",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates success\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.equal(true);",
+                  "});",
+                  "",
+                  "pm.test(\"Response time is under 10 seconds\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": {{prId}},\n  \"projectName\": \"{{projectName}}\",\n  \"repositoryId\": \"{{repositoryId}}\",\n  \"workItemId\": {{workItemId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/post-pr-comment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "post-pr-comment"
+              ]
+            },
+            "description": "Post a comment on the PR linking to the created work item"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Webhook Token Management",
+      "item": [
+        {
+          "name": "POST - Store Webhook Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates success\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.equal(true);",
+                  "    pm.expect(jsonData.message).to.include(\"stored successfully\");",
+                  "});",
+                  "",
+                  "pm.test(\"Organization URL is echoed back\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.orgUrl).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orgUrl\": \"{{orgUrl}}\",\n  \"token\": \"YOUR_AZURE_DEVOPS_PAT_OR_OAUTH_TOKEN_HERE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhook-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhook-token"
+              ]
+            },
+            "description": "Store Azure DevOps authentication token for webhook processing"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "POST - Missing Authorization Header",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error response has proper format\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error).to.exist;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": 123,\n  \"projectName\": \"MyProject\",\n  \"repositoryId\": \"repo-123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-tests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "generate-tests"
+              ]
+            },
+            "description": "Attempt to call protected endpoint without authorization header"
+          },
+          "response": []
+        },
+        {
+          "name": "POST - Invalid Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer invalid-token-12345"
+              },
+              {
+                "key": "X-Ado-Org-Url",
+                "value": "{{orgUrl}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": 123,\n  \"projectName\": \"MyProject\",\n  \"repositoryId\": \"repo-123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-tests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "generate-tests"
+              ]
+            },
+            "description": "Attempt to call protected endpoint with invalid token"
+          },
+          "response": []
+        },
+        {
+          "name": "POST - Missing Organization URL Header",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 or 401\", function () {",
+                  "    pm.expect([400, 401]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prId\": 123,\n  \"projectName\": \"MyProject\",\n  \"repositoryId\": \"repo-123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-tests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "generate-tests"
+              ]
+            },
+            "description": "Attempt to call protected endpoint without X-Ado-Org-Url header"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "orgUrl",
+      "value": "https://dev.azure.com/yourorg",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_AZURE_DEVOPS_OAUTH_TOKEN_OR_PAT",
+      "type": "string"
+    },
+    {
+      "key": "prId",
+      "value": "123",
+      "type": "string"
+    },
+    {
+      "key": "projectName",
+      "value": "YourProject",
+      "type": "string"
+    },
+    {
+      "key": "repositoryId",
+      "value": "repo-id-here",
+      "type": "string"
+    },
+    {
+      "key": "projectId",
+      "value": "project-id-here",
+      "type": "string"
+    },
+    {
+      "key": "sourceCommitId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "targetCommitId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workItemId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "workItemUrl",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "generatedTestCase",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "lastJobId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

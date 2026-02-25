@@ -1,116 +1,41 @@
 /**
  * Configuration Service
- * Manages backend URL configuration using Azure DevOps Extension Data Service
+ * Manages extension configuration and validation
+ *
+ * SECURITY: Webhook endpoint is fixed and non-editable.
+ * Users cannot override or customize the webhook URL.
  */
 
-import * as SDK from "azure-devops-extension-sdk";
-import { CommonServiceIds, IExtensionDataService } from "azure-devops-extension-api";
-
-const CONFIG_COLLECTION = "config";
-const CONFIG_DOCUMENT_ID = "backend-settings";
-const DEFAULT_BACKEND_URL = "api.qazent.com";
-
-interface BackendConfigDocument {
-  id: string;
-  backendUrl: string;
-  updatedAt: string;
-  updatedBy: string;
-}
+// Fixed webhook endpoint - this is the only valid endpoint for all webhook subscriptions
+export const WEBHOOK_ENDPOINT = 'https://api.qazent.com/webhook';
 
 /**
- * Get configured backend URL from extension storage, or return default if not set
- */
-export async function getBackendUrl(): Promise<string> {
-  try {
-    const dataService = await SDK.getService<IExtensionDataService>(
-      CommonServiceIds.ExtensionDataService
-    );
-
-    const dataManager = await dataService.getExtensionDataManager(
-      "QAZent.pr-assistant-extension",
-      await SDK.getAccessToken()
-    );
-
-    const document = await dataManager.getDocument(
-      CONFIG_COLLECTION,
-      CONFIG_DOCUMENT_ID
-    ) as BackendConfigDocument;
-
-    return document.backendUrl || DEFAULT_BACKEND_URL;
-  } catch (err: any) {
-    const typeKey = err?.typeKey || "";
-
-    // Normal for first-time use - document doesn't exist yet
-    if (
-      typeKey === "DocumentNotFoundException" ||
-      typeKey === "CollectionNotFoundException"
-    ) {
-      console.log("Backend URL not configured, using default");
-      return DEFAULT_BACKEND_URL;
-    }
-
-    // Network or auth errors - log and return default
-    console.error("Failed to load backend URL:", err);
-    return DEFAULT_BACKEND_URL;
-  }
-}
-
-/**
- * Save backend URL to extension storage
- * @throws Error if URL validation fails or storage operation fails
- */
-export async function setBackendUrl(url: string): Promise<void> {
-  // Validate URL format first
-  const validation = validateBackendUrl(url);
-  if (!validation.valid) {
-    throw new Error(validation.error);
-  }
-
-  try {
-    const dataService = await SDK.getService<IExtensionDataService>(
-      CommonServiceIds.ExtensionDataService
-    );
-
-    const dataManager = await dataService.getExtensionDataManager(
-      "QAZent.pr-assistant-extension",
-      await SDK.getAccessToken()
-    );
-
-    const user = SDK.getUser();
-    const document: BackendConfigDocument = {
-      id: CONFIG_DOCUMENT_ID,
-      backendUrl: url,
-      updatedAt: new Date().toISOString(),
-      updatedBy: user.displayName || user.name || "Unknown"
-    };
-
-    await dataManager.setDocument(CONFIG_COLLECTION, document);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to save backend URL: ${message}`);
-  }
-}
-
-/**
- * Validate backend URL format
+ * Validate subscription parameters before creating webhooks
  * @returns Object with valid flag and optional error message
  */
-export function validateBackendUrl(url: string): { valid: boolean; error?: string } {
-  // Check if URL is empty
-  if (!url || url.trim() === "") {
-    return { valid: false, error: "URL is required" };
+export function validateSubscriptionParams(params: {
+  projectId?: string;
+  eventType?: string;
+}): { valid: boolean; error?: string } {
+  // Validate project ID
+  if (!params.projectId || params.projectId.trim() === '') {
+    return { valid: false, error: 'Project ID is required' };
   }
 
-  // Check if URL starts with http:// or https://
-  if (!url.startsWith("http://") && !url.startsWith("https://")) {
-    return { valid: false, error: "URL must start with http:// or https://" };
+  // Validate event type
+  const validEventTypes = ['git.pullrequest.created', 'git.pullrequest.updated'];
+  if (!params.eventType || !validEventTypes.includes(params.eventType)) {
+    return { valid: false, error: 'Invalid event type. Must be "git.pullrequest.created" or "git.pullrequest.updated"' };
   }
 
-  // Check if URL is parseable
-  try {
-    new URL(url);
-    return { valid: true };
-  } catch {
-    return { valid: false, error: "Invalid URL format" };
-  }
+  return { valid: true };
+}
+
+/**
+ * Get the fixed webhook endpoint
+ * This is the only valid endpoint for webhook subscriptions.
+ * @returns The webhook endpoint URL
+ */
+export function getWebhookEndpoint(): string {
+  return WEBHOOK_ENDPOINT;
 }
