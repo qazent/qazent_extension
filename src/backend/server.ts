@@ -173,20 +173,50 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Get organization URL from header (required to identify which org this webhook is for)
-      const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
-      if (!orgUrlHeader || orgUrlHeader.trim() === '') {
-        logger.warn('Missing organization URL in webhook request');
+      // Get organization URL from webhook payload
+      // Extract from repository URL: https://dev.azure.com/myorg/myproject/_git/my-repo
+      const repoUrl = payload.resource?.repository?.url;
+      if (!repoUrl || typeof repoUrl !== 'string') {
+        logger.warn('Missing repository URL in webhook payload');
         const errorResponse: ErrorResponse = {
           error: 'Bad Request',
-          details: 'Missing or empty X-Ado-Org-Url header. Set this to https://dev.azure.com/yourorg'
+          details: 'Missing required field: resource.repository.url'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
         return;
       }
 
-      const orgUrl = orgUrlHeader.trim();
+      // Extract org and project from repo URL
+      // Format: https://dev.azure.com/ORGNAME/PROJECTNAME/_git/REPONAME
+      // or: https://ORGNAME.visualstudio.com/PROJECTNAME/_git/REPONAME
+      let orgUrl: string;
+      try {
+        const url = new URL(repoUrl);
+        if (url.hostname === 'dev.azure.com') {
+          // Extract org from path: /orgname/project/...
+          const pathParts = url.pathname.split('/').filter(p => p);
+          if (pathParts.length < 2) {
+            throw new Error('Invalid repository URL format');
+          }
+          orgUrl = `https://dev.azure.com/${pathParts[0]}`;
+        } else if (url.hostname.endsWith('.visualstudio.com')) {
+          // Extract org from hostname: orgname.visualstudio.com
+          const orgName = url.hostname.split('.')[0];
+          orgUrl = `https://${orgName}.visualstudio.com`;
+        } else {
+          throw new Error(`Unsupported Azure DevOps domain: ${url.hostname}`);
+        }
+      } catch (error) {
+        logger.warn('Failed to extract organization URL from repository URL', { repoUrl, error: String(error) });
+        const errorResponse: ErrorResponse = {
+          error: 'Bad Request',
+          details: `Invalid repository URL format: ${error instanceof Error ? error.message : String(error)}`
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
 
       // Use pre-configured service token from environment for background processing
       const serviceToken = process.env.AZURE_DEVOPS_PAT;
