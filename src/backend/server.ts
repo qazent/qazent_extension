@@ -137,7 +137,7 @@ function validatePayload(payload: any): { valid: boolean; error?: string } {
  * Handle webhook POST request
  * Security: User identity verified by authentication middleware
  */
-async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   // Read request body
   let body = '';
 
@@ -174,37 +174,13 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
         return;
       }
 
-      // Add job to queue with authentication credentials
-      const authHeader = req.headers['authorization'];
-      if (!authHeader || typeof authHeader !== 'string') {
-        logger.warn('Missing authorization header in webhook request');
-        const errorResponse: ErrorResponse = {
-          error: 'Unauthorized',
-          details: 'Missing or invalid Authorization header'
-        };
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(errorResponse));
-        return;
-      }
-
-      const token = authHeader.split(' ')[1];
-      if (!token) {
-        logger.warn('Invalid authorization header format in webhook request');
-        const errorResponse: ErrorResponse = {
-          error: 'Unauthorized',
-          details: 'Invalid Authorization header format'
-        };
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(errorResponse));
-        return;
-      }
-
+      // Get organization URL from header (required to identify which org this webhook is for)
       const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
       if (!orgUrlHeader || orgUrlHeader.trim() === '') {
         logger.warn('Missing organization URL in webhook request');
         const errorResponse: ErrorResponse = {
           error: 'Bad Request',
-          details: 'Missing or empty X-Ado-Org-Url header'
+          details: 'Missing or empty X-Ado-Org-Url header. Set this to https://dev.azure.com/yourorg'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -213,7 +189,20 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
 
       const orgUrl = orgUrlHeader.trim();
 
-      const jobId = queue.addJob(payload as WebhookPayload, token, orgUrl);
+      // Use pre-configured service token from environment for background processing
+      const serviceToken = process.env.AZURE_DEVOPS_PAT;
+      if (!serviceToken) {
+        logger.error('Service token not configured', { error: 'AZURE_DEVOPS_PAT environment variable not set' });
+        const errorResponse: ErrorResponse = {
+          error: 'Internal server error',
+          details: 'Service credentials not configured. Contact administrator.'
+        };
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const jobId = queue.addJob(payload as WebhookPayload, serviceToken, orgUrl);
 
       // Return 202 Accepted
       const response: WebhookResponse = {
@@ -221,6 +210,7 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
         jobId
       };
 
+      logger.info('Webhook queued successfully', { jobId, prId: payload.resource?.pullRequestId });
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(response));
 
@@ -819,7 +809,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
 
 
-// Webhook endpoint (PUBLIC + rate limiting)
+// Webhook endpoint (PUBLIC - no authentication, no rate limiting)
 if (normalizedUrl === '/webhook' && method === 'POST') {
   const contentType = req.headers['content-type'];
 
@@ -834,11 +824,10 @@ if (normalizedUrl === '/webhook' && method === 'POST') {
     return;
   }
 
-
-  await rateLimitWebhook(req, res, () => handleWebhook(req, res));
+  // Call webhook handler directly (public endpoint, no middleware)
+  await handleWebhook(req, res);
   return;
-      } // closes public webhook
-  } // closes handleRequest()
+}
 
 /**
  * Start the server
@@ -897,3 +886,4 @@ function startServer(): void {
 
 // Start the server
 startServer();
+} 
