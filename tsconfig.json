@@ -3,34 +3,40 @@
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022", "DOM"],
+
     "outDir": "./dist",
     "rootDir": "./src",
 
     "baseUrl": "./src",
     "paths": {
-     "@logger": ["backend/utils/logger"]
+      "@logger": ["backend/utils/logger"]
     },
-    "ignoreDeprecations": "6.0",
 
     "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
-    "types": ["node", "jest", "@testing-library/jest-dom"],
     "strictFunctionTypes": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "jsx": "react"
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "jsx": "react",
+
+    "types": ["node", "jest", "@testing-library/jest-dom"]
   },
+
   "include": ["src/**/*"],
+
   "exclude": [
     "node_modules",
     "dist",

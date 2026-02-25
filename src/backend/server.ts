@@ -110,12 +110,24 @@ function validatePayload(payload: any): { valid: boolean; error?: string } {
     return { valid: false, error: 'Missing required field: resource.repository.project.name' };
   }
 
-  if (!payload.resource.sourceRefName) {
-    return { valid: false, error: 'Missing required field: resource.sourceRefName' };
+  if (!payload.resource.sourceRefName || typeof payload.resource.sourceRefName !== 'string') {
+    return { valid: false, error: 'Missing or invalid required field: resource.sourceRefName' };
   }
 
-  if (!payload.resource.targetRefName) {
-    return { valid: false, error: 'Missing required field: resource.targetRefName' };
+  if (!payload.resource.targetRefName || typeof payload.resource.targetRefName !== 'string') {
+    return { valid: false, error: 'Missing or invalid required field: resource.targetRefName' };
+  }
+
+  if (!payload.resource.createdBy || typeof payload.resource.createdBy !== 'object') {
+    return { valid: false, error: 'Missing or invalid required field: resource.createdBy' };
+  }
+
+  if (!payload.resource.createdBy.id) {
+    return { valid: false, error: 'Missing required field: resource.createdBy.id' };
+  }
+
+  if (!payload.resource.createdBy.displayName || typeof payload.resource.createdBy.displayName !== 'string') {
+    return { valid: false, error: 'Missing or invalid required field: resource.createdBy.displayName' };
   }
 
   return { valid: true };
@@ -141,9 +153,9 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
       logger.info('Webhook received', {
         eventType: payload.eventType,
         prId: payload.resource?.pullRequestId,
-        userId: req.user?.id,
-        userDisplayName: req.user?.displayName,
-        requestId: req.requestId
+        userId: payload.resource?.createdBy?.id,
+        userDisplayName: payload.resource?.createdBy?.displayName,
+        requestId: payload.id
       });
 
       // Validate payload
@@ -163,8 +175,45 @@ async function handleWebhook(req: AuthenticatedRequest, res: http.ServerResponse
       }
 
       // Add job to queue with authentication credentials
-      const token = req.headers['authorization']!.split(' ')[1];
-      const jobId = queue.addJob(payload as WebhookPayload, token, req.orgUrl!);
+      const authHeader = req.headers['authorization'];
+      if (!authHeader || typeof authHeader !== 'string') {
+        logger.warn('Missing authorization header in webhook request');
+        const errorResponse: ErrorResponse = {
+          error: 'Unauthorized',
+          details: 'Missing or invalid Authorization header'
+        };
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const token = authHeader.split(' ')[1];
+      if (!token) {
+        logger.warn('Invalid authorization header format in webhook request');
+        const errorResponse: ErrorResponse = {
+          error: 'Unauthorized',
+          details: 'Invalid Authorization header format'
+        };
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
+      if (!orgUrlHeader || orgUrlHeader.trim() === '') {
+        logger.warn('Missing organization URL in webhook request');
+        const errorResponse: ErrorResponse = {
+          error: 'Bad Request',
+          details: 'Missing or empty X-Ado-Org-Url header'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const orgUrl = orgUrlHeader.trim();
+
+      const jobId = queue.addJob(payload as WebhookPayload, token, orgUrl);
 
       // Return 202 Accepted
       const response: WebhookResponse = {

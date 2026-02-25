@@ -13,7 +13,7 @@
     "build:extension": "webpack --config webpack.config.js --mode production",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version --output-path ./output",
-    "publish:all": "powershell ./publish-all.ps1",
+    "publish:all": "powershell src/backend/utils/publish-all.ps1",
     "start": "node dist/server.js",
     "test:local": "ts-node test-local.ts",
     "lint": "tsc --noEmit",

@@ -46,7 +46,7 @@ export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): P
 
     const sourceBranch = pr.sourceRefName ?? "";
     const targetBranch = pr.targetRefName ?? "";
-    
+
     const metadata: PRMetadata = {
       prId,
       title: pr.title ?? "",
@@ -60,7 +60,7 @@ export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): P
       projectId: pr.repository?.project?.id ?? "",
       sourceBranch,
       targetBranch,
-      branchName: sourceBranch.split('/').pop() ?? "",
+      branchName: (sourceBranch?.split('/').pop() ?? "") || "unknown",
     };
 
     logger.info("PR metadata fetched successfully", {

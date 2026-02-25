@@ -34,6 +34,10 @@ function extractOrgName(orgUrl: string): string {
  * Extract PR metadata from webhook payload
  */
 function extractPRMetadata(payload: WebhookPayload): PRMetadata {
+  const sourceRef = payload.resource?.sourceRefName || 'unknown';
+  const targetRef = payload.resource?.targetRefName || 'unknown';
+  const createdBy = payload.resource?.createdBy || {};
+
   return {
     prId: payload.resource.pullRequestId,
     title: payload.resource.title,
@@ -42,12 +46,12 @@ function extractPRMetadata(payload: WebhookPayload): PRMetadata {
     repositoryName: payload.resource.repository.name,
     projectName: payload.resource.repository.project.name,
     projectId: payload.resource.repository.project.id,
-    sourceBranch: payload.resource.sourceRefName.replace('refs/heads/', ''),
-    targetBranch: payload.resource.targetRefName.replace('refs/heads/', ''),
-    author: payload.resource.createdBy.displayName,
-    authorEmail: payload.resource.createdBy.uniqueName,
+    sourceBranch: sourceRef.replace('refs/heads/', ''),
+    targetBranch: targetRef.replace('refs/heads/', ''),
+    author: createdBy.displayName || 'unknown',
+    authorEmail: createdBy.uniqueName || 'unknown',
     createDate: new Date(),
-    branchName: payload.resource.sourceRefName.replace('refs/heads/', '')
+    branchName: sourceRef.replace('refs/heads/', '')
 
   };
 }
