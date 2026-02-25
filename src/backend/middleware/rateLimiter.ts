@@ -8,7 +8,7 @@
  */
 
 import * as http from 'http';
-import * as logger from './utils/logger';
+import * as logger from '.././utils/logger';
 
 /**
  * Rate limit configuration
