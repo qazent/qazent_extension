@@ -57,6 +57,42 @@ function extractPRMetadata(payload: WebhookPayload): PRMetadata {
 }
 
 /**
+ * Retry a function with exponential backoff and jitter
+ * Useful for transient failures (network glitches, rate limiting)
+ */
+async function fetchWithRetry<T>(
+  fetchFunc: () => Promise<T>,
+  maxAttempts: number = 3,
+  initialDelayMs: number = 1000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fetchFunc();
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw error; // Final attempt, don't retry
+      }
+
+      // Exponential backoff with jitter: (2^attempt - 1) * initialDelayMs + random(0-1000)ms
+      const exponentialDelay = Math.pow(2, attempt - 1) * initialDelayMs;
+      const jitter = Math.random() * 1000;
+      const delayMs = exponentialDelay + jitter;
+
+      logger.warn('API call failed, retrying', {
+        attempt,
+        maxAttempts,
+        error: String(error),
+        delayMs: Math.floor(delayMs),
+        errorType: error instanceof Error ? error.constructor.name : typeof error
+      });
+
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw new Error('fetchWithRetry loop completed without returning or throwing');
+}
+
+/**
  * Process a single job
  */
 async function processJob(job: QueueJob): Promise<void> {
@@ -75,15 +111,19 @@ async function processJob(job: QueueJob): Promise<void> {
   });
 
   try {
-    // Step 1: Fetch PR diff from Azure DevOps
+    // Step 1: Fetch PR diff from Azure DevOps with retry logic
     logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId });
-    const codeDiff = await fetchPRDiff(
-      prMetadata.projectName,
-      prMetadata.repositoryId,
-      prMetadata.prId,
-      connection,
-      orgName,
-      payload.token
+    const codeDiff = await fetchWithRetry(
+      () => fetchPRDiff(
+        prMetadata.projectName,
+        prMetadata.repositoryId,
+        prMetadata.prId,
+        connection,
+        orgName,
+        payload.token
+      ),
+      3,  // maxAttempts
+      1000  // initialDelayMs
     );
 
     // Step 2: Generate test cases using AI

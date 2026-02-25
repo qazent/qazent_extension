@@ -29,7 +29,25 @@ export async function fetchFileContentFromRest(
     `&includeContent=true` +
     `&api-version=7.1-preview.1`;
 
-  logger.debug("Fetching file content via REST", { organization, projectName, repositoryId, filePath, commitId, url });
+  if (!token) {
+    throw new Error('Authorization token is missing. Cannot proceed with API call.');
+  }
+
+  if (typeof token !== 'string' || token.trim().length === 0) {
+    throw new Error(`Authorization token is invalid (empty or non-string). Token type: "${typeof token}"`);
+  }
+
+  logger.debug("Fetching file content via REST", {
+    organization,
+    projectName,
+    repositoryId,
+    filePath,
+    commitId,
+    url,
+    tokenPresent: true,
+    tokenLength: token.length,
+    tokenPrefix: token.substring(0, 10) + '...'
+  });
 
   const response = await fetch(url, {
     headers: {
@@ -38,9 +56,24 @@ export async function fetchFileContentFromRest(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
+    const text = await response.text().catch(() => "(unable to read response body)");
+    const headers = {
+      wwwAuthenticate: response.headers.get('www-authenticate'),
+      xMsCorrelationId: response.headers.get('x-ms-correlation-id'),
+      xTfsProcessingId: response.headers.get('x-tfs-processingid')
+    };
+
+    logger.error('REST API call failed', {
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      headers,
+      responseBody: text.substring(0, 500),
+      authHeaderSent: !!token
+    });
+
     throw new Error(
-      `REST getItem failed (${response.status} ${response.statusText}): ${text}`
+      `REST API failed (${response.status}): ${text}`
     );
   }
 

@@ -35,8 +35,22 @@ const startTime = Date.now();
  * PRODUCTION: Use Azure Key Vault to manage encryption keys
  * DO NOT hardcode encryption keys in production
  */
-const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY;
 const ENCRYPTION_ALGO = 'aes-256-gcm';
+
+if (!ENCRYPTION_KEY) {
+  logger.error('CRITICAL: TOKEN_ENCRYPTION_KEY environment variable is not set. ' +
+    'Webhook tokens cannot be encrypted/decrypted securely. ' +
+    'Please set TOKEN_ENCRYPTION_KEY to a 64-character hex string (generated via: openssl rand -hex 32)');
+  throw new Error('TOKEN_ENCRYPTION_KEY not configured. Cannot start server.');
+}
+
+// Validate key format
+if (!/^[a-f0-9]{64}$/.test(ENCRYPTION_KEY!.toLowerCase())) {
+  logger.error('CRITICAL: TOKEN_ENCRYPTION_KEY must be a 64-character hexadecimal string. ' +
+    `Received: "${ENCRYPTION_KEY!.substring(0, 10)}..." (${ENCRYPTION_KEY!.length} chars)`);
+  throw new Error('TOKEN_ENCRYPTION_KEY has invalid format.');
+}
 
 /**
  * In-memory webhook token storage
@@ -57,7 +71,7 @@ const webhookTokenStore = new Map<string, {
  */
 function encryptToken(token: string, associatedUserId?: string): { encryptedToken: string; iv: string; authTag: string } {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), iv);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, Buffer.from(ENCRYPTION_KEY!.slice(0, 64), 'hex'), iv);
 
   let encrypted = cipher.update(token, 'utf8', 'hex');
   encrypted += cipher.final('hex');
@@ -80,7 +94,7 @@ function decryptToken(encryptedData: { encryptedToken: string; iv: string; authT
   try {
     const decipher = crypto.createDecipheriv(
       ENCRYPTION_ALGO,
-      Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'),
+      Buffer.from(ENCRYPTION_KEY!.slice(0, 64), 'hex'),
       Buffer.from(encryptedData.iv, 'hex')
     );
 
@@ -102,6 +116,7 @@ function decryptToken(encryptedData: { encryptedToken: string; iv: string; authT
 async function getStoredTokenForOrg(orgUrl: string): Promise<string | undefined> {
   const stored = webhookTokenStore.get(orgUrl);
   if (!stored) {
+    logger.warn('No stored token found', { orgUrl, availableOrgs: Array.from(webhookTokenStore.keys()) });
     return undefined;
   }
 
@@ -112,10 +127,20 @@ async function getStoredTokenForOrg(orgUrl: string): Promise<string | undefined>
       authTag: stored.authTag
     });
 
-    logger.debug('Token retrieved successfully for organization', { orgUrl });
+    if (!token || token.trim().length === 0) {
+      throw new Error('Token decrypted to empty string');
+    }
+
+    logger.info('Token retrieved and decrypted successfully', { orgUrl, tokenLength: token.length });
     return token;
   } catch (error) {
-    logger.error('Failed to retrieve stored token', { orgUrl, error: String(error) });
+    logger.error('CRITICAL: Failed to decrypt stored token', {
+      orgUrl,
+      storedDataPresent: !!stored,
+      error: error instanceof Error ? error.message : String(error),
+      encryptionKeyLength: ENCRYPTION_KEY!.length,
+      availableOrgs: Array.from(webhookTokenStore.keys())
+    });
     return undefined;
   }
 }
@@ -436,23 +461,35 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
       // Use pre-configured service token from environment for background processing
       // In production, this should be fetched from secure storage (database/Key Vault)
       // based on the organization that the webhook came from.
-      // For now, we look it up from environment as a placeholder.
-      const serviceToken = process.env.ADO_PAT ||
-        await getStoredTokenForOrg(orgUrl); // TODO: Implement secure token storage
+      let serviceToken = process.env.ADO_PAT;
+      if (!serviceToken) {
+        logger.debug('ADO_PAT not in environment, attempting to retrieve stored token', { orgUrl });
+        serviceToken = await getStoredTokenForOrg(orgUrl);
+      }
 
       if (!serviceToken) {
-        logger.error('Service token not configured', {
+        logger.error('Authentication failed - no token available for webhook processing', {
           orgUrl,
-          error: 'No token found for organization. Token must be configured via webhook setup in Extension.'
+          hadEnvironmentPAT: !!process.env.ADO_PAT,
+          hadStoredToken: webhookTokenStore.has(orgUrl),
+          action: 'Please store webhook token via /api/webhook-token endpoint or set ADO_PAT env var'
         });
+
         const errorResponse: ErrorResponse = {
-          error: 'Internal server error',
-          details: 'Service credentials not configured for this organization. Please set up webhooks via the Extension UI.'
+          error: 'Service not configured',
+          details: 'Webhook token not configured for this organization. ' +
+                   'Visit the extension settings to authenticate with your organization.'
         };
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
         return;
       }
+
+      logger.debug('Service token acquired for webhook processing', {
+        orgUrl,
+        tokenSource: process.env.ADO_PAT ? 'environment' : 'encrypted-store',
+        tokenLength: serviceToken.length
+      });
 
       const jobId = queue.addJob(payload as WebhookPayload, serviceToken, orgUrl);
 
