@@ -575,21 +575,19 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
  * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
 function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
-  // Normalize origin
-  if (typeof origin !== "string") {
-    logger.warn("CORS: Non-string or missing origin", { origin });
-    origin = undefined;
-  }
+  const normalizedOrigin =
+    typeof origin === "string" ? origin : null;
 
-  logger.info("CORS: Incoming origin", { origin });
-
-  // Allow server-to-server or health checks
-  if (!origin) {
+  if (!normalizedOrigin) {
+    logger.info("CORS: No origin header, treating as server-to-server request");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Credentials", "false");
-    logger.info("CORS: No origin header, allowing request without credentials");
     return;
   }
+
+  logger.info("CORS: Incoming origin", { origin: normalizedOrigin });
+
+
 
   // Allowed patterns
   const basePatterns = [
@@ -826,15 +824,16 @@ if (normalizedUrl === '/webhook' && method === 'POST') {
   const contentType = req.headers['content-type'];
 
   if (!contentType || !contentType.includes('application/json')) {
-    logger.warn('Invalid content type', { contentType });
+    logger.warn('Invalid content type for webhook', { contentType });
 
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       error: 'Invalid content type',
-      details: 'Expected application/json'
+      expected: 'application/json'
     }));
     return;
   }
+
 
   await rateLimitWebhook(req, res, () => handleWebhook(req, res));
   return;
