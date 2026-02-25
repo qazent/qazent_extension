@@ -16,7 +16,6 @@ import {
   rateLimitGenerateTests,
   rateLimitCreateWorkItem,
   rateLimitPostPRComment,
-  rateLimitWebhook,
   rateLimitHealth
 } from './middleware/rateLimiter';
 
@@ -711,125 +710,6 @@ function applyMiddleware(
 }
 
 /**
- * Main request handler
- * Security: All endpoints (except /health) protected with authentication
- */
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const method = req.method;
-  const url = req.url;
-  const origin = req.headers.origin;
-
-  logger.info("Request received", { method, url, origin });
-
-  // Apply CORS headers to all responses
-  applyCorsHeaders(res, origin);
-
-  // Normalize URL (fixes //generate-tests)
-  const normalizedUrl = url?.replace(/^\/+/, '/');
-  logger.info("Normalized URL", { normalizedUrl });
-
-
-  // Handle preflight requests
-  if (method === 'OPTIONS') {
-    logger.info("OPTIONS preflight received", { url, origin });
-
-    res.writeHead(204);
-    res.end();
-
-    logger.info("OPTIONS response sent (204)");
-    return;
-  }
-
-  // Health check endpoint (PUBLIC - no authentication, only rate limiting)
-  if (normalizedUrl === '/health' && method === 'GET') {
-    logger.info("Health check hit");
-    rateLimitHealth(req, res, () => {
-      handleHealth(req, res);
-    });
-    return;
-  }
-
-  // Generate tests endpoint (PROTECTED - authentication + rate limiting)
-  if (normalizedUrl === '/generate-tests' && method === 'POST') {
-    logger.info("POST /generate-tests hit");
-
-    const contentType = req.headers['content-type'];
-    logger.info("POST content-type", { contentType });
-
-    if (!contentType || !contentType.includes('application/json')) {
-      logger.warn("Invalid content type", { contentType });
-
-      const errorResponse: ErrorResponse = {
-        error: 'Invalid content type',
-        details: 'Expected application/json'
-      };
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(errorResponse));
-      return;
-    }
-
-    logger.info("Applying authentication and rate limiting...");
-    await applyMiddleware(rateLimitGenerateTests, handleGenerateTests)(req, res);
-    return;
-  }
-
-  // Create work item endpoint (PROTECTED - authentication + rate limiting)
-  if (normalizedUrl === '/create-work-item' && method === 'POST') {
-    logger.info("POST /create-work-item hit");
-
-    const contentType = req.headers['content-type'];
-    logger.info("POST content-type", { contentType });
-
-    if (!contentType || !contentType.includes('application/json')) {
-      logger.warn("Invalid content type", { contentType });
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid content type', details: 'Expected application/json' }));
-      return;
-    }
-
-    await applyMiddleware(rateLimitCreateWorkItem, handleCreateWorkItem)(req, res);
-    return;
-  }
-
-  // Post PR comment endpoint (PROTECTED - authentication + rate limiting)
-  if (normalizedUrl === '/post-pr-comment' && method === 'POST') {
-    logger.info("POST /post-pr-comment hit");
-
-    const contentType = req.headers['content-type'];
-    if (!contentType || !contentType.includes('application/json')) {
-      logger.warn("Invalid content type", { contentType });
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid content type' }));
-      return;
-    }
-
-    await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
-    return;
-  }
-
-
-
-// Webhook endpoint (PUBLIC - no authentication, no rate limiting)
-if (normalizedUrl === '/webhook' && method === 'POST') {
-  const contentType = req.headers['content-type'];
-
-  if (!contentType || !contentType.includes('application/json')) {
-    logger.warn('Invalid content type for webhook', { contentType });
-
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      error: 'Invalid content type',
-      expected: 'application/json'
-    }));
-    return;
-  }
-
-  // Call webhook handler directly (public endpoint, no middleware)
-  await handleWebhook(req, res);
-  return;
-}
-
-/**
  * Start the server
  */
 function startServer(): void {
@@ -851,8 +731,123 @@ function startServer(): void {
   // Start background worker
   queue.startWorker();
 
-  // Create HTTP server
-  const server = http.createServer(handleRequest);
+  // Create HTTP server with main request handler
+  // Security: All endpoints (except /health) protected with authentication
+  const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    const method = req.method;
+    const url = req.url;
+    const origin = req.headers.origin;
+
+    logger.info("Request received", { method, url, origin });
+
+    // Apply CORS headers to all responses
+    applyCorsHeaders(res, origin);
+
+    // Normalize URL (fixes //generate-tests)
+    const normalizedUrl = url?.replace(/^\/+/, '/');
+    logger.info("Normalized URL", { normalizedUrl });
+
+
+    // Handle preflight requests
+    if (method === 'OPTIONS') {
+      logger.info("OPTIONS preflight received", { url, origin });
+
+      res.writeHead(204);
+      res.end();
+
+      logger.info("OPTIONS response sent (204)");
+      return;
+    }
+
+    // Health check endpoint (PUBLIC - no authentication, only rate limiting)
+    if (normalizedUrl === '/health' && method === 'GET') {
+      logger.info("Health check hit");
+      rateLimitHealth(req, res, () => {
+        handleHealth(req, res);
+      });
+      return;
+    }
+
+    // Generate tests endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/generate-tests' && method === 'POST') {
+      logger.info("POST /generate-tests hit");
+
+      const contentType = req.headers['content-type'];
+      logger.info("POST content-type", { contentType });
+
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+
+        const errorResponse: ErrorResponse = {
+          error: 'Invalid content type',
+          details: 'Expected application/json'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.info("Applying authentication and rate limiting...");
+      await applyMiddleware(rateLimitGenerateTests, handleGenerateTests)(req, res);
+      return;
+    }
+
+    // Create work item endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/create-work-item' && method === 'POST') {
+      logger.info("POST /create-work-item hit");
+
+      const contentType = req.headers['content-type'];
+      logger.info("POST content-type", { contentType });
+
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type', details: 'Expected application/json' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitCreateWorkItem, handleCreateWorkItem)(req, res);
+      return;
+    }
+
+    // Post PR comment endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/post-pr-comment' && method === 'POST') {
+      logger.info("POST /post-pr-comment hit");
+
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
+      return;
+    }
+
+
+
+    // Webhook endpoint (PUBLIC - no authentication, no rate limiting)
+    if (normalizedUrl === '/webhook' && method === 'POST') {
+      const contentType = req.headers['content-type'];
+
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn('Invalid content type for webhook', { contentType });
+
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Invalid content type',
+          expected: 'application/json'
+        }));
+        return;
+      }
+
+      // Call webhook handler directly (public endpoint, no middleware)
+      await handleWebhook(req, res);
+      return;
+    }
+  });
 
     server.listen(PORT, "0.0.0.0", () => {
     logger.info("Server started", { port: PORT });
@@ -886,4 +881,4 @@ function startServer(): void {
 
 // Start the server
 startServer();
-} 
+
