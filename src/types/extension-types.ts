@@ -1,5 +1,5 @@
 /**
- * Frontend-specific TypeScript types for Azure DevOps Extension
+ * FRONTEND-specific TypeScript types for Azure DevOps Extension
  */
 
 /**

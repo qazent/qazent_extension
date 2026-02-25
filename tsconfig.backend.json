@@ -13,7 +13,7 @@
     "sourceMap": true,
     "baseUrl": "./src/backend",
     "paths": {
-      "@logger": ["logger"]
+      "@logger": ["utils/logger"]
     }
   },
   "include": ["src/backend/**/*"],

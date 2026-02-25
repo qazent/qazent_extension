@@ -6,7 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, PRMetadata, TaskWorkItemOutput } from './types';
-import * as logger from 'backend/utils/logger';
+import * as logger from '@logger';
 import { jsonrepair } from "jsonrepair";
 
 

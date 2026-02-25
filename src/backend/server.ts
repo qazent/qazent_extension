@@ -6,7 +6,7 @@
 
 import * as http from 'http';
 import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
-import * as logger from '../../logger';
+import * as logger from '@logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';

@@ -8,7 +8,7 @@
 
     "baseUrl": "./src",
     "paths": {
-     "@logger": ["utils/logger"]
+     "@logger": ["backend/utils/logger"]
     },
     "ignoreDeprecations": "6.0",
 
