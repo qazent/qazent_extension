@@ -56,18 +56,12 @@ export async function fetchFileContentFromRest(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "(unable to read response body)");
-    const headers = {
-      wwwAuthenticate: response.headers.get('www-authenticate'),
-      xMsCorrelationId: response.headers.get('x-ms-correlation-id'),
-      xTfsProcessingId: response.headers.get('x-tfs-processingid')
-    };
+    const text = await response.text();
 
     logger.error('REST API call failed', {
       status: response.status,
       statusText: response.statusText,
       url,
-      headers,
       responseBody: text.substring(0, 500),
       authHeaderSent: !!token
     });
@@ -83,12 +77,12 @@ export async function fetchFileContentFromRest(
     // Some responses may wrap content in JSON; handle defensively
     const json = (await response.json()) as any;
 
-      if (typeof json.content === "string") {
-        // fallback to content property if it exists, otherwise return entire JSON as string
-        return json.content;
-}
+    if (typeof json.content === "string") {
+      // fallback to content property if it exists, otherwise return entire JSON as string
+      return json.content;
+    }
 
-return JSON.stringify(json, null, 2);
+    return JSON.stringify(json, null, 2);
   }
 
   return await response.text();
