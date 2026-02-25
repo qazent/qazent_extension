@@ -5,7 +5,7 @@
 
 import { generateTestCases as aiGenerateTestCases } from '.././ai';
 import * as backendClient from '.././backendClient';
-import { PRMetadata, CodeDiff } from '.././types';
+import { PRMetadata, CodeDiff } from '../src/backend/types';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 //

@@ -5,6 +5,13 @@
     "lib": ["ES2022", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
+
+    "baseUrl": "./src",
+    "paths": {
+     "@logger": ["utils/logger"]
+    },
+    "ignoreDeprecations": "6.0",
+
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -24,5 +31,13 @@
     "jsx": "react"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx", "jest.config.ts", "webpack.config.js", "tests/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "jest.config.ts",
+    "webpack.config.js",
+    "tests/**"
+  ]
 }

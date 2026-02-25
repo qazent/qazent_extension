@@ -1,5 +1,5 @@
-import { PRMetadata } from "../../types";
-import * as logger from "../../logger";
+import { PRMetadata } from "../types";
+import * as logger from "./logger";
 
 /**
  * Extract the first valid JSON object from an AI response.

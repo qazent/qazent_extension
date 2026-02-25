@@ -3,32 +3,24 @@
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022"],
-    "outDir": "./dist",
-    "rootDir": ".",
+    "outDir": "./dist/backend",
+    "rootDir": "./src/backend",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": "./src/backend",
+    "paths": {
+      "@logger": ["logger"]
+    }
   },
-  "include": [
-    "server.ts",
-    "logger.ts",
-    "types.ts",
-    "queue.ts",
-    "ai.ts",
-    "ado-client.ts",
-    "fetchPRdiff.ts"
-  ],
+  "include": ["src/backend/**/*"],
   "exclude": [
-    "src",
     "node_modules",
     "dist",
-    "*.test.ts",
-    "jest.config.ts",
-    "jest.setup.ts",
-    "jest-check.ts",
-    "test-local.ts"
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }

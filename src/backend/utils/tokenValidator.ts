@@ -9,7 +9,7 @@
 
 import * as crypto from 'crypto';
 import * as https from 'https';
-import * as logger from '../../logger';
+import * as logger from './logger';
 
 /**
  * User identity extracted from validated token

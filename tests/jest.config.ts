@@ -19,13 +19,9 @@ const config: Config.InitialOptions = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        tsconfig: {
-          jsx: 'react',
-          esModuleInterop: true,
-          allowSyntheticDefaultImports: true,
-        },
-      },
-    ],
+        tsconfig: 'tsconfig.test.json'
+      }
+    ]
   },
 
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
@@ -40,7 +36,6 @@ const config: Config.InitialOptions = {
     '!src/settings/index.tsx',
   ],
 
-  // ⭐ Add this:
   testTimeout: 30000,
 };
 

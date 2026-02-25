@@ -2,8 +2,8 @@
  * Unit tests for AI module
  */
 
-import { generateTestCases } from './ai';
-import { PRMetadata, CodeDiff } from './types';
+import { generateTestCases } from '../src/backend/ai';
+import { PRMetadata, CodeDiff } from '../src/backend/types';
 
 
 // Mock GoogleGenAI with a controlled mock function

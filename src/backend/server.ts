@@ -6,19 +6,19 @@
 
 import * as http from 'http';
 import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
-import * as logger from './logger';
+import * as logger from '../../logger';
 import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
-import { createAuthMiddleware, AuthenticatedRequest } from './src/middleware/authenticate';
+import { createAuthMiddleware, AuthenticatedRequest } from './middleware/authenticate';
 import {
   rateLimitGenerateTests,
   rateLimitCreateWorkItem,
   rateLimitPostPRComment,
   rateLimitWebhook,
   rateLimitHealth
-} from './src/middleware/rateLimiter';
+} from './middleware/rateLimiter';
 
 // Azure diagnostic logging
 console.log('[STARTUP] Current working directory:', process.cwd());
