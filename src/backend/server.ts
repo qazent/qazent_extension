@@ -18,6 +18,8 @@ import {
   rateLimitPostPRComment,
   rateLimitHealth
 } from './middleware/rateLimiter';
+import * as crypto from 'crypto';
+
 
 // Azure diagnostic logging
 console.log('[STARTUP] Current working directory:', process.cwd());
@@ -27,6 +29,123 @@ console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
+
+/**
+ * Encryption key for storing tokens
+ * PRODUCTION: Use Azure Key Vault to manage encryption keys
+ * DO NOT hardcode encryption keys in production
+ */
+const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const ENCRYPTION_ALGO = 'aes-256-gcm';
+
+/**
+ * In-memory webhook token storage
+ * PRODUCTION: Replace with encrypted database storage
+ * Format: { orgUrl: { encryptedToken, iv, authTag, userId, createdDate } }
+ */
+const webhookTokenStore = new Map<string, {
+  encryptedToken: string;
+  iv: string;
+  authTag: string;
+  userId?: string;
+  createdDate: Date;
+}>();
+
+/**
+ * Encrypt token using AES-256-GCM
+ * PRODUCTION: Use Azure Key Vault for key management
+ */
+function encryptToken(token: string, associatedUserId?: string): { encryptedToken: string; iv: string; authTag: string } {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'), iv);
+
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+
+  const authTag = cipher.getAuthTag().toString('hex');
+
+  logger.debug('Token encrypted successfully', { userId: associatedUserId });
+
+  return {
+    encryptedToken: encrypted,
+    iv: iv.toString('hex'),
+    authTag
+  };
+}
+
+/**
+ * Decrypt token using AES-256-GCM
+ */
+function decryptToken(encryptedData: { encryptedToken: string; iv: string; authTag: string }): string {
+  try {
+    const decipher = crypto.createDecipheriv(
+      ENCRYPTION_ALGO,
+      Buffer.from(ENCRYPTION_KEY.slice(0, 64), 'hex'),
+      Buffer.from(encryptedData.iv, 'hex')
+    );
+
+    decipher.setAuthTag(Buffer.from(encryptedData.authTag, 'hex'));
+
+    let decrypted = decipher.update(encryptedData.encryptedToken, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    logger.error('Token decryption failed', { error: String(error) });
+    throw new Error('Failed to decrypt token. Token may be corrupted.');
+  }
+}
+
+/**
+ * Retrieve stored token for organization
+ */
+async function getStoredTokenForOrg(orgUrl: string): Promise<string | undefined> {
+  const stored = webhookTokenStore.get(orgUrl);
+  if (!stored) {
+    return undefined;
+  }
+
+  try {
+    const token = decryptToken({
+      encryptedToken: stored.encryptedToken,
+      iv: stored.iv,
+      authTag: stored.authTag
+    });
+
+    logger.debug('Token retrieved successfully for organization', { orgUrl });
+    return token;
+  } catch (error) {
+    logger.error('Failed to retrieve stored token', { orgUrl, error: String(error) });
+    return undefined;
+  }
+}
+
+/**
+ * Store webhook token in memory 
+ */
+async function storeWebhookTokenInMemory(
+  orgUrl: string,
+  token: string,
+  userId?: string
+): Promise<void> {
+  try {
+    const encrypted = encryptToken(token, userId);
+
+    webhookTokenStore.set(orgUrl, {
+      ...encrypted,
+      userId,
+      createdDate: new Date()
+    });
+
+    logger.info('Webhook token stored successfully', {
+      orgUrl,
+      userId
+    });
+  } catch (error) {
+    logger.error('Failed to store webhook token', { orgUrl, error: String(error) });
+    throw new Error(`Failed to store webhook token: ${error}`);
+  }
+}
 
 
 
@@ -46,9 +165,9 @@ function extractOrgName(orgUrl: string): string {
   if (url.hostname.endsWith('.visualstudio.com')) {
     return url.hostname.split('.')[0];
   }
-
   throw new Error(`Invalid Azure DevOps URL format: ${orgUrl}`);
 }
+  
 
 
 
@@ -133,9 +252,105 @@ function validatePayload(payload: any): { valid: boolean; error?: string } {
 }
 
 /**
- * Handle webhook POST request
- * Security: User identity verified by authentication middleware
+ * Handle POST /api/webhook-token request
+ * Stores webhook token for organization (authenticated endpoint)
  */
+async function handleStoreWebhookToken(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      // Validate request
+      if (!payload.orgUrl || typeof payload.orgUrl !== 'string') {
+        const errorResponse: ErrorResponse = {
+          error: 'Bad Request',
+          details: 'Missing or invalid required field: orgUrl'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (!payload.token || typeof payload.token !== 'string') {
+        const errorResponse: ErrorResponse = {
+          error: 'Bad Request',
+          details: 'Missing or invalid required field: token'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const orgUrl = payload.orgUrl.trim();
+      const token = payload.token;
+
+      // Store token with user context
+      await storeWebhookTokenInMemory(orgUrl, token, req.user?.id);
+
+      logger.info('Webhook token stored successfully', {
+        orgUrl,
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
+      });
+
+      const response = {
+        success: true,
+        message: 'Webhook token stored successfully',
+        orgUrl
+      };
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(response));
+
+    } catch (error) {
+      logger.error('Failed to store webhook token', {
+        error: String(error),
+        requestId: req.requestId
+      });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+ /**
+ * FLOW:
+ * 1. User in Extension UI calls webhook setup via SDK.getAccessToken()
+ * 2. Webhook creation stores: organization → encrypted token mapping
+ * 3. Azure DevOps sends POST to /webhook when PR event occurs
+ * 4. This handler looks up stored token and processes asynchronously
+ *
+ * Production requirements:
+ * - Tokens must be stored securely (stateless, encryption, in memory)
+ * - Each organization's token is captured from the Extension context
+ * - Never expose tokens in logs or responses
+ */
+
+
 async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   // Read request body
   let body = '';
@@ -144,7 +359,7 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
     body += chunk.toString();
   });
 
-  req.on('end', () => {
+  req.on('end', async () => {
     try {
       // Parse JSON
       const payload = JSON.parse(body);
@@ -219,12 +434,20 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
       }
 
       // Use pre-configured service token from environment for background processing
-      const serviceToken = process.env.AZURE_DEVOPS_PAT;
+      // In production, this should be fetched from secure storage (database/Key Vault)
+      // based on the organization that the webhook came from.
+      // For now, we look it up from environment as a placeholder.
+      const serviceToken = process.env.AZURE_DEVOPS_PAT ||
+        await getStoredTokenForOrg(orgUrl); // TODO: Implement secure token storage
+
       if (!serviceToken) {
-        logger.error('Service token not configured', { error: 'AZURE_DEVOPS_PAT environment variable not set' });
+        logger.error('Service token not configured', {
+          orgUrl,
+          error: 'No token found for organization. Token must be configured via webhook setup in Extension.'
+        });
         const errorResponse: ErrorResponse = {
           error: 'Internal server error',
-          details: 'Service credentials not configured. Contact administrator.'
+          details: 'Service credentials not configured for this organization. Please set up webhooks via the Extension UI.'
         };
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -856,6 +1079,24 @@ function startServer(): void {
       return;
     }
 
+    // Store webhook token endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/api/webhook-token' && method === 'POST') {
+      logger.info("POST /api/webhook-token hit");
+
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn('Invalid content type for webhook token storage', { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'Invalid content type',
+          details: 'Expected application/json'
+        }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitGenerateTests, handleStoreWebhookToken)(req, res);
+      return;
+    }
 
 
     // Webhook endpoint (PUBLIC - no authentication, no rate limiting)

@@ -95,7 +95,19 @@ export async function createWebhookSubscription(
     }
 
     const data = await response.json();
-    return data as WebhookSubscription;
+    const subscription = data as WebhookSubscription;
+
+    // PRODUCTION: Store the user's token securely for webhook processing
+    // This allows webhooks to be processed using the user's credentials
+    try {
+      await storeWebhookToken(orgUrl, token);
+      console.log('Webhook token stored securely for organization:', orgUrl);
+    } catch (storageError) {
+      console.warn('Warning: Failed to store webhook token. Webhooks may not work.', storageError);
+      // Don't fail webhook creation if token storage fails - user can retry
+    }
+
+    return subscription;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(message);
@@ -291,5 +303,57 @@ export async function isAutoGenerationEnabled(
     // On error, assume not enabled
     console.error("Error checking auto-generation status:", err);
     return false;
+  }
+}
+
+/**
+ * Store webhook token securely for organization
+ *
+ * Sends the user's token to backend secure storage via authenticated API endpoint.
+ * Backend encrypts and stores the token for later webhook processing.
+ *
+ * @param orgUrl Organization URL (e.g., https://dev.azure.com/myorg)
+ * @param token User's personal access token
+ */
+async function storeWebhookToken(orgUrl: string, token: string): Promise<void> {
+  try {
+    // Get user's token for backend authentication
+    const userToken = await SDK.getAccessToken();
+
+    // Get backend URL from environment or derive from current host
+    const host = SDK.getHost();
+    const backendUrl = process.env.BACKEND_URL || `${host.name}`;
+
+    // Call backend API to store token securely
+    const response = await fetch(`${backendUrl}/api/webhook-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userToken}`,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        orgUrl: orgUrl.trim(),
+        token: token // Backend will encrypt this before storing
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(
+        `Failed to store webhook token (HTTP ${response.status}): ${errorText}`
+      );
+    }
+
+    const result = await response.json();
+    console.log('✓ Webhook token stored securely for organization:', orgUrl);
+
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('Warning: Failed to store webhook token.', message);
+    console.warn('Webhooks may not work without stored credentials.');
+    // Don't fail webhook creation if token storage fails - user can retry
+    throw error;
   }
 }

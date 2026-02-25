@@ -7,7 +7,7 @@ const config: Config.InitialOptions = {
 
   testMatch: ['**/?(*.)+(spec|test).[tj]s?(x)'],
 
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  setupFilesAfterEnv: ['tests/jest.setup.ts'],
 
   clearMocks: true,
 
