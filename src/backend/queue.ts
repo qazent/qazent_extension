@@ -112,7 +112,7 @@ async function processJob(job: QueueJob): Promise<void> {
 
   try {
     // Step 1: Fetch PR diff from Azure DevOps with retry logic
-    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId });
+    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId, token: payload.token, orgUrl: payload.orgUrl });
     const codeDiff = await fetchWithRetry(
       () => fetchPRDiff(
         prMetadata.projectName,
@@ -120,7 +120,7 @@ async function processJob(job: QueueJob): Promise<void> {
         prMetadata.prId,
         connection,
         orgName,
-        payload.token
+        payload.token,
       ),
       3,  // maxAttempts
       1000  // initialDelayMs

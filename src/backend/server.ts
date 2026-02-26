@@ -19,7 +19,9 @@ import {
   rateLimitHealth
 } from './middleware/rateLimiter';
 import * as crypto from 'crypto';
+import * as dotenv from 'dotenv';
 
+dotenv.config();
 
 // Azure diagnostic logging
 console.log('[STARTUP] Current working directory:', process.cwd());
