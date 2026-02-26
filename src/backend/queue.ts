@@ -51,8 +51,7 @@ function extractPRMetadata(payload: WebhookPayload): PRMetadata {
     author: createdBy.displayName || 'unknown',
     authorEmail: createdBy.uniqueName || 'unknown',
     createDate: new Date(),
-    branchName: sourceRef.replace('refs/heads/', '')
-
+    branchName: sourceRef.replace('refs/heads/', ''),
   };
 }
 
@@ -106,13 +105,17 @@ async function processJob(job: QueueJob): Promise<void> {
   logger.info('Processing job', {
     jobId: job.id,
     prId: prMetadata.prId,
+    projectId: prMetadata.projectId,
+    repositoryId: prMetadata.repositoryId,
+    sourceBranch: prMetadata.sourceBranch,
+    targetBranch: prMetadata.targetBranch,
     attempt,
     maxAttempts: job.maxAttempts
   });
 
   try {
     // Step 1: Fetch PR diff from Azure DevOps with retry logic
-    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId, token: payload.token, orgUrl: payload.orgUrl });
+    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId, token: payload.token, orgUrl: payload.orgUrl});
     const codeDiff = await fetchWithRetry(
       () => fetchPRDiff(
         prMetadata.projectName,

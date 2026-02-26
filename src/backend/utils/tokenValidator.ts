@@ -37,9 +37,9 @@ interface CacheEntry {
 const tokenCache = new Map<string, CacheEntry>();
 
 /**
- * Cache TTL: 5 minutes
+ * Cache TTL: 50 minutes
  */
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 50 * 60 * 1000;
 
 /**
  * Hash a token using SHA-256
