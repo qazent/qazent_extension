@@ -33,7 +33,10 @@ export async function fetchFileContentFromRest(
 
   const response = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${token}`,
+      // Use Basic auth with PAT for Azure DevOps REST API
+      // Format: Basic base64("username:PAT")
+      // For Azure DevOps, username can be empty, just base64 encode ":PAT"
+      Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`,
     },
   });
 

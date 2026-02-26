@@ -16,7 +16,9 @@ import * as logger from './utils/logger';
  * @returns Azure DevOps WebApi connection
  */
 export function createConnection(token: string, orgUrl: string): azdev.WebApi {
-  const authHandler = azdev.getBearerHandler(token);
+  // Use PersonalAccessTokenHandler for PAT authentication
+  // getBearerHandler is only for OAuth tokens, not PATs
+  const authHandler = azdev.getPersonalAccessTokenHandler(token);
   const connection = new azdev.WebApi(orgUrl, authHandler);
   logger.debug('Created Azure DevOps connection', { orgUrl });
   return connection;
