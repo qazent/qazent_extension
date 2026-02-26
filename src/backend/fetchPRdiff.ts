@@ -29,25 +29,7 @@ export async function fetchFileContentFromRest(
     `&includeContent=true` +
     `&api-version=7.1-preview.1`;
 
-  if (!token) {
-    throw new Error('Authorization token is missing. Cannot proceed with API call.');
-  }
-
-  if (typeof token !== 'string' || token.trim().length === 0) {
-    throw new Error(`Authorization token is invalid (empty or non-string). Token type: "${typeof token}"`);
-  }
-
-  logger.debug("Fetching file content via REST", {
-    organization,
-    projectName,
-    repositoryId,
-    filePath,
-    commitId,
-    url,
-    tokenPresent: true,
-    tokenLength: token.length,
-    tokenPrefix: token.substring(0, 10) + '...'
-  });
+  logger.debug("Fetching file content via REST", { organization, projectName, repositoryId, filePath, commitId, url });
 
   const response = await fetch(url, {
     headers: {
@@ -56,18 +38,9 @@ export async function fetchFileContentFromRest(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-
-    logger.error('REST API call failed', {
-      status: response.status,
-      statusText: response.statusText,
-      url,
-      responseBody: text.substring(0, 500),
-      authHeaderSent: !!token
-    });
-
+    const text = await response.text().catch(() => "");
     throw new Error(
-      `REST API failed (${response.status}): ${text}`
+      `REST getItem failed (${response.status} ${response.statusText}): ${text}`
     );
   }
 
@@ -77,12 +50,12 @@ export async function fetchFileContentFromRest(
     // Some responses may wrap content in JSON; handle defensively
     const json = (await response.json()) as any;
 
-    if (typeof json.content === "string") {
-      // fallback to content property if it exists, otherwise return entire JSON as string
-      return json.content;
-    }
+      if (typeof json.content === "string") {
+        // fallback to content property if it exists, otherwise return entire JSON as string
+        return json.content;
+}
 
-    return JSON.stringify(json, null, 2);
+return JSON.stringify(json, null, 2);
   }
 
   return await response.text();
