@@ -20,8 +20,6 @@ import {
 } from './middleware/rateLimiter';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
-import * as SDK from 'azure-devops-extension-sdk';
-
 
 dotenv.config();
 
@@ -69,6 +67,8 @@ const webhookTokenStore = new Map<string, {
   createdDate: Date;
 }>();
 
+logger.info('Webhook token store initialized', { implementation: 'in-memory', encryption: 'AES-256-GCM' });
+
 /**
  * Encrypt token using AES-256-GCM
  * PRODUCTION: Use Azure Key Vault for key management
@@ -82,7 +82,7 @@ function encryptToken(token: string, associatedUserId?: string): { encryptedToke
 
   const authTag = cipher.getAuthTag().toString('hex');
 
-  logger.debug('Token encrypted successfully', { userId: associatedUserId });
+  logger.info('Token encrypted successfully', { userId: associatedUserId });
 
   return {
     encryptedToken: encrypted,
@@ -398,7 +398,13 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         prId: payload.resource?.pullRequestId,
         userId: payload.resource?.createdBy?.id,
         userDisplayName: payload.resource?.createdBy?.displayName,
-        requestId: payload.id
+        requestId: payload.id,
+          repositoryId: payload.resource?.repository?.id,
+          repositoryName: payload.resource?.repository?.name,
+          projectName: payload.resource?.repository?.project?.name,
+          projectId: payload.resource?.repository?.project?.id,
+          targetBranch: payload.resource?.targetRefName,
+          sourceBranch: payload.resource?.sourceRefName          
       });
 
       // Validate payload
@@ -462,83 +468,76 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-        // Use pre-configured service token from SDK or secure store for background processing.
-        // In production, this should be fetched from secure storage (database/Key Vault)
-        // based on the organization that the webhook came from.
-        let serviceToken: string | undefined = await SDK.getAccessToken();
-        if (!serviceToken) {
-          logger.debug('ADO_PAT not in environment, attempting to retrieve stored token', { orgUrl });
-          serviceToken = await getStoredTokenForOrg(orgUrl);
-        }
+      // Use pre-configured service token from environment for background processing
+      // In production, this should be fetched from secure storage (database/Key Vault)
+      // based on the organization that the webhook came from.
+      let serviceToken = process.env.ADO_PAT;
+      if (!serviceToken) {
+        logger.debug('ADO_PAT not in environment, attempting to retrieve stored token', { orgUrl });
+        serviceToken = await getStoredTokenForOrg(orgUrl);
+      }
 
-        // If still missing, return the same 500 response as before (keep behavior unchanged).
-        if (!serviceToken) {
-          const hadEnvironmentPAT = !!process.env.ADO_PAT;
-          const hadStoredToken = !!(webhookTokenStore && typeof webhookTokenStore.has === 'function' && webhookTokenStore.has(orgUrl));
-
-          logger.error('Authentication failed - no token available for webhook processing', {
-            orgUrl,
-            hadEnvironmentPAT,
-            hadStoredToken,
-            action: 'Please store webhook token via /api/webhook-token endpoint or set ADO_PAT env var'
-          });
-
-          const errorResponse: ErrorResponse = {
-            error: 'Service not configured',
-            details: 'Webhook token not configured for this organization. Visit the extension settings to authenticate with your organization.'
-          };
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(errorResponse));
-          return;
-        }
-
-        // At this point serviceToken is guaranteed to be a string.
-        const token: string = serviceToken;
-        const tokenMask = `${token.slice(0,4)}...${token.slice(-4)} (len=${token.length})`;
-        const tokenSource = !!process.env.ADO_PAT ? 'environment' : 'encrypted-store';
-
-        logger.debug('Service token acquired for webhook processing', {
+      if (!serviceToken) {
+        logger.error('Authentication failed - no token available for webhook processing', {
           orgUrl,
-          tokenSource,
-          tokenMask
+          hadEnvironmentPAT: !!process.env.ADO_PAT,
+          hadStoredToken: webhookTokenStore.has(orgUrl),
+          action: 'Please store webhook token via /api/webhook-token endpoint or set ADO_PAT env var'
         });
 
-        const jobId = queue.addJob(payload as WebhookPayload, token, orgUrl);
-
-        // Return 202 Accepted
-        const response: WebhookResponse = {
-          status: 'accepted',
-          jobId
-        };
-
-        logger.info('Webhook queued successfully', { jobId, prId: payload.resource?.pullRequestId });
-        res.writeHead(202, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(response));
-      } catch (error) {
-        logger.error('Failed to process webhook', { error: String(error) });
-
         const errorResponse: ErrorResponse = {
-          error: 'Webhook processing failed',
-          message: error instanceof Error ? error.message : String(error)
+          error: 'Service not configured',
+          details: 'Webhook token not configured for this organization. ' +
+                   'Visit the extension settings to authenticate with your organization.'
         };
-
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
+        return;
       }
-    });
 
-    req.on('error', error => {
-      logger.error('Request error', { error: String(error) });
+      logger.debug('Service token acquired for webhook processing', {
+        orgUrl,
+        tokenSource: process.env.ADO_PAT ? 'environment' : 'encrypted-store',
+        tokenLength: serviceToken.length
+      });
 
-      const errorResponse: ErrorResponse = {
-        error: 'Internal server error',
-        message: 'Failed to process request'
+      const jobId = queue.addJob(payload as WebhookPayload, serviceToken, orgUrl);
+
+      // Return 202 Accepted
+      const response: WebhookResponse = {
+        status: 'accepted',
+        jobId
       };
 
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      logger.info('Webhook queued successfully', { jobId, prId: payload.resource?.pullRequestId });
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(response));
+
+    } catch (error) {
+      logger.error('Failed to process webhook', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Invalid payload',
+        details: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(errorResponse));
-    });
-  }  
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process webhook'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
 
 /**
  * Handle health check GET request

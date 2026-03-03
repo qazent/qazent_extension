@@ -7,6 +7,8 @@
  */
 
 import * as SDK from 'azure-devops-extension-sdk';
+import { CommonServiceIds, ILocationService } from "azure-devops-extension-api";
+
 import {
   GeneratedTestCase,
   WorkItemResponse,
@@ -46,23 +48,20 @@ function buildUrl(base: string, path: string): string {
  * Cache tokens for 10 minutes (they're valid for 1 hour)
  */
 let cachedToken: { token: string; expiresAt: number } | null = null;
-const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const TOKEN_CACHE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Get Azure DevOps OAuth token from SDK
  * Caches token to avoid repeated SDK calls
  */
 async function getAuthToken(): Promise<string> {
-  // Check cache first
   if (cachedToken && cachedToken.expiresAt > Date.now()) {
     return cachedToken.token;
   }
 
-  // Get fresh token from SDK
   try {
     const token = await SDK.getAccessToken();
 
-    // Cache the token
     cachedToken = {
       token,
       expiresAt: Date.now() + TOKEN_CACHE_TTL_MS
@@ -83,6 +82,31 @@ function clearTokenCache(): void {
 }
 
 /**
+ * Resolve the Azure DevOps organization URL using the Location Service
+ *
+ * Correct usage per Microsoft documentation:
+ * Passing undefined for both parameters returns the base organization URL.
+ */
+async function getOrganizationUrl(): Promise<string> {
+  const locationService = await SDK.getService<ILocationService>(
+    CommonServiceIds.LocationService
+  );
+
+  if (!locationService || typeof locationService.getServiceLocation !== 'function') {
+    throw new Error('Unable to access Azure DevOps Location Service');
+  }
+
+  // ✅ Correct and fully typed usage
+  const orgUrl: string = await locationService.getServiceLocation(undefined, undefined);
+
+  if (!orgUrl) {
+    throw new Error('Unable to determine Azure DevOps organization URL');
+  }
+
+  return orgUrl.replace(/\/+$/, '');
+}
+
+/**
  * Generic helper for backend POST requests with timeout + unified error handling
  * Includes Azure DevOps OAuth token in Authorization header
  * Includes organization URL in X-Ado-Org-Url header for multi-tenant support
@@ -98,11 +122,8 @@ async function postJson<T>(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Get authentication token
     const token = await getAuthToken();
-
-    // Get organization URL from Azure DevOps SDK
-    const orgUrl = SDK.getHost().name; // e.g., https://dev.azure.com/myorg
+    const orgUrl = await getOrganizationUrl();
 
     const response = await fetch(url, {
       method: 'POST',
@@ -117,36 +138,26 @@ async function postJson<T>(
 
     clearTimeout(timeoutId);
 
-    // Handle non-OK responses
     if (!response.ok) {
       let errorData: ApiErrorResponse | null = null;
 
       try {
         errorData = await response.json();
-      } catch {
-        // ignore JSON parse errors — backend might return HTML on failure
-      }
+      } catch {}
 
       const message =
         errorData?.message ||
         errorData?.error ||
         `Backend error (${response.status})`;
 
-      // Handle authentication errors with auto-retry
       if (response.status === 401 && retryCount === 0) {
         console.warn('Authentication failed, clearing token cache and retrying...');
         clearTokenCache();
-        // Retry once with fresh token
         return postJson<T>(url, body, timeoutMs, retryCount + 1);
       }
 
-      // Map status codes to user-friendly messages
       switch (response.status) {
         case 400:
-          // Provide more specific error for missing organization URL
-          if (message.includes('X-Ado-Org-Url') || message.includes('organization')) {
-            throw new Error('Organization information missing. Please refresh the page.');
-          }
           throw new Error(message || 'Invalid request data');
         case 401:
           throw new Error('Authentication failed. Please refresh the page.');
@@ -165,7 +176,6 @@ async function postJson<T>(
       }
     }
 
-    // Parse JSON safely
     try {
       return (await response.json()) as T;
     } catch {
@@ -190,7 +200,6 @@ async function postJson<T>(
 
 /**
  * Generate test cases for a PR
- * Returns test case data plus commit IDs needed for work item creation
  */
 export async function generateTestCases(
   prId: number,
@@ -201,10 +210,12 @@ export async function generateTestCases(
 ): Promise<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }> {
   const url = buildUrl(backendUrl, '/generate-tests');
 
-  return postJson<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }>(
+  return postJson<
+    GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }
+  >(
     url,
     { prId, projectName, repositoryId, customContext },
-    60000 // 60s timeout — backend can take 35–40s for large PRs
+    60000
   );
 }
 
@@ -234,7 +245,7 @@ export async function createWorkItem(
       sourceCommitId,
       targetCommitId
     },
-    30000 // 30s timeout — work item creation is much faster
+    30000
   );
 }
 
@@ -246,20 +257,13 @@ export async function postPRComment(
   projectName: string,
   repositoryId: string,
   workItemId: number,
-  _workItemUrl: string,
-  _testCaseTitle: string,
   backendUrl: string
 ): Promise<void> {
   const url = buildUrl(backendUrl, '/post-pr-comment');
 
-  
-
-
   await postJson<{ success: boolean }>(
     url,
     { prId, projectName, repositoryId, workItemId },
-    10000 // 10s timeout
+    10000
   );
-  
-
 }
