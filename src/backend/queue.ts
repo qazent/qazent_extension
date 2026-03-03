@@ -110,12 +110,15 @@ async function processJob(job: QueueJob): Promise<void> {
     sourceBranch: prMetadata.sourceBranch,
     targetBranch: prMetadata.targetBranch,
     attempt,
-    maxAttempts: job.maxAttempts
+    maxAttempts: job.maxAttempts,
+    orgUrl: payload.orgUrl,
+    tokenLength: payload.token?.length,
+    tokenIsJWT: payload.token?.includes('.')
   });
 
   try {
     // Step 1: Fetch PR diff from Azure DevOps with retry logic
-    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId, token: payload.token, orgUrl: payload.orgUrl});
+    logger.info('Fetching PR diff', { jobId: job.id, prId: prMetadata.prId, tokenLength: payload.token?.length, tokenIsJWT: payload.token?.includes('.'), orgUrl: payload.orgUrl});
     const codeDiff = await fetchWithRetry(
       () => fetchPRDiff(
         prMetadata.projectName,
@@ -294,7 +297,10 @@ export function addJob(payload: WebhookPayload, token: string, orgUrl: string): 
   logger.info('Job added to queue', {
     jobId,
     prId: payload.resource.pullRequestId,
-    queueLength: queue.length
+    queueLength: queue.length,
+    orgUrl,
+    tokenLength: token?.length,
+    tokenIsJWT: token?.includes('.')
   });
 
   return jobId;

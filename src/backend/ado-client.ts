@@ -10,17 +10,22 @@ import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
 
 /**
- * Create a new Azure DevOps connection using user's token and organization URL
- * @param token User's OAuth token
+ * Create a new Azure DevOps connection using user's OAuth JWT token and organization URL
+ * @param token User's OAuth JWT token from SDK.getAccessToken()
  * @param orgUrl Organization URL (e.g., https://dev.azure.com/myorg)
  * @returns Azure DevOps WebApi connection
  */
 export function createConnection(token: string, orgUrl: string): azdev.WebApi {
-  // Use PersonalAccessTokenHandler for PAT authentication
-  // getBearerHandler is only for OAuth tokens, not PATs
-  const authHandler = azdev.getPersonalAccessTokenHandler(token);
+  // Use BearerHandler for OAuth JWT tokens from the extension
+  const authHandler = azdev.getBearerHandler(token);
   const connection = new azdev.WebApi(orgUrl, authHandler);
-  logger.debug('Created Azure DevOps connection', { orgUrl });
+  logger.debug('Created Azure DevOps connection', {
+    orgUrl,
+    authMethod: 'Bearer',
+    tokenLength: token?.length,
+    tokenContainsDots: token?.includes('.'),
+    tokenPrefix: token?.substring(0, 6) + '...'
+  });
   return connection;
 }
 

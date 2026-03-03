@@ -29,19 +29,31 @@ export async function fetchFileContentFromRest(
     `&includeContent=true` +
     `&api-version=7.1-preview.1`;
 
-  logger.debug("Fetching file content via REST", { organization, projectName, repositoryId, filePath, commitId, url });
+  logger.debug("Fetching file content via REST", {
+    organization, projectName, repositoryId, filePath, commitId, url,
+    authMethod: 'Bearer',
+    tokenLength: token?.length,
+    tokenContainsDots: token?.includes('.')
+  });
 
   const response = await fetch(url, {
     headers: {
-      // Use Basic auth with PAT for Azure DevOps REST API
-      // Format: Basic base64("username:PAT")
-      // For Azure DevOps, username can be empty, just base64 encode ":PAT"
-      Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}`,
+      // Use Bearer auth with OAuth JWT token from the extension
+      Authorization: `Bearer ${token}`,
     },
   });
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    logger.warn("REST getItem failed", {
+      status: response.status,
+      statusText: response.statusText,
+      filePath,
+      organization,
+      tokenLength: token?.length,
+      tokenContainsDots: token?.includes('.'),
+      responseBody: text.substring(0, 200)
+    });
     throw new Error(
       `REST getItem failed (${response.status} ${response.statusText}): ${text}`
     );
@@ -79,7 +91,11 @@ export async function fetchPRDiff(
   token: string
 ): Promise<CodeDiff> {
   try {
-    logger.info("Fetching PR diff", { projectName, repositoryId, prId });
+    logger.info("Fetching PR diff", {
+      projectName, repositoryId, prId, organization,
+      tokenLength: token?.length,
+      tokenContainsDots: token?.includes('.')
+    });
 
     const gitApi: GitApi = await connection.getGitApi();
 

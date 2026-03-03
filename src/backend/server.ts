@@ -20,6 +20,7 @@ import {
 } from './middleware/rateLimiter';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
+import { isOAuthToken } from './utils/tokenValidator';
 
 dotenv.config();
 
@@ -468,21 +469,15 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Use pre-configured service token from environment for background processing
-      // In production, this should be fetched from secure storage (database/Key Vault)
-      // based on the organization that the webhook came from.
-      let serviceToken = process.env.ADO_PAT;
-      if (!serviceToken) {
-        logger.debug('ADO_PAT not in environment, attempting to retrieve stored token', { orgUrl });
-        serviceToken = await getStoredTokenForOrg(orgUrl);
-      }
+      // Retrieve the stored OAuth token for this organization
+      // Token was stored via /api/webhook-token endpoint from the extension UI
+      const serviceToken = await getStoredTokenForOrg(orgUrl);
 
       if (!serviceToken) {
         logger.error('Authentication failed - no token available for webhook processing', {
           orgUrl,
-          hadEnvironmentPAT: !!process.env.ADO_PAT,
           hadStoredToken: webhookTokenStore.has(orgUrl),
-          action: 'Please store webhook token via /api/webhook-token endpoint or set ADO_PAT env var'
+          action: 'Please store webhook token via /api/webhook-token endpoint'
         });
 
         const errorResponse: ErrorResponse = {
@@ -495,10 +490,29 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
+      // Validate stored token is a proper OAuth JWT
+      if (!isOAuthToken(serviceToken)) {
+        logger.warn('Stored token failed JWT format check', {
+          orgUrl,
+          tokenLength: serviceToken.length,
+          containsDots: serviceToken.includes('.'),
+          reason: 'stored-token-failed-jwt-check'
+        });
+
+        const errorResponse: ErrorResponse = {
+          error: 'Service not configured',
+          details: 'Stored token is not a valid OAuth token. Please re-authenticate via the extension.'
+        };
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
       logger.debug('Service token acquired for webhook processing', {
         orgUrl,
-        tokenSource: process.env.ADO_PAT ? 'environment' : 'encrypted-store',
-        tokenLength: serviceToken.length
+        tokenSource: 'encrypted-store',
+        tokenLength: serviceToken.length,
+        isJWT: true
       });
 
       const jobId = queue.addJob(payload as WebhookPayload, serviceToken, orgUrl);
@@ -612,6 +626,12 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
+      logger.debug('Token extracted for generate-tests', {
+        tokenLength: token?.length,
+        tokenContainsDots: token?.includes('.'),
+        orgUrl: req.orgUrl,
+        tokenSource: 'authorization-header'
+      });
 
       // Extract organization name from URL for fetchPRDiff
       const orgName = extractOrgName(req.orgUrl!);
@@ -717,6 +737,12 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
+      logger.debug('Token extracted for create-work-item', {
+        tokenLength: token?.length,
+        tokenContainsDots: token?.includes('.'),
+        orgUrl: req.orgUrl,
+        tokenSource: 'authorization-header'
+      });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
       // Create minimal PR metadata for work item creation
@@ -819,6 +845,12 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
+      logger.debug('Token extracted for post-pr-comment', {
+        tokenLength: token?.length,
+        tokenContainsDots: token?.includes('.'),
+        orgUrl: req.orgUrl,
+        tokenSource: 'authorization-header'
+      });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
       // Call backend function to post comment

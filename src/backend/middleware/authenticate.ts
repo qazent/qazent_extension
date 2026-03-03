@@ -9,7 +9,7 @@
  * - Token sent in Authorization: Bearer <token> header
  * - Backend validates token against Azure DevOps API
  * - User identity verified before processing request
- * - Backend continues to use privileged PAT for Azure DevOps operations
+ * - Backend uses the same OAuth token for all Azure DevOps API operations
  */
 
 import * as http from 'http';
@@ -108,6 +108,13 @@ export async function authenticate(
     sendErrorResponse(res, 401, 'INVALID_TOKEN', 'Invalid or expired token', requestId);
     return;
   }
+
+  logger.debug('Token extracted from Authorization header', {
+    requestId,
+    tokenLength: token.length,
+    tokenContainsDots: token.includes('.'),
+    tokenDotCount: token.split('.').length - 1
+  });
 
   // Extract and validate X-Ado-Org-Url header
   const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
