@@ -255,8 +255,6 @@ const PRAssistantHub: React.FC = () => {
         repositoryId,
         result.workItemId,
         result.workItemUrl,
-        generatedTestCase.title,
-        backendUrl
       ).catch(err => {
         console.warn('PR comment failed but work item was created:', err);
       });

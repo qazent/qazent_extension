@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
-import { FluentProvider, webLightTheme, Field, Textarea, Button, Input, Spinner } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Field, Textarea, Button, Spinner } from '@fluentui/react-components';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
 import * as configService from '../services/configService';
