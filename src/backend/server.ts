@@ -5,9 +5,12 @@
  */
 
 import * as http from 'http';
-import { WebhookPayload, WebhookResponse, ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
+import { ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
+// --- WEBHOOK AUTO-GENERATION DISABLED --- WebhookPayload and WebhookResponse only used by webhook handler
+// import { WebhookPayload, WebhookResponse } from './types';
 import * as logger from './utils/logger';
-import * as queue from './queue';
+// --- WEBHOOK AUTO-GENERATION DISABLED --- queue only used by webhook handler and startWorker
+// import * as queue from './queue';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
@@ -18,9 +21,11 @@ import {
   rateLimitPostPRComment,
   rateLimitHealth
 } from './middleware/rateLimiter';
-import * as crypto from 'crypto';
+// --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
+// import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
-import { isOAuthToken } from './utils/tokenValidator';
+// --- WEBHOOK AUTO-GENERATION DISABLED --- isOAuthToken only used by webhook handler in server.ts
+// import { isOAuthToken } from './utils/tokenValidator';
 
 dotenv.config();
 
@@ -33,11 +38,14 @@ console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
 
-/**
- * Encryption key for storing tokens
- * PRODUCTION: Use Azure Key Vault to manage encryption keys
- * DO NOT hardcode encryption keys in production
- */
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+/*
 const ENCRYPTION_KEY = process.env.TOKEN_ENCRYPTION_KEY;
 const ENCRYPTION_ALGO = 'aes-256-gcm';
 
@@ -54,12 +62,16 @@ if (!/^[a-f0-9]{64}$/.test(ENCRYPTION_KEY!.toLowerCase())) {
     `Received: "${ENCRYPTION_KEY!.substring(0, 10)}..." (${ENCRYPTION_KEY!.length} chars)`);
   throw new Error('TOKEN_ENCRYPTION_KEY has invalid format.');
 }
+*/
 
-/**
- * In-memory webhook token storage
- * PRODUCTION: Replace with encrypted database storage
- * Format: { orgUrl: { encryptedToken, iv, authTag, userId, createdDate } }
- */
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+/*
 const webhookTokenStore = new Map<string, {
   encryptedToken: string;
   iv: string;
@@ -70,10 +82,6 @@ const webhookTokenStore = new Map<string, {
 
 logger.info('Webhook token store initialized', { implementation: 'in-memory', encryption: 'AES-256-GCM' });
 
-/**
- * Encrypt token using AES-256-GCM
- * PRODUCTION: Use Azure Key Vault for key management
- */
 function encryptToken(token: string, associatedUserId?: string): { encryptedToken: string; iv: string; authTag: string } {
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(ENCRYPTION_ALGO, Buffer.from(ENCRYPTION_KEY!.slice(0, 64), 'hex'), iv);
@@ -92,9 +100,6 @@ function encryptToken(token: string, associatedUserId?: string): { encryptedToke
   };
 }
 
-/**
- * Decrypt token using AES-256-GCM
- */
 function decryptToken(encryptedData: { encryptedToken: string; iv: string; authTag: string }): string {
   try {
     const decipher = crypto.createDecipheriv(
@@ -115,9 +120,6 @@ function decryptToken(encryptedData: { encryptedToken: string; iv: string; authT
   }
 }
 
-/**
- * Retrieve stored token for organization
- */
 async function getStoredTokenForOrg(orgUrl: string): Promise<string | undefined> {
   const stored = webhookTokenStore.get(orgUrl);
   if (!stored) {
@@ -150,9 +152,6 @@ async function getStoredTokenForOrg(orgUrl: string): Promise<string | undefined>
   }
 }
 
-/**
- * Store webhook token in memory 
- */
 async function storeWebhookTokenInMemory(
   orgUrl: string,
   token: string,
@@ -176,6 +175,7 @@ async function storeWebhookTokenInMemory(
     throw new Error(`Failed to store webhook token: ${error}`);
   }
 }
+*/
 
 
 
@@ -226,9 +226,14 @@ function validateEnvironment(): void {
   }
 }
 
-/**
- * Validate webhook payload structure
- */
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+/*
 function validatePayload(payload: any): { valid: boolean; error?: string } {
   if (!payload.eventType) {
     return { valid: false, error: 'Missing required field: eventType' };
@@ -281,10 +286,6 @@ function validatePayload(payload: any): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-/**
- * Handle POST /api/webhook-token request
- * Stores webhook token for organization (authenticated endpoint)
- */
 async function handleStoreWebhookToken(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
   let body = '';
 
@@ -296,7 +297,6 @@ async function handleStoreWebhookToken(req: AuthenticatedRequest, res: http.Serv
     try {
       const payload = JSON.parse(body);
 
-      // Validate request
       if (!payload.orgUrl || typeof payload.orgUrl !== 'string') {
         const errorResponse: ErrorResponse = {
           error: 'Bad Request',
@@ -320,7 +320,6 @@ async function handleStoreWebhookToken(req: AuthenticatedRequest, res: http.Serv
       const orgUrl = payload.orgUrl.trim();
       const token = payload.token;
 
-      // Store token with user context
       await storeWebhookTokenInMemory(orgUrl, token, req.user?.id);
 
       logger.info('Webhook token stored successfully', {
@@ -367,22 +366,8 @@ async function handleStoreWebhookToken(req: AuthenticatedRequest, res: http.Serv
     res.end(JSON.stringify(errorResponse));
   });
 }
- /**
- * FLOW:
- * 1. User in Extension UI calls webhook setup via SDK.getAccessToken()
- * 2. Webhook creation stores: organization → encrypted token mapping
- * 3. Azure DevOps sends POST to /webhook when PR event occurs
- * 4. This handler looks up stored token and processes asynchronously
- *
- * Production requirements:
- * - Tokens must be stored securely (stateless, encryption, in memory)
- * - Each organization's token is captured from the Extension context
- * - Never expose tokens in logs or responses
- */
-
 
 async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  // Read request body
   let body = '';
 
   req.on('data', chunk => {
@@ -391,7 +376,6 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
 
   req.on('end', async () => {
     try {
-      // Parse JSON
       const payload = JSON.parse(body);
 
       logger.info('Webhook received', {
@@ -405,10 +389,9 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
           projectName: payload.resource?.repository?.project?.name,
           projectId: payload.resource?.repository?.project?.id,
           targetBranch: payload.resource?.targetRefName,
-          sourceBranch: payload.resource?.sourceRefName          
+          sourceBranch: payload.resource?.sourceRefName
       });
 
-      // Validate payload
       const validation = validatePayload(payload);
 
       if (!validation.valid) {
@@ -424,8 +407,6 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Get organization URL from webhook payload
-      // Extract from repository URL: https://dev.azure.com/myorg/myproject/_git/my-repo
       const repoUrl = payload.resource?.repository?.url;
       if (!repoUrl || typeof repoUrl !== 'string') {
         logger.warn('Missing repository URL in webhook payload');
@@ -438,21 +419,16 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Extract org and project from repo URL
-      // Format: https://dev.azure.com/ORGNAME/PROJECTNAME/_git/REPONAME
-      // or: https://ORGNAME.visualstudio.com/PROJECTNAME/_git/REPONAME
       let orgUrl: string;
       try {
         const url = new URL(repoUrl);
         if (url.hostname === 'dev.azure.com') {
-          // Extract org from path: /orgname/project/...
           const pathParts = url.pathname.split('/').filter(p => p);
           if (pathParts.length < 2) {
             throw new Error('Invalid repository URL format');
           }
           orgUrl = `https://dev.azure.com/${pathParts[0]}`;
         } else if (url.hostname.endsWith('.visualstudio.com')) {
-          // Extract org from hostname: orgname.visualstudio.com
           const orgName = url.hostname.split('.')[0];
           orgUrl = `https://${orgName}.visualstudio.com`;
         } else {
@@ -469,8 +445,6 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Retrieve the stored OAuth token for this organization
-      // Token was stored via /api/webhook-token endpoint from the extension UI
       const serviceToken = await getStoredTokenForOrg(orgUrl);
 
       if (!serviceToken) {
@@ -490,7 +464,6 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
         return;
       }
 
-      // Validate stored token is a proper OAuth JWT
       if (!isOAuthToken(serviceToken)) {
         logger.warn('Stored token failed JWT format check', {
           orgUrl,
@@ -517,7 +490,6 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
 
       const jobId = queue.addJob(payload as WebhookPayload, serviceToken, orgUrl);
 
-      // Return 202 Accepted
       const response: WebhookResponse = {
         status: 'accepted',
         jobId
@@ -552,6 +524,7 @@ async function handleWebhook(req: http.IncomingMessage, res: http.ServerResponse
     res.end(JSON.stringify(errorResponse));
   });
 }
+*/
 
 /**
  * Handle health check GET request
@@ -1060,8 +1033,14 @@ function startServer(): void {
     process.exit(1);
   }
 
-  // Start background worker
-  queue.startWorker();
+  // --- WEBHOOK AUTO-GENERATION DISABLED ---
+  // This infrastructure requires token storage for async webhook processing.
+  // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+  // The webhook flow has no frontend wiring to push tokens to the backend.
+  // Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+  // To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+  // See architecture notes in this file for details.
+  // queue.startWorker();
 
   // Create HTTP server with main request handler
   // Security: All endpoints (except /health) protected with authentication
@@ -1158,6 +1137,14 @@ function startServer(): void {
       return;
     }
 
+    // --- WEBHOOK AUTO-GENERATION DISABLED ---
+    // This infrastructure requires token storage for async webhook processing.
+    // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+    // The webhook flow has no frontend wiring to push tokens to the backend.
+    // Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+    // To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+    // See architecture notes in this file for details.
+    /*
     // Store webhook token endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/api/webhook-token' && method === 'POST') {
       logger.info("POST /api/webhook-token hit");
@@ -1177,7 +1164,6 @@ function startServer(): void {
       return;
     }
 
-
     // Webhook endpoint (PUBLIC - no authentication, no rate limiting)
     if (normalizedUrl === '/webhook' && method === 'POST') {
       const contentType = req.headers['content-type'];
@@ -1193,10 +1179,10 @@ function startServer(): void {
         return;
       }
 
-      // Call webhook handler directly (public endpoint, no middleware)
       await handleWebhook(req, res);
       return;
     }
+    */
   });
 
     server.listen(PORT, "0.0.0.0", () => {

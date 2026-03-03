@@ -7,12 +7,21 @@ import * as SDK from 'azure-devops-extension-sdk';
 import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
-import { FluentProvider, webLightTheme, Field, Textarea, Button, Spinner } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
+// --- WEBHOOK AUTO-GENERATION DISABLED --- Spinner only used in webhook UI
+// import { Spinner } from '@fluentui/react-components';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
-import * as configService from '../services/configService';
-import * as webhookService from '../services/webhookService';
-import { WebhookSubscription } from '../services/webhookService';
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+// import * as configService from '../services/configService';
+// import * as webhookService from '../services/webhookService';
+// import { WebhookSubscription } from '../services/webhookService';
 
 export const SettingsHub: React.FC = () => {
   const [projectId, setProjectId] = React.useState<string>('');
@@ -25,7 +34,14 @@ export const SettingsHub: React.FC = () => {
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
-  // Webhook management state
+  // --- WEBHOOK AUTO-GENERATION DISABLED ---
+  // This infrastructure requires token storage for async webhook processing.
+  // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+  // The webhook flow has no frontend wiring to push tokens to the backend.
+  // Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+  // To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+  // See architecture notes in this file for details.
+  /*
   const [webhooks, setWebhooks] = React.useState<WebhookSubscription[]>([]);
   const [webhookLoading, setWebhookLoading] = React.useState<boolean>(false);
   const [isAutoGenEnabled, setIsAutoGenEnabled] = React.useState<boolean>(false);
@@ -34,6 +50,7 @@ export const SettingsHub: React.FC = () => {
     text: string;
   } | null>(null);
   const [showManualSetup, setShowManualSetup] = React.useState<boolean>(false);
+  */
 
 // -----------------------------
 // Helpers
@@ -44,9 +61,8 @@ const normalizeId = (id: string) =>
 
 const now = () => new Date().toISOString();
 
-/**
- * Extract user-friendly error message from error objects
- */
+// --- WEBHOOK AUTO-GENERATION DISABLED --- errorMessageFromError only used by webhook functions
+/*
 const errorMessageFromError = (error: any): string => {
   if (error instanceof Error) {
     return error.message;
@@ -56,6 +72,7 @@ const errorMessageFromError = (error: any): string => {
   }
   return 'An unexpected error occurred';
 };
+*/
 
 // Cached services
 const dataServiceRef = React.useRef<IExtensionDataService | null>(null);
@@ -108,10 +125,14 @@ React.useEffect(() => {
   init();
 }, []);
 
-// -----------------------------
-// Load webhook data
-// -----------------------------
-
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+/*
 const loadWebhookData = async () => {
   setWebhookLoading(true);
   try {
@@ -136,6 +157,7 @@ React.useEffect(() => {
     loadWebhookData();
   }
 }, [projectId]);
+*/
 
 // -----------------------------
 // Ensure collection exists
@@ -310,10 +332,14 @@ const handleClear = () => {
   setLoadedDocument(null);
 };
 
-// -----------------------------
-// Webhook Management Functions
-// -----------------------------
-
+// --- WEBHOOK AUTO-GENERATION DISABLED ---
+// This infrastructure requires token storage for async webhook processing.
+// SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+// The webhook flow has no frontend wiring to push tokens to the backend.
+// Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+// To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+// See architecture notes in this file for details.
+/*
 const handleEnableAutoGeneration = async () => {
   setWebhookLoading(true);
   setWebhookStatusMessage(null);
@@ -334,11 +360,10 @@ const handleEnableAutoGeneration = async () => {
       });
     }
 
-    await loadWebhookData(); // Refresh list
+    await loadWebhookData();
   } catch (error) {
     const errorMsg = errorMessageFromError(error);
 
-    // Check error type to provide contextual guidance
     if (error instanceof webhookService.AuthError) {
       setWebhookStatusMessage({
         type: 'error',
@@ -379,6 +404,7 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
     setWebhookLoading(false);
   }
 };
+*/
 
   return (
     <FluentProvider theme={webLightTheme}>
@@ -492,7 +518,14 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         </Button>
       </div>
 
-      {/* WEBHOOK MANAGEMENT SECTION */}
+      {/* --- WEBHOOK AUTO-GENERATION DISABLED ---
+         This infrastructure requires token storage for async webhook processing.
+         SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
+         The webhook flow has no frontend wiring to push tokens to the backend.
+         Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
+         To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
+         See architecture notes in this file for details.
+
       <div
         style={{
           borderTop: "1px solid #edebe9",
@@ -504,7 +537,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           Automatic Test Generation
         </h2>
 
-        {/* Webhook Endpoint Display */}
         <div style={{ marginBottom: "20px", backgroundColor: "#f3f9fd", border: "1px solid #0078d4", padding: "12px", borderRadius: "4px" }}>
           <div style={{ fontSize: "14px", color: "#0078d4", marginBottom: "4px" }}>
             <strong>Webhook Endpoint:</strong>
@@ -517,7 +549,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           </div>
         </div>
 
-        {/* Status Message */}
         {webhookStatusMessage && (
           <div
             style={{
@@ -558,7 +589,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           </div>
         )}
 
-        {/* Enable Auto-Generation */}
         <div
           style={{
             background: '#f3f2f1',
@@ -587,7 +617,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           </p>
         </div>
 
-        {/* Webhooks List */}
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>
             Active Webhooks ({webhooks.length})
@@ -652,7 +681,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           )}
         </div>
 
-        {/* Manual Setup Instructions */}
         <div style={{ marginTop: '24px' }}>
           <Button
             appearance="secondary"
@@ -700,6 +728,7 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           )}
         </div>
       </div>
+      */}
     </div>
 
     {/* RIGHT COLUMN – GUIDELINES */}
