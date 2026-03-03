@@ -250,7 +250,7 @@ const PRAssistantHub: React.FC = () => {
       // Extract test case and commit IDs from response
       const generatedTestCase = {
         title: response.title,
-        htmlDescription: response.htmlDescription
+        htmlDescriptionBase64: response.htmlDescriptionBase64
       };
       const sourceCommitId = response.sourceCommitId;
       const targetCommitId = response.targetCommitId;

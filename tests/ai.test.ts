@@ -77,7 +77,7 @@ describe('generateTestCases', () => {
   });
 
   it('should successfully extract text from AI response and parse JSON', async () => {
-    const mockHtmlDescription = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
+    const mockhtmlDescriptionBase64 = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
 <h2>Scope of Change</h2><p>Feature module</p>
 <h2>Preconditions</h2><ul><li>System is running</li></ul>
 <h2>Test Steps & Expected Results</h2>
@@ -94,27 +94,27 @@ describe('generateTestCases', () => {
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Feature Functionality',
-        htmlDescription: mockHtmlDescription
+        htmlDescriptionBase64: mockhtmlDescriptionBase64
       })
     });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Feature Functionality');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
-    expect(result.htmlDescription).toContain('<table>');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescriptionBase64).toContain('<table>');
   });
 
   it('should handle AI response with markdown JSON wrapper', async () => {
     mockGenerateContent.mockResolvedValue({
-      text: '```json\n{"title": "Test Case: Test Title", "htmlDescription": "<h2>Purpose</h2><p>Test Purpose</p><h2>Scope of Change</h2><p>Test</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate with unit tests</p>"}\n```'
+      text: '```json\n{"title": "Test Case: Test Title", "htmlDescriptionBase64": "<h2>Purpose</h2><p>Test Purpose</p><h2>Scope of Change</h2><p>Test</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate with unit tests</p>"}\n```'
     });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Test Title');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
-    expect(result.htmlDescription).toContain('<p>Test Purpose</p>');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescriptionBase64).toContain('<p>Test Purpose</p>');
   });
 
   it('should throw error when AI returns empty response', async () => {
@@ -141,7 +141,7 @@ describe('generateTestCases', () => {
     });
 
     await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
-      .rejects.toThrow('Missing required field: htmlDescription');
+      .rejects.toThrow('Missing required field: htmlDescriptionBase64');
   });
 
   it('should handle Gemini API errors gracefully', async () => {
@@ -154,7 +154,7 @@ describe('generateTestCases', () => {
   });
 
   it('should retry once on parsing failure then succeed', async () => {
-    const mockHtmlDescription = `<h2>Purpose</h2><p>Retry test</p>
+    const mockhtmlDescriptionBase64 = `<h2>Purpose</h2><p>Retry test</p>
 <h2>Scope of Change</h2><p>Test module</p>
 <h2>Preconditions</h2><p>None</p>
 <h2>Test Steps & Expected Results</h2>
@@ -171,7 +171,7 @@ describe('generateTestCases', () => {
       .mockResolvedValueOnce({
         text: JSON.stringify({
           title: 'Test Case: Retry Success',
-          htmlDescription: mockHtmlDescription
+          htmlDescriptionBase64: mockhtmlDescriptionBase64
         })
       });
 
@@ -179,7 +179,7 @@ describe('generateTestCases', () => {
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(result.title).toBe('Test Case: Retry Success');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
   });
 
   it('should throw after two failed attempts', async () => {

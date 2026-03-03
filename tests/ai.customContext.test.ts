@@ -106,7 +106,7 @@ describe('AI Custom Context Integration', () => {
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Authentication',
-        htmlDescription: '<html><body>Test description</body></html>'
+        htmlDescriptionBase64: '<html><body>Test description</body></html>'
       })
     });
   });
@@ -272,7 +272,7 @@ describe('AI Custom Context Integration', () => {
         .mockResolvedValueOnce({
           text: JSON.stringify({
             title: 'Test Case',
-            htmlDescription: '<html>Test</html>'
+            htmlDescriptionBase64: '<html>Test</html>'
           })
         });
 

@@ -95,7 +95,7 @@ export interface GeneratedTestCase {
  */
 export interface TaskWorkItemOutput {
   title: string;
-  htmlDescription: string;
+  htmlDescriptionBase64: string;
 }
 
 /**

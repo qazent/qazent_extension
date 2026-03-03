@@ -110,7 +110,7 @@ ${change.diffContent}
 Please provide test cases in the following JSON structure:
 {
   "title": "Test Case: <short summary>",
-  "htmlDescription": "<complete HTML document with all 9 sections>"
+  "htmlDescriptionBase64": "<complete HTML document with all 9 sections>"
 }`;
 
   return prompt;
@@ -167,14 +167,14 @@ export function validateTaskOutput(data: any): TaskWorkItemOutput {
     throw new Error('Missing required field: title');
   }
 
-  // Check htmlDescription field
-  if (!data.htmlDescription || typeof data.htmlDescription !== 'string' || data.htmlDescription.trim() === '') {
-    throw new Error('Missing required field: htmlDescription');
+  // Check htmlDescriptionBase64 field
+  if (!data.htmlDescriptionBase64 || typeof data.htmlDescriptionBase64 !== 'string' || data.htmlDescriptionBase64.trim() === '') {
+    throw new Error('Missing required field: htmlDescriptionBase64');
   }
 
   return {
     title: data.title.trim(),
-    htmlDescription: data.htmlDescription.trim()
+    htmlDescriptionBase64: data.htmlDescriptionBase64.trim()
   };
 }
 
@@ -262,8 +262,8 @@ export async function generateTestCases(
       const taskOutput = validateTaskOutput(parsed);
 
       // Validate response completeness to detect truncation
-      const htmlLength = taskOutput.htmlDescription.length;
-      const hasAllSections = taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>');
+      const htmlLength = taskOutput.htmlDescriptionBase64.length;
+      const hasAllSections = taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>');
 
       if (htmlLength < 1000 || !hasAllSections) {
         logger.warn('AI response appears truncated', {
@@ -278,10 +278,10 @@ export async function generateTestCases(
       logger.info("Task work item output generated successfully", {
         prId: prMetadata.prId,
         title: taskOutput.title,
-        htmlLength: taskOutput.htmlDescription.length,
-        hasPurpose: taskOutput.htmlDescription.includes('<h2>Purpose</h2>'),
-        hasAutomationNotes: taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>'),
-        sectionCount: (taskOutput.htmlDescription.match(/<h2>/g) || []).length,
+        htmlLength: taskOutput.htmlDescriptionBase64.length,
+        hasPurpose: taskOutput.htmlDescriptionBase64.includes('<h2>Purpose</h2>'),
+        hasAutomationNotes: taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>'),
+        sectionCount: (taskOutput.htmlDescriptionBase64.match(/<h2>/g) || []).length,
         attempt
       });
 

@@ -98,7 +98,7 @@ describe('Custom Context - End-to-End Integration', () => {
 
   const mockAIResponse = {
     title: 'Test Case: Authentication',
-    htmlDescription: '<html><body>Test case for authentication</body></html>'
+    htmlDescriptionBase64: '<html><body>Test case for authentication</body></html>'
   };
 
   beforeEach(() => {
