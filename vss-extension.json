@@ -40,7 +40,19 @@
         "name": "QAZent PR Assistant",
         "order": 100,
         "uri": "dist/settings.html",
-        "backendUrl": "qazent-bacecueyctepaege.northeurope-01.azurewebsites.net"      }
+        "backendUrl": "api.qazent.com"      }
+    }
+    ,
+    {
+    "id": "pr-assistant-pull-request-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-tfs-web.pull-request-hub"],
+      "properties": {
+        "name": "PR Assistant",
+        "order": 100,
+        "uri": "dist/hub.html",
+        "backendUrl": "api.qazent.com"
+      }
     }
   ],
   "files": [
@@ -57,10 +69,10 @@
       "addressable": true
     }
   ],
-  "scopes": ["vso.code", 
+  "scopes": ["vso.code_write", 
   "vso.work_write",
   "vso.notification_write", 
-  "vso.hooks_write", 
+  "vso.hooks_interact", 
   "vso.threads_full"
   ]
 }
