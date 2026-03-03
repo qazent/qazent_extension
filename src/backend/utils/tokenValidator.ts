@@ -81,7 +81,7 @@ async function callAzureDevOpsApi(token: string, orgUrl: string): Promise<UserId
   return new Promise((resolve, reject) => {
     // Parse organization URL
     const url = new URL(orgUrl);
-    const apiUrl = `${url.protocol}//${url.host}${url.pathname}/_apis/connectionData?api-version=7.0`;
+    const apiUrl = `${url.protocol}//${url.host}${url.pathname}/_apis/connectionData?api-version=7.0-preview`;
 
     logger.debug('Validating token with Azure DevOps API', { apiUrl: apiUrl.replace(/\/\/.*@/, '//***@') });
 
