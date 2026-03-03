@@ -29,6 +29,7 @@ const PRAssistantHub: React.FC = () => {
   const [projectName, setProjectName] = React.useState<string>('');
   const [projectId, setProjectId] = React.useState<string>('');
   const [customContext, setCustomContext] = React.useState<string>('');
+  const [countdown, setCountdown] = React.useState<number | null>(null);
 
 
   React.useEffect(() => {
@@ -75,6 +76,29 @@ const PRAssistantHub: React.FC = () => {
   init();
 }, []);
 
+  // Countdown timer: ticks down from 90s while generating, clears on success/error/completion
+  React.useEffect(() => {
+    if (!isGenerating || successMessage !== null || error !== null) {
+      setCountdown(null);
+      return;
+    }
+
+    if (countdown === null) {
+      setCountdown(90);
+      return;
+    }
+
+    if (countdown === 0) {
+      setCountdown(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCountdown(prev => prev !== null && prev > 0 ? prev - 1 : prev);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isGenerating, successMessage, error, countdown]);
 
 
   const loadPRContext = async (config: any) => {
@@ -254,7 +278,7 @@ const PRAssistantHub: React.FC = () => {
         projectName,
         repositoryId,
         result.workItemId,
-        result.workItemUrl,
+        backendUrl,
       ).catch(err => {
         console.warn('PR comment failed but work item was created:', err);
       });
@@ -337,6 +361,7 @@ const PRAssistantHub: React.FC = () => {
           isLoading={isGenerating}
           isDisabled={!prData}
           onClick={handleGenerateTests}
+          countdown={countdown}
         />
       </div>
     </FluentProvider>

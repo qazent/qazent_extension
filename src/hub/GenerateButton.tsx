@@ -9,12 +9,14 @@ interface GenerateButtonProps {
   isLoading: boolean;
   isDisabled: boolean;
   onClick: () => void;
+  countdown?: number | null;
 }
 
 export const GenerateButton: React.FC<GenerateButtonProps> = ({
   isLoading,
   isDisabled,
-  onClick
+  onClick,
+  countdown
 }) => {
   return (
     <div style={{ marginBottom: '16px' }}>
@@ -23,7 +25,11 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
         disabled={isLoading || isDisabled}
         onClick={onClick}
       >
-        {isLoading ? 'Generating...' : 'Generate AI Test Cases'}
+        {isLoading
+          ? (countdown != null && countdown > 0
+              ? `Generating... Estimated time remaining: ${countdown}s`
+              : 'Generating...')
+          : 'Generate AI Test Cases'}
       </Button>
     </div>
   );
