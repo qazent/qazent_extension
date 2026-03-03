@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.66",
+  "version": "1.2.67",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
   "targets": [
@@ -40,18 +40,18 @@
         "name": "QAZent PR Assistant",
         "order": 100,
         "uri": "dist/settings.html",
-        "backendUrl": "api.qazent.com"      }
+        "backendUrl": "https://api.qazent.com"      }
     }
     ,
         {
-      "id": "pr-assistant-pull-request-hub",
-      "type": "ms.vss-web.hub",
-      "targets": ["ms.vss-code-web.pull-request-hub"],
+      "id": "pr-assistant-tab",
+      "type": "ms.vss-web.tab",
+      "targets": ["ms.vss-code-web.pr-tabs"],
       "properties": {
-        "name": "PR Assistant",
+        "name": "QAZent - PR Assistant",
         "order": 100,
         "uri": "dist/hub.html",
-        "backendUrl": "api.qazent.com"
+        "backendUrl": "https://api.qazent.com"
       }
     }
   ],
