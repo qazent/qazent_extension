@@ -23,7 +23,7 @@ const PRAssistantHub: React.FC = () => {
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
  
   const [backendUrl, setBackendUrl] = React.useState<string>(
-  'https://rathely-rubidic-katelin.ngrok-free.dev/');  // Default backend URL, should be overridden by config  // Default backend URL, should be overridden by config
+  'https://api.qazent.com');  // Default backend URL, should be overridden by config  // Default backend URL, should be overridden by config
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
