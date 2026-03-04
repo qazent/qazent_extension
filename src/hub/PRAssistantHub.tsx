@@ -76,7 +76,7 @@ const PRAssistantHub: React.FC = () => {
   init();
 }, []);
 
-  // Countdown timer: ticks down from 90s while generating, clears on success/error/completion
+  // Countdown timer: ticks down from 180s while generating, clears on success/error/completion
   React.useEffect(() => {
     if (!isGenerating || successMessage !== null || error !== null) {
       setCountdown(null);
@@ -84,7 +84,7 @@ const PRAssistantHub: React.FC = () => {
     }
 
     if (countdown === null) {
-      setCountdown(90);
+      setCountdown(180); // Start countdown at 180 seconds (3 minutes)
       return;
     }
 
@@ -291,8 +291,8 @@ const PRAssistantHub: React.FC = () => {
         `A comment has been posted on this PR with the test case details.`
       );
 
-      // Auto-dismiss success message after 20 seconds
-      setTimeout(() => setSuccessMessage(null), 20000);
+      // Auto-dismiss success message after 30 seconds
+      setTimeout(() => setSuccessMessage(null), 30000);
 
     } catch (err) {
       // Step 8: Handle errors
@@ -320,43 +320,100 @@ const PRAssistantHub: React.FC = () => {
     }
   };
 
-  return (
-    <FluentProvider theme={webLightTheme}>
-      <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-        {error && (
-          <div style={{
+ return (
+  <FluentProvider theme={webLightTheme}>
+    <div
+      style={{
+        padding: '32px',
+        maxWidth: '1100px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '24px'
+      }}
+    >
+      {/* Error message */}
+      {error && (
+        <div
+          style={{
             backgroundColor: '#fde7e9',
             border: '1px solid #e81123',
-            color: '#e81123',
-            padding: '12px',
-            marginBottom: '16px',
-            borderRadius: '4px'
-          }}>
-            {error}
-          </div>
-        )}
+            color: '#a80000',
+            padding: '16px 20px',
+            borderRadius: '8px',
+            fontSize: '15px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-        {successMessage && (
-          <div style={{
+      {/* Success message */}
+      {successMessage && (
+        <div
+          style={{
             backgroundColor: '#dff6dd',
             border: '1px solid #107c10',
-            color: '#107c10',
-            padding: '12px',
-            marginBottom: '16px',
-            borderRadius: '4px'
-          }}>
-            {successMessage}
-          </div>
-        )}
+            color: '#0b6a0b',
+            padding: '16px 20px',
+            borderRadius: '8px',
+            fontSize: '15px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+          }}
+        >
+          {successMessage}
+        </div>
+      )}
 
-
+      {/* PR Info Card */}
+      <div
+        style={{
+          background: 'white',
+          padding: '24px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
+          border: '1px solid #e1e1e1'
+        }}
+      >
         <PRInfoSection
           prTitle={prData?.prTitle}
           prId={prData?.prId}
           author={prData?.author}
           filesChanged={prData?.filesChanged}
         />
+      </div>
 
+      {/* Description text */}
+      <div
+        style={{
+          background: 'white',
+          padding: '20px 24px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+          border: '1px solid #e1e1e1',
+          fontSize: '15px',
+          lineHeight: '1.55',
+          color: '#444'
+        }}
+      >
+        <p style={{ margin: 0 }}>
+          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically, and a comment will be posted on the PR with the generated test coverage details.
+        </p>
+        <p style={{ marginTop: '12px' }}>
+          This process may take some time, especially for larger pull requests or when the backend is under heavy load. Please wait after clicking
+          <strong> "Generate"</strong>. If something goes wrong, an error message will appear above.
+        </p>
+      </div>
+
+      {/* Generate button */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginTop: '8px'
+        }}
+      >
         <GenerateButton
           isLoading={isGenerating}
           isDisabled={!prData}
@@ -364,8 +421,9 @@ const PRAssistantHub: React.FC = () => {
           countdown={countdown}
         />
       </div>
-    </FluentProvider>
-  );
+    </div>
+  </FluentProvider>
+);
 };
 
 export { PRAssistantHub };

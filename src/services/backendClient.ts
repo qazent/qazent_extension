@@ -215,7 +215,8 @@ export async function generateTestCases(
   >(
     url,
     { prId, projectName, repositoryId, customContext },
-    60000
+    300000 //  5minutes - generating test cases can take longer for complex PRs or if the backend is cold, especially with AI processing involved
+
   );
 }
 
@@ -245,7 +246,8 @@ export async function createWorkItem(
       sourceCommitId,
       targetCommitId
     },
-    30000
+    180000 // Increased from 30000 → 180 seconds - creating work items can take longer for complex test cases
+
   );
 }
 
@@ -264,6 +266,6 @@ export async function postPRComment(
   await postJson<{ success: boolean }>(
     url,
     { prId, projectName, repositoryId, workItemId },
-    10000
+    180000 // Increased from 10 seconds → 180 seconds - posting comments can take longer if the PR has a lot of activity or if there are API rate limits 
   );
 }
