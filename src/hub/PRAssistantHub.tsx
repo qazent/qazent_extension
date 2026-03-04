@@ -21,7 +21,15 @@ const PRAssistantHub: React.FC = () => {
   const [prData, setPRData] = React.useState<PRData | null>(null);
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
+
+// INTERFACE FOR SUCCESS MESSAGE DATA
+  interface SuccessMessageData {
+  text: string;
+  url: string;
+  details: string;
+}
+const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | null>(null);
+
  
   const [backendUrl, setBackendUrl] = React.useState<string>(
   'https://api.qazent.com');  // Default backend URL, should be overridden by config  // Default backend URL, should be overridden by config
@@ -284,31 +292,32 @@ const PRAssistantHub: React.FC = () => {
         targetCommitId
       );
 
-      // Step 6: Post comment on PR (non-blocking)
+            // Step 6: Post comment on PR
       setCompletedSteps(prev => [...prev, 4]);
       setCurrentStep(5);
-      backendClient.postPRComment(
-        prData.prId,
-        projectName,
-        repositoryId,
-        result.workItemId,
-        backendUrl,
-      ).catch(err => {
+
+      try {
+        await backendClient.postPRComment(
+          prData.prId,
+          projectName,
+          repositoryId,
+          result.workItemId,
+          backendUrl,
+        );
+      } catch (err) {
         console.warn('PR comment failed but work item was created:', err);
-      });
-
-
+      }
 
       // Step 7: Show success message
       setCompletedSteps(prev => [...prev, 5]);
       setCurrentStep(null);
-      setSuccessMessage(
-        `Work item created successfully! View it here: ${result.workItemUrl}\n\n` +
-        `A comment has been posted on this PR with the test case details.`
-      );
-
-      // Auto-dismiss success message after 30 seconds
+      setSuccessMessage({
+        text: "Work item created successfully!",
+        url: result.workItemUrl,
+        details: "A comment has been posted on this PR with the test case details."
+      });
       setTimeout(() => setSuccessMessage(null), 30000);
+
 
     } catch (err) {
       // Step 8: Handle errors
@@ -324,14 +333,14 @@ const PRAssistantHub: React.FC = () => {
         } else if (err.message.includes('404')) {
           errorMessage = 'Backend endpoint not found. Please verify backend service is running.';
         } else {
-          errorMessage = `Error: ${err.message}`;
+          errorMessage = `Please contact support. Error: ${err.message}`;
         }
       }
 
       setError(errorMessage);
       console.error('Generate and create work item error:', err);
-    } finally {
-      // Step 9: Clear loading state
+    }
+    finally {      
       setIsGenerating(false);
     }
   };
@@ -364,23 +373,65 @@ const PRAssistantHub: React.FC = () => {
           {error}
         </div>
       )}
+      {/* Success Message */}
 
-      {/* Success message */}
-      {successMessage && (
+    {successMessage && (
+    <div
+      style={{
+        background: 'white',
+        padding: '20px 24px',
+        borderRadius: '12px',
+        boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
+        border: '1px solid #c7eac7',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        color: '#0b6a0b',
+        fontSize: '15px',
+        fontWeight: 500
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div
           style={{
-            backgroundColor: '#dff6dd',
-            border: '1px solid #107c10',
-            color: '#0b6a0b',
-            padding: '16px 20px',
-            borderRadius: '8px',
-            fontSize: '15px',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            backgroundColor: '#0b6a0b',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '18px',
+            fontWeight: 'bold'
           }}
         >
-          {successMessage}
+          ✓
         </div>
-      )}
+        <span>{successMessage.text}</span>
+      </div>
+
+      <a
+        href={successMessage.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          color: '#1c38d6',
+          textDecoration: 'underline',
+          fontWeight: 800,
+          fontSize: '16px',
+          fontStyle: 'italic'
+        }}
+      >
+        View work item
+      </a>
+
+      <span style={{ fontSize: '14px', color: '#2d662d' }}>
+        {successMessage.details}
+      </span>
+    </div>
+  )}
+
 
       {/* PR Info Card */}
       <div
