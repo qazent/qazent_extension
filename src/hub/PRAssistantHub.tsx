@@ -300,7 +300,7 @@ const PRAssistantHub: React.FC = () => {
 
       if (err instanceof Error) {
         if (err.message.includes('timed out')) {
-          errorMessage = 'Request timed out. The backend is taking longer than expected. Please try again.';
+          errorMessage = 'Request timed out. The backend is taking longer than expected. Please wait, could be due to backend cold start or complex PR. If the issue persists, please contact support.';
         } else if (err.message.includes('Unable to connect')) {
           errorMessage = 'Cannot connect to backend service. Please check your network connection.';
         } else if (err.message.includes('403')) {

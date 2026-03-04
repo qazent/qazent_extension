@@ -150,6 +150,13 @@ function extractJSON(response: string): string {
 function safeParseAIResponse(response: string) {
   const extracted = extractJSON(response);
 
+  // Try to parse the extracted string as JSON
+  try {
+    return JSON.parse(extracted);
+  } catch (_) {
+    // If it fails, try to repair it
+  }
+
   try {
     const repaired = jsonrepair(extracted);
     return JSON.parse(repaired);
