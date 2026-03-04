@@ -11,6 +11,7 @@ import { FluentProvider, webLightTheme } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
+import { AIActivityFeed } from './AIActivityFeed';
 import { PRData, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
@@ -30,6 +31,8 @@ const PRAssistantHub: React.FC = () => {
   const [projectId, setProjectId] = React.useState<string>('');
   const [customContext, setCustomContext] = React.useState<string>('');
   const [countdown, setCountdown] = React.useState<number | null>(null);
+  const [currentStep, setCurrentStep] = React.useState<number | null>(null);
+  const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
 
 
   React.useEffect(() => {
@@ -228,9 +231,12 @@ const PRAssistantHub: React.FC = () => {
     setIsGenerating(true);
     setError(null);
     setSuccessMessage(null);
+    setCurrentStep(null);
+    setCompletedSteps([]);
 
     try {
       // Step 3: Validate metadata
+      setCurrentStep(1);
       if (!repositoryId || !projectName) {
         throw new Error('Repository or project information missing. Please refresh the page.');
       }
@@ -239,6 +245,8 @@ const PRAssistantHub: React.FC = () => {
       }
 
       // Step 4: Call /generate-tests (backend returns test case + commit IDs)
+      setCompletedSteps([1]);
+      setCurrentStep(2);
       const response = await backendClient.generateTestCases(
         prData.prId,
         projectName,
@@ -248,6 +256,8 @@ const PRAssistantHub: React.FC = () => {
       );
 
       // Extract test case and commit IDs from response
+      setCompletedSteps(prev => [...prev, 2]);
+      setCurrentStep(3);
       const generatedTestCase = {
         title: response.title,
         htmlDescriptionBase64: response.htmlDescriptionBase64
@@ -261,6 +271,8 @@ const PRAssistantHub: React.FC = () => {
       }
 
       // Step 5: Immediately call /create-work-item with ALL required fields
+      setCompletedSteps(prev => [...prev, 3]);
+      setCurrentStep(4);
       const result = await backendClient.createWorkItem(
         generatedTestCase as any,
         prData.prId,
@@ -273,6 +285,8 @@ const PRAssistantHub: React.FC = () => {
       );
 
       // Step 6: Post comment on PR (non-blocking)
+      setCompletedSteps(prev => [...prev, 4]);
+      setCurrentStep(5);
       backendClient.postPRComment(
         prData.prId,
         projectName,
@@ -283,9 +297,11 @@ const PRAssistantHub: React.FC = () => {
         console.warn('PR comment failed but work item was created:', err);
       });
 
-      
+
 
       // Step 7: Show success message
+      setCompletedSteps(prev => [...prev, 5]);
+      setCurrentStep(null);
       setSuccessMessage(
         `Work item created successfully! View it here: ${result.workItemUrl}\n\n` +
         `A comment has been posted on this PR with the test case details.`
@@ -405,6 +421,14 @@ const PRAssistantHub: React.FC = () => {
           <strong> "Generate"</strong>. If something goes wrong, an error message will appear above.
         </p>
       </div>
+
+      {/* AI Activity Feed - shows during generation */}
+      {isGenerating && (
+        <AIActivityFeed
+          currentStep={currentStep}
+          completedSteps={completedSteps}
+        />
+      )}
 
       {/* Generate button */}
       <div
