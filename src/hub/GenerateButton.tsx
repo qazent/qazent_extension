@@ -47,7 +47,7 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
       >
         <span
           style={{
-            color: isLoading ? '#a89e9e' : 'grey',   //  change text color here
+            color: isLoading ? '#dbd8d8' : 'white',   //  change text color here
             transition: 'color 0.2s ease',
             background: isLoading
               ? 'linear-gradient(135deg, #6a6a6a 0%, #4a4a4a 100%)'
