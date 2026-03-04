@@ -376,61 +376,71 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       {/* Success Message */}
 
     {successMessage && (
-    <div
-      style={{
-        background: 'white',
-        padding: '20px 24px',
-        borderRadius: '12px',
-        boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
-        border: '1px solid #c7eac7',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px',
-        color: '#0b6a0b',
-        fontSize: '15px',
-        fontWeight: 500
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <div
-          style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            backgroundColor: '#0b6a0b',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '18px',
-            fontWeight: 'bold'
-          }}
-        >
-          ✓
-        </div>
-        <span>{successMessage.text}</span>
-      </div>
-
-      <a
-        href={successMessage.url}
-        target="_blank"
-        rel="noopener noreferrer"
+  <div
+    style={{
+      background: 'white',
+      padding: '20px 24px',
+      borderRadius: '12px',
+      boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
+      border: '1px solid #c7eac7',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      color: '#0b6a0b',
+      fontSize: '15px',
+      fontWeight: 500
+    }}
+  >
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div
         style={{
-          color: '#1c38d6',
-          textDecoration: 'underline',
-          fontWeight: 800,
-          fontSize: '16px',
-          fontStyle: 'italic'
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          backgroundColor: '#0b6a0b',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '18px',
+          fontWeight: 'bold'
         }}
       >
-        View work item
-      </a>
-
-      <span style={{ fontSize: '14px', color: '#2d662d' }}>
-        {successMessage.details}
-      </span>
+        ✓
+      </div>
+      <span>{successMessage.text}</span>
     </div>
-  )}
+
+    <a
+      href={successMessage.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        color: '#0b6a0b',
+        fontWeight: 600,
+        textDecoration: 'none',
+        padding: '6px 10px',
+        borderRadius: '6px',
+        background: '#e8f5e8',
+        width: 'fit-content',
+        transition: 'background 0.2s ease, color 0.2s ease'
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.background = '#d9f0d9';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLAnchorElement).style.background = '#e8f5e8';
+      }}
+    >
+      View work item →
+    </a>
+
+    <span style={{ fontSize: '14px', color: '#2d662d' }}>
+      {successMessage.details}
+    </span>
+  </div>
+)}
+
 
 
       {/* PR Info Card */}
