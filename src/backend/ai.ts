@@ -111,16 +111,17 @@ ${change.diffContent}
 Please provide test cases in the following JSON structure:
 {
   "title": "Test Case: <short summary>",
-  "htmlDescriptionBase64": "<complete HTML document with all 9 sections>"
+  "htmlDescriptionBase64": "<Base64-encoded string of the full HTML only, not raw HTML>"
 }`;
 
   return prompt;
 }
 
 /**
- * Extract JSON from AI response (handle markdown wrappers)
+ * Extract JSON from AI response (handle markdown wrappers).
+ * Exported for diagnostic logging when parse fails.
  */
-function extractJSON(response: string): string {
+export function extractJSON(response: string): string {
   // Remove markdown code blocks if present
   let cleaned = response.trim();
 
@@ -148,21 +149,65 @@ function extractJSON(response: string): string {
   return cleaned;
 }
 
-function safeParseAIResponse(response: string) {
+function safeParseAIResponse(response: string): any {
   const extracted = extractJSON(response);
+  const hadMarkdown = response.trim().startsWith('```');
+  logger.debug('JSON extraction', {
+    extractionLength: extracted.length,
+    hadMarkdown
+  });
 
-  // Try to parse the extracted string as JSON
   try {
-    return JSON.parse(extracted);
+    const parsed = JSON.parse(extracted);
+    logger.debug('AI JSON parsed without repair', {
+      parseSucceeded: true,
+      jsonrepairApplied: false,
+      first200Chars: extracted.substring(0, 200)
+    });
+    return parsed;
   } catch (_) {
-    // If it fails, try to repair it
+    // First parse failed, try jsonrepair
   }
 
   try {
     const repaired = jsonrepair(extracted);
+    logger.debug('AI JSON repaired and parsed', {
+      parseSucceeded: false,
+      jsonrepairApplied: true,
+      first200Chars: repaired.substring(0, 200)
+    });
     return JSON.parse(repaired);
   } catch (err) {
+    const errMsg = String(err);
+    const posMatch = errMsg.match(/position\s+(\d+)/i);
+    if (posMatch) {
+      const pos = parseInt(posMatch[1], 10);
+      logger.warn('JSON parse/repair failed at position', {
+        position: pos,
+        rawSubstringAroundPosition: extracted.substring(Math.max(0, pos - 60), pos + 60)
+      });
+    }
     throw new Error("Failed to repair AI JSON: " + err);
+  }
+}
+
+/**
+ * Decode htmlDescriptionBase64: if the value is Base64, decode to HTML;
+ * if it is already raw HTML (starts with '<'), use as-is for backward compatibility.
+ */
+function decodeHtmlDescriptionBase64(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('<')) {
+    return trimmed;
+  }
+  try {
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
+    if (decoded && decoded.trim().startsWith('<')) {
+      return decoded.trim();
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
   }
 }
 
@@ -289,17 +334,31 @@ export async function generateTestCases(
       let parsed: any;
       try {
         parsed = safeParseAIResponse(text);
-      } catch (parseError) {
-        logger.error("Failed to parse/repair AI response as JSON", {
+      } catch (parseError: unknown) {
+        const extracted = extractJSON(text);
+        const errMsg = String(parseError);
+        const posMatch = errMsg.match(/position\s+(\d+)/i);
+        const logPayload: Record<string, unknown> = {
           prId: prMetadata.prId,
-          error: String(parseError),
+          error: errMsg,
           errorName: parseError instanceof Error ? parseError.name : 'Unknown',
           rawResponsePreview: text.substring(0, 500),
           textType: typeof text,
           rawLength: text.length,
           attempt
-        });
+        };
+        if (posMatch) {
+          const pos = parseInt(posMatch[1], 10);
+          logPayload.position = pos;
+          logPayload.rawSubstringAroundPosition = extracted.substring(Math.max(0, pos - 60), pos + 60);
+        }
+        logger.error("Failed to parse/repair AI response as JSON", logPayload);
         throw new Error(`Failed to parse AI response: ${parseError}`);
+      }
+
+      // Decode htmlDescriptionBase64 (Base64 → HTML) or use raw HTML as-is (fallback)
+      if (parsed.htmlDescriptionBase64 && typeof parsed.htmlDescriptionBase64 === 'string') {
+        parsed.htmlDescriptionBase64 = decodeHtmlDescriptionBase64(parsed.htmlDescriptionBase64);
       }
 
       // Validate task output
