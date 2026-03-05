@@ -252,6 +252,16 @@ export async function createWorkItem(
 }
 
 /**
+ * Extract Purpose + Scope of Change HTML from full test case HTML.
+ * Calls backend POST /api/extract-purpose-scope.
+ */
+export async function extractPurposeAndScope(html: string, backendUrl: string): Promise<string> {
+  const url = buildUrl(backendUrl, '/api/extract-purpose-scope');
+  const response = await postJson<{ extracted: string }>(url, { html }, 30000);
+  return response.extracted;
+}
+
+/**
  * Parameters for posting a comment on a PR.
  *
  * `connection` is the backend base URL that exposes the `/post-pr-comment` endpoint.

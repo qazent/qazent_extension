@@ -19,6 +19,7 @@ import {
   rateLimitGenerateTests,
   rateLimitCreateWorkItem,
   rateLimitPostPRComment,
+  rateLimitExtractPurposeScope,
   rateLimitHealth
 } from './middleware/rateLimiter';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
@@ -870,6 +871,61 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
 }
 
 /**
+ * Handle extract purpose-scope POST request
+ * Security: User identity verified by authentication middleware
+ */
+async function handleExtractPurposeScope(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      if (payload.html === undefined || payload.html === null || typeof payload.html !== 'string') {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing or invalid field: html',
+          details: 'Request body must include a string field: html'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const extracted = ai.extractPurposeAndScope(payload.html);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ extracted }));
+    } catch (error) {
+      logger.error('Failed to extract purpose-scope', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Failed to extract purpose-scope',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
  * Apply CORS headers
  * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
@@ -1139,6 +1195,22 @@ function startServer(): void {
       }
 
       await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
+      return;
+    }
+
+    // Extract purpose-scope endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/api/extract-purpose-scope' && method === 'POST') {
+      logger.info("POST /api/extract-purpose-scope hit");
+
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type', details: 'Expected application/json' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitExtractPurposeScope, handleExtractPurposeScope)(req, res);
       return;
     }
 

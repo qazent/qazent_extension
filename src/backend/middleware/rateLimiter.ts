@@ -184,6 +184,16 @@ export const rateLimitPostPRComment = createRateLimiter({
 });
 
 /**
+ * Rate limiter for /api/extract-purpose-scope
+ * Limit: 20 requests per 10 minutes per IP
+ */
+export const rateLimitExtractPurposeScope = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many extract-purpose-scope requests.'
+});
+
+/**
  * Rate limiter for /webhook
  * Limit: 100 requests per 10 minutes per IP
  */

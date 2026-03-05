@@ -302,8 +302,9 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
                 projectName,
                 repositoryId,
                 workItemId: result.workItemId,
-                connection: backendUrl,
+                connection: backendUrl
               });
+
             
             } catch (err) {
               console.warn('PR comment failed but work item was created:', err);
@@ -311,9 +312,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
 
             // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
             try {
-              // Dynamically import the extraction utility from backend/ai.ts
-              const ai = await import('../backend/ai');
-              const scopeHtml = ai.extractPurposeAndScope(generatedTestCase.htmlDescriptionBase64);
+              const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescriptionBase64, backendUrl);
               if (scopeHtml && scopeHtml.length > 0) {
                 // Post Scope of Change as a separate comment
                 await backendClient.postPRComment({
