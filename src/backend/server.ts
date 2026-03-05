@@ -1154,8 +1154,7 @@ function startServer(): void {
     }
 
     // Health check endpoint (PUBLIC - no authentication, only rate limiting)
-    if (normalizedUrl === '/health' && method === 'GET') {
-      logger.info("Health check hit");
+    if ((normalizedUrl === '/health' || normalizedUrl === '/') && (method === 'GET' || method === 'HEAD')) {
       rateLimitHealth(req, res, () => {
         handleHealth(req, res);
       });
