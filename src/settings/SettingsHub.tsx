@@ -23,10 +23,13 @@ import { AIContextDocument } from '../types/extension-types';
 // import * as webhookService from '../services/webhookService';
 // import { WebhookSubscription } from '../services/webhookService';
 
+const PROJECT_DEFAULT_LABEL = "Project Default (applies to all repos)";
+
 export const SettingsHub: React.FC = () => {
   const [projectId, setProjectId] = React.useState<string>('');
   const [repositories, setRepositories] = React.useState<GitRepository[]>([]);
   const [selectedRepoId, setSelectedRepoId] = React.useState<string>('project-default');
+  const [selectedRepoName, setSelectedRepoName] = React.useState<string>(PROJECT_DEFAULT_LABEL);
   const [contextText, setContextText] = React.useState<string>('');
   const [loadedDocument, setLoadedDocument] = React.useState<any | null>(null);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
@@ -238,7 +241,17 @@ const loadContext = async (repoId: string) => {
 
 const handleRepoChange = async (_event: any, data: any) => {
   const newRepoId = data.optionValue || "project-default";
+
+  let newRepoName: string;
+  if (newRepoId === "project-default") {
+    newRepoName = PROJECT_DEFAULT_LABEL;
+  } else {
+    const repo = repositories.find((r) => r.id === newRepoId);
+    newRepoName = repo?.name ?? data.optionText ?? newRepoId;
+  }
+
   setSelectedRepoId(newRepoId);
+  setSelectedRepoName(newRepoName);
   await loadContext(newRepoId);
 };
 
@@ -466,12 +479,12 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
                 ? "Loading repositories..."
                 : "Select repository"
             }
-            value={selectedRepoId}
+            value={selectedRepoName}
             onOptionSelect={handleRepoChange}
             disabled={isLoading}
           >
             <Option value="project-default">
-              Project Default (applies to all repos)
+              {PROJECT_DEFAULT_LABEL}
             </Option>
 
             {repositories.map((repo) => (
