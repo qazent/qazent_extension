@@ -292,21 +292,43 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         targetCommitId
       );
 
-            // Step 6: Post comment on PR
-      setCompletedSteps(prev => [...prev, 4]);
-      setCurrentStep(5);
 
-      try {
-        await backendClient.postPRComment(
-          prData.prId,
-          projectName,
-          repositoryId,
-          result.workItemId,
-          backendUrl,
-        );
-      } catch (err) {
-        console.warn('PR comment failed but work item was created:', err);
-      }
+            // Step 6: Post main comment on PR
+            setCompletedSteps(prev => [...prev, 4]);
+            setCurrentStep(5);
+            try {
+              await backendClient.postPRComment({
+                prId: prData.prId,
+                projectName,
+                repositoryId,
+                workItemId: result.workItemId,
+                connection: backendUrl,
+              });
+            
+            } catch (err) {
+              console.warn('PR comment failed but work item was created:', err);
+            }
+
+            // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
+            try {
+              // Dynamically import the extraction utility from backend/ai.ts
+              const ai = await import('../backend/ai');
+              const scopeHtml = ai.extractPurposeAndScope(generatedTestCase.htmlDescriptionBase64);
+              if (scopeHtml && scopeHtml.length > 0) {
+                // Post Scope of Change as a separate comment
+                await backendClient.postPRComment({
+                  prId: prData.prId,
+                  projectName,
+                  repositoryId,
+                  workItemId: result.workItemId,
+                  connection: backendUrl,
+                  commentContent: scopeHtml
+                });
+
+              }
+            } catch (err) {
+              console.warn('Failed to post Purpose and Scope of Change comment:', err);
+            }
 
       // Step 7: Show success message
       setCompletedSteps(prev => [...prev, 5]);

@@ -1,3 +1,4 @@
+
 /**
  * AI integration module using Google Gemini
  */
@@ -184,6 +185,42 @@ export function validateTaskOutput(data: any): TaskWorkItemOutput {
     htmlDescriptionBase64: data.htmlDescriptionBase64.trim()
   };
 }
+
+/**
+ * Extracts everything from <h2>Purpose</h2> through the entire
+ * <h2>Scope of Change</h2> section, including all text under both headers.
+ * 
+ * In JavaScript and TypeScript, indexOf() returns -1 when the substring is not found in the string. 
+ * “If the <h2>Purpose</h2> header does not exist, return an empty string.”
+ * 
+ */
+export function extractPurposeAndScope(html: string): string {
+  const purposeHeader = '<h2>Purpose</h2>';
+  const scopeHeader = '<h2>Scope of Change</h2>';
+
+  // Find Purpose start
+  const purposeIdx = html.indexOf(purposeHeader);
+  if (purposeIdx === -1) return '';
+
+  // Find Scope of Change start
+  const scopeIdx = html.indexOf(scopeHeader, purposeIdx + purposeHeader.length);
+  if (scopeIdx === -1) {
+    // No Scope of Change, return everything from Purpose to end
+    return html.substring(purposeIdx).trim();
+  }
+
+  // Find the next <h2> after Scope of Change
+  const nextHeaderIdx = html.indexOf('<h2>', scopeIdx + scopeHeader.length);
+
+  if (nextHeaderIdx === -1) {
+    // No further sections, return to end
+    return html.substring(purposeIdx).trim();
+  }
+
+  // Return Purpose → end of Scope of Change section
+  return html.substring(purposeIdx, nextHeaderIdx).trim();
+}
+
 
 /**
  * Generate test cases using Gemini AI with retry logic
