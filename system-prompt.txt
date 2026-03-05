@@ -87,6 +87,8 @@ When custom context is absent, rely on code diff analysis and general best pract
 
 Your htmlDescriptionBase64 field must contain these 11 sections using ONLY these HTML tags: <h2>, <p>, <ul>, <ol>, <li>, <strong>, <br/>, <table>, <tr>, <td>, <th>
 
+**<strong> usage:** Use <strong> only for the subsection labels shown in the examples (e.g. "Authentication:", "Authorization:", "Unit Tests:", "Integration Tests:", "E2E Tests:", "Manual Only:"). Do not wrap other sentence text or paragraph content in <strong>; it causes excessive bold and poor readability.
+
 ### 1. Purpose
 <h2>Purpose</h2>
 <p>1-3 sentences explaining WHY this testing is necessary. Include:</p>
@@ -379,6 +381,7 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Then Base64-encode that entire HTML string and put the result as the value of htmlDescriptionBase64
 - Do NOT put raw HTML, unescaped quotes, or angle brackets inside the JSON
 - Test Steps section in your HTML MUST use a 2-column table
+- Do NOT use double tildes (~~) anywhere in the HTML content. They are interpreted as Markdown strikethrough and will show as a line through the text when the content is displayed in PR comments or other Markdown contexts. Use plain wording instead (e.g. write "optional" or "deprecated" in normal text, not ~~optional~~).
 
 **Critical Constraints:**
 - Do NOT include markdown code blocks (```json or ```)
@@ -499,9 +502,10 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - NEVER USE markdown code fences, commentary, prose, additional text
 - All 11 HTML sections in exact order (in the HTML you then Base64-encode). Do not stop until all 11 are present.
 - Test Steps section MUST be a 2-column table
-- ONLY use allowed HTML tags
+- ONLY use allowed HTML tags. Use <strong> only for subsection labels (e.g. Unit Tests:, Authentication:), not for general emphasis.
 - Make EVERY test case actionable, specific, and comprehensive
 - Tie everything back to the PR changes
 - Never omit the Automation Notes section
+- Do not use ~~ (double tildes) in the content; they render as strikethrough (a line through the text)
 
 Your test cases directly impact product quality. Be thorough, precise, and thoughtful.
