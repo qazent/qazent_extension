@@ -638,7 +638,14 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       };
 
       // Generate test cases
+      logger.debug('Calling AI generateTestCases', {
+        prId: payload.prId,
+        codeDiffFiles: codeDiff.changes.length,
+        totalChanges: codeDiff.totalChanges,
+        customContextLength: customContext?.length ?? 0
+      });
       const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff, customContext);
+      logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: taskOutput.title });
 
       // Return test case + commit IDs for work item creation
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -649,14 +656,29 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       }));
 
     } catch (error) {
-      logger.error('Failed to generate tests', { error: String(error) });
+      const err = error instanceof Error ? error : new Error(String(error));
+      let prId: number | undefined;
+      try {
+        const payload = JSON.parse(body);
+        prId = typeof payload?.prId === 'number' ? payload.prId : undefined;
+      } catch {
+        // body may be invalid; ignore for logging
+      }
+      logger.error('Failed to generate tests', {
+        error: err.message,
+        errorName: err.name,
+        stack: err.stack,
+        prId,
+        requestId: req.requestId,
+        userId: req.user?.id
+      });
 
       const errorResponse: ErrorResponse = {
         error: 'Test case generation failed',
-        message: error instanceof Error ? error.message : String(error)
+        message: err.message
       };
 
-      const statusCode = error instanceof Error && error.message.includes('not found') ? 404 : 500;
+      const statusCode = err.message.includes('not found') ? 404 : 500;
       res.writeHead(statusCode, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(errorResponse));
     }

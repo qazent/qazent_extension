@@ -165,8 +165,11 @@ function safeParseAIResponse(response: string): any {
       first200Chars: extracted.substring(0, 200)
     });
     return parsed;
-  } catch (_) {
-    // First parse failed, try jsonrepair
+  } catch (firstParseErr) {
+    logger.debug('Initial JSON.parse failed, attempting jsonrepair', {
+      errorMessage: firstParseErr instanceof Error ? firstParseErr.message : String(firstParseErr),
+      errorName: firstParseErr instanceof Error ? firstParseErr.name : 'Unknown'
+    });
   }
 
   try {
@@ -180,6 +183,13 @@ function safeParseAIResponse(response: string): any {
   } catch (err) {
     const errMsg = String(err);
     const posMatch = errMsg.match(/position\s+(\d+)/i);
+    logger.error('JSON parse and jsonrepair both failed', {
+      errorMessage: err instanceof Error ? err.message : errMsg,
+      errorName: err instanceof Error ? err.name : 'Unknown',
+      extractionLength: extracted.length,
+      first150Chars: extracted.substring(0, 150),
+      last100Chars: extracted.substring(Math.max(0, extracted.length - 100))
+    });
     if (posMatch) {
       const pos = parseInt(posMatch[1], 10);
       logger.warn('JSON parse/repair failed at position', {
@@ -198,15 +208,26 @@ function safeParseAIResponse(response: string): any {
 function decodeHtmlDescriptionBase64(value: string): string {
   const trimmed = value.trim();
   if (trimmed.startsWith('<')) {
+    logger.debug('htmlDescriptionBase64: using raw HTML fallback', { valueLength: trimmed.length });
     return trimmed;
   }
   try {
     const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
     if (decoded && decoded.trim().startsWith('<')) {
+      logger.debug('htmlDescriptionBase64: decoded from Base64', { decodedLength: decoded.length });
       return decoded.trim();
     }
+    logger.debug('htmlDescriptionBase64: Base64 decode did not yield HTML, using original', {
+      decodedLength: decoded?.length ?? 0,
+      decodedPreview: decoded?.substring(0, 80)
+    });
     return trimmed;
-  } catch {
+  } catch (decodeErr) {
+    logger.warn('htmlDescriptionBase64: Base64 decode failed, using original value', {
+      errorMessage: decodeErr instanceof Error ? decodeErr.message : String(decodeErr),
+      valueLength: trimmed.length,
+      valuePreview: trimmed.substring(0, 80)
+    });
     return trimmed;
   }
 }
@@ -318,6 +339,7 @@ export async function generateTestCases(
       const text = response.text; // Direct property access, NOT a method call
 
       if (!text) {
+        logger.warn('AI returned empty response', { prId: prMetadata.prId, attempt });
         throw new Error('AI returned empty response');
       }
 
@@ -342,7 +364,9 @@ export async function generateTestCases(
           prId: prMetadata.prId,
           error: errMsg,
           errorName: parseError instanceof Error ? parseError.name : 'Unknown',
+          stack: parseError instanceof Error ? parseError.stack : undefined,
           rawResponsePreview: text.substring(0, 500),
+          rawResponseEnding: text.substring(Math.max(0, text.length - 200)),
           textType: typeof text,
           rawLength: text.length,
           attempt
@@ -357,24 +381,59 @@ export async function generateTestCases(
       }
 
       // Decode htmlDescriptionBase64 (Base64 → HTML) or use raw HTML as-is (fallback)
+      const rawValueLength = parsed.htmlDescriptionBase64?.length ?? 0;
       if (parsed.htmlDescriptionBase64 && typeof parsed.htmlDescriptionBase64 === 'string') {
         parsed.htmlDescriptionBase64 = decodeHtmlDescriptionBase64(parsed.htmlDescriptionBase64);
       }
+      logger.debug('After decode: html length', {
+        prId: prMetadata.prId,
+        rawValueLength,
+        decodedLength: parsed.htmlDescriptionBase64?.length ?? 0,
+        startsWithAngle: parsed.htmlDescriptionBase64?.trim().startsWith('<') ?? false
+      });
 
       // Validate task output
-      const taskOutput = validateTaskOutput(parsed);
+      let taskOutput: TaskWorkItemOutput;
+      try {
+        taskOutput = validateTaskOutput(parsed);
+      } catch (validationErr) {
+        logger.error('Task output validation failed', {
+          prId: prMetadata.prId,
+          errorMessage: validationErr instanceof Error ? validationErr.message : String(validationErr),
+          hasTitle: !!parsed?.title,
+          hasHtmlField: !!(parsed?.htmlDescriptionBase64 != null),
+          htmlFieldType: typeof parsed?.htmlDescriptionBase64,
+          attempt
+        });
+        throw validationErr;
+      }
 
       // Validate response completeness to detect truncation (11 sections need substantial content)
       const htmlLength = taskOutput.htmlDescriptionBase64.length;
-      const hasAllSections = taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>');
-      const MIN_HTML_LENGTH = 3000;
+      const hasAutomationNotes = taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>');
+      const sectionCount = (taskOutput.htmlDescriptionBase64.match(/<h2>/g) || []).length;
+      const MIN_HTML_LENGTH = 2500;
+      const LONG_FORM_MIN_LENGTH = 5000;
+      const MIN_SECTION_COUNT = 9;
 
-      if (htmlLength < MIN_HTML_LENGTH || !hasAllSections) {
+      const lengthOk = htmlLength >= MIN_HTML_LENGTH;
+      const sectionsOk = hasAutomationNotes || (htmlLength >= LONG_FORM_MIN_LENGTH && sectionCount >= MIN_SECTION_COUNT);
+
+      if (!lengthOk || !sectionsOk) {
+        const h2Titles = (taskOutput.htmlDescriptionBase64.match(/<h2>[^<]*<\/h2>/g) || []).map((h: string) => h.replace(/<\/?h2>/g, '').trim());
         logger.warn('AI response appears truncated', {
           prId: prMetadata.prId,
           htmlLength,
           minRequired: MIN_HTML_LENGTH,
-          hasAllSections,
+          lengthOk,
+          sectionsOk,
+          hasAutomationNotes,
+          sectionCount,
+          minSectionCount: MIN_SECTION_COUNT,
+          longFormMinLength: LONG_FORM_MIN_LENGTH,
+          sectionTitlesFound: h2Titles,
+          htmlPreviewFirst200: taskOutput.htmlDescriptionBase64.substring(0, 200),
+          htmlPreviewLast150: taskOutput.htmlDescriptionBase64.substring(Math.max(0, taskOutput.htmlDescriptionBase64.length - 150)),
           attempt
         });
         throw new Error('AI response truncated - missing sections');
@@ -385,8 +444,8 @@ export async function generateTestCases(
         title: taskOutput.title,
         htmlLength: taskOutput.htmlDescriptionBase64.length,
         hasPurpose: taskOutput.htmlDescriptionBase64.includes('<h2>Purpose</h2>'),
-        hasAutomationNotes: taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>'),
-        sectionCount: (taskOutput.htmlDescriptionBase64.match(/<h2>/g) || []).length,
+        hasAutomationNotes,
+        sectionCount,
         attempt
       });
 
@@ -394,18 +453,29 @@ export async function generateTestCases(
 
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      const err = error instanceof Error ? error : new Error(String(error));
+      const failureReason = err.message.includes('empty response') ? 'empty_response'
+        : err.message.includes('parse') || err.message.includes('JSON') ? 'parse'
+        : err.message.includes('Missing required field') ? 'validation'
+        : err.message.includes('truncated') ? 'truncation'
+        : err.message.includes('rate limit') || err.message.includes('API') ? 'api'
+        : 'unknown';
 
       if (attempt < MAX_ATTEMPTS) {
         logger.warn(`AI generation attempt ${attempt} failed, retrying`, {
           prId: prMetadata.prId,
-          error: String(error),
+          error: err.message,
+          errorName: err.name,
+          failureReason,
           attempt
         });
-        // Continue to next attempt
       } else {
         logger.error(`AI generation attempt ${attempt} failed (final attempt)`, {
           prId: prMetadata.prId,
-          error: String(error),
+          error: err.message,
+          errorName: err.name,
+          failureReason,
+          stack: err.stack,
           attempt
         });
       }
