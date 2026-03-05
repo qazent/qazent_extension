@@ -826,14 +826,19 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
-      // Call backend function to post comment
-      await adoClient.postPRComment(
-        payload.projectName,
-        payload.repositoryId,
-        payload.prId,
-        payload.workItemId,
-        connection
-      );
+      // Call backend function to post comment.
+      // If no custom commentContent is provided, the backend will post its default message.
+      await adoClient.postPRComment({
+        projectName: payload.projectName,
+        repositoryId: payload.repositoryId,
+        prId: payload.prId,
+        workItemId: payload.workItemId,
+        connection,
+        commentContent:
+          payload.commentContent && typeof payload.commentContent === 'string'
+            ? payload.commentContent
+            : undefined
+      });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));

@@ -252,20 +252,35 @@ export async function createWorkItem(
 }
 
 /**
- * Post comment on PR linking to created work item
+ * Parameters for posting a comment on a PR.
+ *
+ * `connection` is the backend base URL that exposes the `/post-pr-comment` endpoint.
  */
-export async function postPRComment(
-  prId: number,
-  projectName: string,
-  repositoryId: string,
-  workItemId: number,
-  backendUrl: string
-): Promise<void> {
-  const url = buildUrl(backendUrl, '/post-pr-comment');
+export interface PostPRCommentParams {
+  prId: number;
+  projectName: string;
+  repositoryId: string;
+  workItemId: number;
+  connection: string;
+  commentContent?: string;
+}
+
+/**
+ * Post comment on PR linking to created work item, or with custom content if provided.
+ */
+export async function postPRComment({
+  prId,
+  projectName,
+  repositoryId,
+  workItemId,
+  connection,
+  commentContent
+}: PostPRCommentParams): Promise<void> {
+  const url = buildUrl(connection, '/post-pr-comment');
 
   await postJson<{ success: boolean }>(
     url,
-    { prId, projectName, repositoryId, workItemId },
+    { prId, projectName, repositoryId, workItemId, commentContent },
     180000 // Increased from 10 seconds → 180 seconds - posting comments can take longer if the PR has a lot of activity or if there are API rate limits 
   );
 }
