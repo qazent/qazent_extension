@@ -76,8 +76,26 @@ describe('generateTestCases', () => {
     delete process.env.GEMINI_API_KEY;
   });
 
-  it('should successfully extract text from AI response and parse JSON', async () => {
-    const mockhtmlDescriptionBase64 = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
+  it('should decode Base64 htmlDescriptionBase64 and return HTML', async () => {
+    const html = '<h2>Purpose</h2><p>Verify the new feature works correctly.</p><h2>Scope of Change</h2><p>Feature module.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Automate with unit tests.</p>' + 'x'.repeat(600);
+    const base64Value = Buffer.from(html, 'utf-8').toString('base64');
+    mockGenerateContent.mockResolvedValue({
+      text: JSON.stringify({
+        title: 'Test Case: Feature Functionality',
+        htmlDescriptionBase64: base64Value
+      })
+    });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(result.title).toBe('Test Case: Feature Functionality');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescriptionBase64).toContain('<table>');
+    expect(result.htmlDescriptionBase64).toBe(html);
+  });
+
+  it('should accept raw HTML in htmlDescriptionBase64 as fallback', async () => {
+    const mockHtml = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
 <h2>Scope of Change</h2><p>Feature module</p>
 <h2>Preconditions</h2><ul><li>System is running</li></ul>
 <h2>Test Steps & Expected Results</h2>
@@ -94,7 +112,7 @@ describe('generateTestCases', () => {
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Feature Functionality',
-        htmlDescriptionBase64: mockhtmlDescriptionBase64
+        htmlDescriptionBase64: mockHtml
       })
     });
 
