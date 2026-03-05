@@ -447,55 +447,60 @@ export async function createFallbackWorkItem(
   }
 }
 
-/**
- * Post a comment on a pull request
- */
-export async function postPRComment(
-  projectName: string,
-  repositoryId: string,
-  prId: number,
-  workItemId: number,
-  connection: azdev.WebApi
-): Promise<void> {
-  try {
-    logger.info('Posting PR comment', { projectName, prId, workItemId });
+      /**
+       * Post a comment on a pull request
+       */
+      export async function postPRComment({
+        projectName,
+        repositoryId,
+        prId,
+        workItemId,
+        connection,
+        commentContent
+      }: {
+        projectName: string;
+        repositoryId: string;
+        prId: number;
+        workItemId: number;
+        connection: azdev.WebApi;
+        commentContent?: string;
+      }): Promise<void> {
+        try {
+        logger.info('Posting PR comment', { projectName, prId, workItemId });
 
-    const gitApi: GitApi = await connection.getGitApi();
+        const gitApi: GitApi = await connection.getGitApi();
 
-    // Build comment text with @mention and #workitem reference
-    const commentText = `Testcase workitem has been created! #${workItemId}`;
+        const commentText =
+          commentContent ?? `Testcase workitem has been created! #${workItemId}`;
 
-    // Create comment thread payload
-    const commentThread = {
-      comments: [
-        {
-          parentCommentId: 0,
-          content: commentText,
-          commentType: 1 // 1 = text comment
-        }
-      ],
-      status: 1 // 1 = Active thread
-    };
+        const commentThread = {
+          comments: [
+            {
+              parentCommentId: 0,
+              content: commentText,
+              commentType: 1
+            }
+          ],
+          status: 1
+        };
 
-    // Post the comment thread
-    await gitApi.createThread(
-      commentThread,
-      repositoryId,
-      prId,
-      projectName
-    );
+        await gitApi.createThread(
+          commentThread,
+          repositoryId,
+          prId,
+          projectName
+        );
 
-    logger.info('PR comment posted successfully', { projectName, prId, workItemId });
-
-  } catch (error) {
-    logger.error('Failed to post PR comment', {
-      projectName,
-      prId,
-      workItemId,
-      error: String(error)
-    });
-    throw new Error(`Failed to post PR comment: ${error}`);
-  }
+        logger.info('PR comment posted successfully', { projectName, prId, workItemId });
+      } catch (error) {
+        logger.error('Failed to post PR comment', {
+          projectName,
+          prId,
+          workItemId,
+          error: String(error)
+        });
+        throw new Error(`Failed to post PR comment: ${error}`);
+      }
 
 
 
