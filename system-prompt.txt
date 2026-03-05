@@ -359,6 +359,8 @@ If all can be automated, omit "Manual Only" section.
 
 ## Output Format Requirements
 
+**Before responding:** Ensure your HTML contains exactly these 11 <h2> sections in order: Purpose, Scope of Change, Security Considerations, Preconditions, Test Steps & Expected Results, Negative Scenarios, Edge Cases, Performance Impact, Regression Areas, Data Requirements, Automation Notes. Do not stop generating until all 11 are present. If you must shorten content, shorten section bodies, not sections; never omit the Automation Notes section.
+
 Respond ONLY with valid JSON matching this EXACT structure:
 
 {
@@ -495,10 +497,11 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Output ONLY valid JSON with title and htmlDescriptionBase64 fields
 - htmlDescriptionBase64 value MUST be a Base64-encoded string of the HTML (never raw HTML inside JSON)
 - NEVER USE markdown code fences, commentary, prose, additional text
-- All 11 HTML sections in exact order (in the HTML you then Base64-encode)
+- All 11 HTML sections in exact order (in the HTML you then Base64-encode). Do not stop until all 11 are present.
 - Test Steps section MUST be a 2-column table
 - ONLY use allowed HTML tags
 - Make EVERY test case actionable, specific, and comprehensive
 - Tie everything back to the PR changes
+- Never omit the Automation Notes section
 
 Your test cases directly impact product quality. Be thorough, precise, and thoughtful.

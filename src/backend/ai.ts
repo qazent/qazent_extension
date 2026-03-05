@@ -28,29 +28,44 @@ let systemPrompt: string | null = null;
 let genAI: GoogleGenAI | null = null;
 
 /**
- * Load system prompt from file (cached)
+ * Load system prompt from file (cached).
+ * If useShortPrompt is true, returns a version with long examples stripped to leave more output budget (e.g. for retries after MAX_TOKENS).
  */
-export function loadSystemPrompt(): string {
-  if (systemPrompt !== null) {
+export function loadSystemPrompt(useShortPrompt = false): string {
+  if (systemPrompt === null) {
+    const promptPath = path.join(process.cwd(), 'system-prompt.txt');
+    console.log('[AI] Loading system prompt from:', promptPath);
+
+    try {
+      systemPrompt = fs.readFileSync(promptPath, 'utf-8');
+      console.log('[AI] System prompt loaded successfully, length:', systemPrompt.length);
+      logger.info('System prompt loaded', { length: systemPrompt.length });
+    } catch (error) {
+      logger.error('Failed to load system prompt', { promptPath, error: String(error) });
+      console.error(`FATAL: Cannot load system-prompt.txt from ${promptPath}`);
+      console.error('Current working directory:', process.cwd());
+      console.error('Error details:', error);
+      console.error('Ensure system-prompt.txt is in the dist/ folder alongside server.js');
+      process.exit(1);
+    }
+  }
+
+  if (!useShortPrompt) {
     return systemPrompt;
   }
 
-  const promptPath = path.join(process.cwd(), 'system-prompt.txt');
-  console.log('[AI] Loading system prompt from:', promptPath);
-
-  try {
-    systemPrompt = fs.readFileSync(promptPath, 'utf-8');
-    console.log('[AI] System prompt loaded successfully, length:', systemPrompt.length);
-    logger.info('System prompt loaded', { length: systemPrompt.length });
+  // Omit the long "## Example 1" through "## Example 3" blocks to leave more output tokens for the model
+  const example1Start = systemPrompt.indexOf('## Example 1: API Endpoint Change');
+  const qualityStandardsStart = systemPrompt.indexOf('## Quality Standards for Generated Test Cases');
+  if (example1Start === -1 || qualityStandardsStart === -1 || qualityStandardsStart <= example1Start) {
     return systemPrompt;
-  } catch (error) {
-    logger.error('Failed to load system prompt', { promptPath, error: String(error) });
-    console.error(`FATAL: Cannot load system-prompt.txt from ${promptPath}`);
-    console.error('Current working directory:', process.cwd());
-    console.error('Error details:', error);
-    console.error('Ensure system-prompt.txt is in the dist/ folder alongside server.js');
-    process.exit(1);
   }
+  const shortPrompt = systemPrompt.substring(0, example1Start).trim() + '\n\n' + systemPrompt.substring(qualityStandardsStart).trim();
+  logger.debug('Using short system prompt (examples omitted)', {
+    fullLength: systemPrompt.length,
+    shortLength: shortPrompt.length
+  });
+  return shortPrompt;
 }
 
 /**
@@ -215,7 +230,7 @@ function decodeHtmlDescriptionBase64(value: string): string {
     const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
     if (decoded && decoded.trim().startsWith('<')) {
       logger.debug('htmlDescriptionBase64: decoded from Base64', { decodedLength: decoded.length });
-      return decoded.trim();
+      return stripTrailingGarbageFromHtml(decoded.trim());
     }
     logger.debug('htmlDescriptionBase64: Base64 decode did not yield HTML, using original', {
       decodedLength: decoded?.length ?? 0,
@@ -230,6 +245,33 @@ function decodeHtmlDescriptionBase64(value: string): string {
     });
     return trimmed;
   }
+}
+
+/** Valid HTML block closing tags we can truncate after when the end of the string looks corrupted */
+const VALID_HTML_ENDINGS = [/<\/table>\s*$/i, /<\/ul>\s*$/i, /<\/ol>\s*$/i, /<\/p>\s*$/i, /<\/h2>\s*$/i, /<\/li>\s*$/i, /<\/td>\s*$/i, /<\/tr>\s*$/i];
+
+/**
+ * If decoded HTML ends with invalid UTF-8 or incomplete/garbled content, truncate at the last valid closing tag.
+ */
+function stripTrailingGarbageFromHtml(html: string): string {
+  const last150 = html.substring(Math.max(0, html.length - 150));
+  const hasReplacementOrGarbage = /\uFFFD|[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(last150);
+  if (!hasReplacementOrGarbage) {
+    return html;
+  }
+  let bestEnd = -1;
+  for (const re of VALID_HTML_ENDINGS) {
+    const match = html.match(re);
+    if (match && match.index !== undefined) {
+      const endIdx = match.index + match[0].length;
+      if (endIdx > bestEnd) bestEnd = endIdx;
+    }
+  }
+  if (bestEnd > 0 && bestEnd < html.length) {
+    logger.debug('Stripped trailing garbage from decoded HTML', { originalLength: html.length, trimmedLength: bestEnd });
+    return html.substring(0, bestEnd);
+  }
+  return html;
 }
 
 /**
@@ -303,8 +345,9 @@ export async function generateTestCases(
     try {
       logger.info('Generating test cases with AI', { prId: prMetadata.prId, attempt });
 
-      // Load system prompt
-      const sysPrompt = loadSystemPrompt();
+      // On retry (attempt 2), use shortened system prompt (examples omitted) to leave more output budget
+      const useShortPrompt = attempt >= 2;
+      const sysPrompt = loadSystemPrompt(useShortPrompt);
 
       // Initialize Gemini
       const ai = getGenAI();
@@ -312,11 +355,13 @@ export async function generateTestCases(
       // Build user prompt
       const userPrompt = buildUserPrompt(prMetadata, codeDiff, customContext);
 
+      const MAX_OUTPUT_TOKENS = 32768;
       logger.debug('Sending prompt to AI', {
         systemPromptLength: sysPrompt.length,
         userPromptLength: userPrompt.length,
         totalPromptLength: sysPrompt.length + userPrompt.length,
-        maxOutputTokens: 16384,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        useShortPrompt,
         attempt
       });
 
@@ -327,16 +372,26 @@ export async function generateTestCases(
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],
         config: {
-          temperature: 1,
-          maxOutputTokens: 16384, // Increased from 4096; comprehensive 11-section test cases require ~5000-7000 tokens 
-          // Maximum input tokens: 1,048,576
-          // Maximum output tokens: 65,535 (default)
-
+          temperature: 0.7,
+          maxOutputTokens: MAX_OUTPUT_TOKENS,
           responseMimeType: 'application/json'
         }
       });
 
-      const text = response.text; // Direct property access, NOT a method call
+      const responseAny = response as { text?: string; candidates?: Array<{ finishReason?: string }>; usageMetadata?: Record<string, unknown> };
+      const finishReason = responseAny.candidates?.[0]?.finishReason;
+      const usageMetadata = responseAny.usageMetadata;
+      logger.debug('AI response metadata', {
+        prId: prMetadata.prId,
+        finishReason: finishReason ?? 'unknown',
+        usageMetadata: usageMetadata ?? null,
+        attempt
+      });
+      if (finishReason === 'MAX_TOKENS' || finishReason === 'max_tokens') {
+        logger.warn('AI response hit max output tokens', { prId: prMetadata.prId, attempt });
+      }
+
+      const text = (response as { text?: string }).text ?? responseAny.text ?? '';
 
       if (!text) {
         logger.warn('AI returned empty response', { prId: prMetadata.prId, attempt });
@@ -415,9 +470,15 @@ export async function generateTestCases(
       const MIN_HTML_LENGTH = 2500;
       const LONG_FORM_MIN_LENGTH = 5000;
       const MIN_SECTION_COUNT = 9;
+      const LONG_FORM_MIN_LENGTH_RELAXED = 3500;
+      const MIN_SECTION_COUNT_RELAXED = 7;
+
+      const useRelaxedValidation = attempt >= 2;
+      const minLengthForSections = useRelaxedValidation ? LONG_FORM_MIN_LENGTH_RELAXED : LONG_FORM_MIN_LENGTH;
+      const minSectionCount = useRelaxedValidation ? MIN_SECTION_COUNT_RELAXED : MIN_SECTION_COUNT;
 
       const lengthOk = htmlLength >= MIN_HTML_LENGTH;
-      const sectionsOk = hasAutomationNotes || (htmlLength >= LONG_FORM_MIN_LENGTH && sectionCount >= MIN_SECTION_COUNT);
+      const sectionsOk = hasAutomationNotes || (htmlLength >= minLengthForSections && sectionCount >= minSectionCount);
 
       if (!lengthOk || !sectionsOk) {
         const h2Titles = (taskOutput.htmlDescriptionBase64.match(/<h2>[^<]*<\/h2>/g) || []).map((h: string) => h.replace(/<\/?h2>/g, '').trim());
@@ -429,14 +490,24 @@ export async function generateTestCases(
           sectionsOk,
           hasAutomationNotes,
           sectionCount,
-          minSectionCount: MIN_SECTION_COUNT,
-          longFormMinLength: LONG_FORM_MIN_LENGTH,
+          minSectionCount,
+          longFormMinLength: minLengthForSections,
+          useRelaxedValidation,
           sectionTitlesFound: h2Titles,
           htmlPreviewFirst200: taskOutput.htmlDescriptionBase64.substring(0, 200),
           htmlPreviewLast150: taskOutput.htmlDescriptionBase64.substring(Math.max(0, taskOutput.htmlDescriptionBase64.length - 150)),
           attempt
         });
         throw new Error('AI response truncated - missing sections');
+      }
+
+      if (useRelaxedValidation && !hasAutomationNotes) {
+        logger.info('Accepted AI response using relaxed validation on retry', {
+          prId: prMetadata.prId,
+          sectionCount,
+          htmlLength,
+          attempt
+        });
       }
 
       logger.info("Task work item output generated successfully", {
