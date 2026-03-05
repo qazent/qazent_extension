@@ -364,14 +364,16 @@ export async function generateTestCases(
       // Validate task output
       const taskOutput = validateTaskOutput(parsed);
 
-      // Validate response completeness to detect truncation
+      // Validate response completeness to detect truncation (11 sections need substantial content)
       const htmlLength = taskOutput.htmlDescriptionBase64.length;
       const hasAllSections = taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>');
+      const MIN_HTML_LENGTH = 3000;
 
-      if (htmlLength < 1000 || !hasAllSections) {
+      if (htmlLength < MIN_HTML_LENGTH || !hasAllSections) {
         logger.warn('AI response appears truncated', {
           prId: prMetadata.prId,
           htmlLength,
+          minRequired: MIN_HTML_LENGTH,
           hasAllSections,
           attempt
         });
