@@ -145,12 +145,64 @@ export async function fetchPRDiff(
     const MAX_FILES = 100; // Limit files to prevent overwhelming AI and API rate limits
 
     // Step 4: Process each changed file and fetch actual content via REST
+
+
+    // List of file extensions to ignore (case-insensitive, include the dot)
+    const ignoredExtensions = [
+      // Markdown
+      '.md',
+      // Binary media files
+      '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg',
+      '.mp4', '.mov', '.avi',
+      '.mp3', '.wav', '.flac',
+      // Compiled or generated artifacts
+      '.dll', '.exe', '.so', '.dylib',
+      '.class', '.jar', '.war',
+      '.pyc',
+      '.o', '.obj',
+      '.wasm',
+      // Archives and containers
+      '.zip', '.tar', '.gz', '.7z', '.rar',
+      '.iso',
+      // Design and proprietary binary formats
+      '.psd', '.ai', '.fig', '.sketch',
+      '.docx', '.xlsx', '.pptx',
+      // Large data blobs
+      '.csv', '.bin', '.dat', '.db', '.sqlite',
+      // log files and temporary files
+       '.log', '.tmp', '.temp' ,'.cache', '.bak' ,'pid', '.coverage',
+      //  Metadata and config files that are often not relevant for test generation
+      '.lock', '.map', '.min.js', '.min.css', '.g.dart',
+      '.DS_Store', 'Thumbs.db',
+      '.swp', '.swo',
+      '.orig', '.rej',
+      '.pdb',
+      '.tsbuildinfo',
+      '.coverage.*',
+      '.generated', '.gen', '.auto'
+    ];
+
+    // List of directory patterns to ignore (case-insensitive, trailing slash)
+    const ignoredDirs = ['dist/', 'build/', 'out/', 'bin/', 'obj/', 'node_modules/', 'vendor/', 'logs/', 'temp/', 'cache/', 'coverage/', '.vscode/', 'svelte-kit',
+       '.idea/', '.gradle/', '.mvn/', '.pytest_cache/', '.nyc_output/','.sass-cache/', '.parcel-cache/', '.eslintcache/','.next/', '.nuxt/', '.angular/', '.vite/',
+        '.storybook-static/', '.expo/','__pycache__/', 'target/', 'gen/'];
+
     for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
       if (!change.item?.path) {
         continue;
       }
 
       const filePath = change.item.path;
+      // Skip files with ignored extensions or in ignored directories !!! Reduce noise in PR summaries
+      const lowerFilePath = filePath.toLowerCase();
+      if (
+        ignoredExtensions.some(ext => lowerFilePath.endsWith(ext)) ||
+        ignoredDirs.some(dir => lowerFilePath.includes(`/${dir}`) || lowerFilePath.startsWith(dir))
+      ) {
+        logger.info('Skipping file from diff/AI analysis due to ignored extension or directory', { filePath });
+        continue;
+      }
+
       let changeType: "add" | "edit" | "delete" = "edit";
 
       if (change.changeType) {

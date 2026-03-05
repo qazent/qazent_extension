@@ -316,7 +316,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         url: result.workItemUrl,
         details: "A comment has been posted on this PR with the test case details."
       });
-      setTimeout(() => setSuccessMessage(null), 30000);
+      setTimeout(() => setSuccessMessage(null), 60000); // Clear success message after 60 seconds
 
 
     } catch (err) {
