@@ -36,15 +36,15 @@ Transform your pull request workflow with AI‑powered test case generation that
 
 3. **Recommended: Add Custom Context**  
    Provide additional project or domain context to help the AI better understand your codebase and generate more accurate, relevant test cases.
-     
-   ![Custom Context Overview](public/step-3.png) 
    ![alt text](public/custom-context-dropdown.png)
+
+   ![Custom Context Overview](public/step-3.png) 
 
 4. **Create Work Items**  
    Convert generated test cases into Azure DevOps Test Case work items by only opening a PR!.
 
    ![Work Item Created](public/work-item-created.png)
-
+   ![alt text](public/linking-pr.png)
 ---
 
 ## Prerequisites
@@ -68,14 +68,14 @@ For detailed setup instructions, visit the [full documentation](https://qazent.c
 
 PR Assistant generates high‑quality, context‑aware test cases by analyzing multiple inputs from your pull request and project environment:
 
-### 🔹 System Prompt (Built‑In)
+### System Prompt (Built‑In)
 A carefully engineered system prompt guides the AI to:
 - Follow structured test‑case formats  
 - Identify edge cases, negative scenarios, and regression risks  
 - Produce clear, actionable test steps and expected results  
 - Maintain consistency across all generated work items  
 
-### 🔹 Pull Request Metadata
+### Pull Request Metadata
 The assistant reads:
 - **PR title**  
 - **PR description**  
@@ -83,7 +83,7 @@ The assistant reads:
 
 This helps the AI understand the purpose, scope, and intent of the change.
 
-### 🔹 Code Diff
+### Code Diff
 The AI analyzes:
 - Modified files  
 - Added or removed logic  
@@ -91,7 +91,7 @@ The AI analyzes:
 
 This ensures the generated test cases are directly tied to the actual code changes.
 
-### 🔹 Full File Context (When Needed)
+### Full File Context (When Needed)
 For more complex changes, the assistant may consider:
 - Surrounding code  
 - Function/class definitions  
@@ -99,7 +99,7 @@ For more complex changes, the assistant may consider:
 
 This improves accuracy for integration‑level or multi‑module changes.
 
-### - 🚀  Optional: Custom Context
+### - Optional: Custom Context
 You can provide additional project‑specific or domain‑specific context, such as:
 - Business rules  
 - Architecture patterns  

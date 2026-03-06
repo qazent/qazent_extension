@@ -1,8 +1,8 @@
 {
   "manifestVersion": 1,
-  "id": "pr-assistant-extension",
+  "id": "QAZent",
   "name": "PR Assistant",
-  "version": "1.2.84",
+  "version": "1.2.86",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
   "targets": [
@@ -10,6 +10,11 @@
       "id": "Microsoft.VisualStudio.Services"
     }
   ],
+
+  "galleryFlags": [
+    "Public"
+  ],
+
   "icons": {
     "default": "128x128.png"
   },
@@ -18,9 +23,18 @@
         "theme": "dark"
     },
 
-  "categories": ["Azure Repos"],
+  "categories": ["Azure Repos", 
+  "Pull Requests", 
+  "AI", 
+  "Testing", 
+  "Utilities"],
   
-  "tags": ["pull-request", "testing", "ai", "test", "utility", "automatic", "agile"],
+  "tags": ["pull-request", 
+  "testing", 
+  "ai", "test", 
+  "utility", 
+  "automatic", 
+  "agile"],
   
   "content": {
     "details": {
@@ -29,7 +43,33 @@
     "license":{
       "path":"license-terms.md"
     }
+
   },
+  "link": [
+    {
+      "name": "QAZent Website",
+      "url": "https://www.qazent.com"
+    }
+  ],
+  "screenshots": [
+    {
+      "alt": "Generate Testcase Screenshot",
+      "path": "public/generate-testcase.png"
+    },
+    {
+      "alt": "Custom Context",
+      "path": "public/step-3.png"
+    },
+    {
+      "alt": "Linking PR Screenshot",
+      "path": "public/work-item-created.png"
+    },
+    {
+      "alt": "Workitem Created Screenshot",
+      "path": "public/generated-test-case.png"
+    }
+    
+  ],
   "contributions": [
 
     {
@@ -69,7 +109,7 @@
       "addressable": true
     },
     {
-      "path": "public/***",
+      "path": "public",
       "addressable": true
     }
   ],
