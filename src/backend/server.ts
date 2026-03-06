@@ -5,7 +5,7 @@
  */
 
 import * as http from 'http';
-import { ErrorResponse, PRMetadata, TaskWorkItemOutput } from './types';
+import { ErrorResponse, PRMetadata } from './types';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- WebhookPayload and WebhookResponse only used by webhook handler
 // import { WebhookPayload, WebhookResponse } from './types';
 import * as logger from './utils/logger';
