@@ -304,7 +304,7 @@ export async function createTaskWorkItem(
       {
         op: Operation.Add,
         path: '/fields/System.Description',
-        value: taskOutput.htmlDescriptionBase64
+        value: taskOutput.htmlDescription
       },
       {
         op: Operation.Add,

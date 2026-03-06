@@ -126,7 +126,7 @@ async function runTest(): Promise<void> {
     ai.loadSystemPrompt();
     const taskOutput = await ai.generateTestCases(prMetadata, codeDiff);
     console.log(`  ✓ Task output generated: ${taskOutput.title}`);
-    console.log(`  ✓ HTML description length: ${taskOutput.htmlDescriptionBase64.length} characters`);
+    console.log(`  ✓ HTML description length: ${taskOutput.htmlDescription.length} characters`);
     console.log();
 
     // Display generated task output
@@ -135,7 +135,7 @@ async function runTest(): Promise<void> {
     console.log(`Title: ${taskOutput.title}`);
     console.log();
     console.log('HTML Description:');
-    console.log(taskOutput.htmlDescriptionBase64.substring(0, 500) + '...');
+    console.log(taskOutput.htmlDescription.substring(0, 500) + '...');
     console.log('-'.repeat(60));
     console.log();
 

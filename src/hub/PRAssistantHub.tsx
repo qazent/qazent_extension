@@ -268,7 +268,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       setCurrentStep(3);
       const generatedTestCase = {
         title: response.title,
-        htmlDescriptionBase64: response.htmlDescriptionBase64
+        htmlDescription: response.htmlDescription
       };
       const sourceCommitId = response.sourceCommitId;
       const targetCommitId = response.targetCommitId;
@@ -312,7 +312,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
 
             // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
             try {
-              const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescriptionBase64, backendUrl);
+              const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
               if (scopeHtml && scopeHtml.length > 0) {
                 // Post Scope of Change as a separate comment
                 await backendClient.postPRComment({

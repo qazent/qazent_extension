@@ -16,7 +16,7 @@ export interface PRData {
  */
 export interface GeneratedTestCase {
   title: string;
-  htmlDescriptionBase64: string;
+  htmlDescription: string;
   purpose?: string;
   scopeOfChange?: string;
   preconditions?: string[];

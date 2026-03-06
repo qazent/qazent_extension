@@ -107,7 +107,7 @@ describe('AI Custom Context Integration', () => {
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Authentication',
-        htmlDescriptionBase64: MIN_VALID_HTML
+        htmlDescription: MIN_VALID_HTML
       })
     });
   });
@@ -273,7 +273,7 @@ describe('AI Custom Context Integration', () => {
         .mockResolvedValueOnce({
           text: JSON.stringify({
             title: 'Test Case',
-            htmlDescriptionBase64: MIN_VALID_HTML
+            htmlDescription: MIN_VALID_HTML
           })
         });
 

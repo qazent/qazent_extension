@@ -238,7 +238,7 @@ X-Ado-Org-Url: {{orgUrl}}
 ```json
 {
   "title": "Test OAuth2 Authentication Endpoint",
-  "htmlDescriptionBase64": "<h2>Test Case: OAuth2 Authentication</h2><p>This test case validates the OAuth2 authentication flow...</p>",
+  "htmlDescription": "<h2>Test Case: OAuth2 Authentication</h2><p>This test case validates the OAuth2 authentication flow...</p>",
   "sourceCommitId": "abc123def456",
   "targetCommitId": "xyz789uvw012",
   "purpose": "Validate OAuth2 token generation and expiration",
@@ -298,7 +298,7 @@ pm.test("Response contains test case title", function () {
 
 pm.test("Test case has all required fields", function () {
     var jsonData = pm.response.json();
-    pm.expect(jsonData.htmlDescriptionBase64).to.exist;
+    pm.expect(jsonData.htmlDescription).to.exist;
     pm.expect(jsonData.testSteps || jsonData.purpose).to.exist;
 });
 
@@ -342,7 +342,7 @@ X-Ado-Org-Url: {{orgUrl}}
 {
   "testCase": {
     "title": "Test OAuth2 Authentication Endpoint",
-    "htmlDescriptionBase64": "<h2>Test Case: OAuth2 Authentication</h2><p>This test case validates the OAuth2 authentication flow...</p>",
+    "htmlDescription": "<h2>Test Case: OAuth2 Authentication</h2><p>This test case validates the OAuth2 authentication flow...</p>",
     "purpose": "Validate OAuth2 token generation and expiration",
     "scopeOfChange": "Added new /auth/oauth/token endpoint with JWT support",
     "preconditions": [

@@ -8,7 +8,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
+import { sanitizeHTML } from './utils/sanitize-html';
 import { jsonrepair } from "jsonrepair";
+
+/** Response schema for Gemini structured output: guarantees valid JSON with title + htmlDescription */
+const AI_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    htmlDescription: { type: "string" }
+  },
+  required: ["title", "htmlDescription"]
+} as const;
 
 
 /**
@@ -126,7 +137,7 @@ ${change.diffContent}
 Please provide test cases in the following JSON structure:
 {
   "title": "Test Case: <short summary>",
-  "htmlDescriptionBase64": "<Base64-encoded string of the full HTML only, not raw HTML>"
+  "htmlDescription": "<escaped HTML string - valid HTML with quotes escaped for JSON>"
 }`;
 
   return prompt;
@@ -135,7 +146,7 @@ Please provide test cases in the following JSON structure:
 /**
  * Extract JSON from AI response (handle markdown wrappers).
  * Uses brace-matching that respects double-quoted strings so that { or } inside
- * string values (e.g. raw HTML in htmlDescriptionBase64) do not break extraction.
+ * string values (e.g. raw HTML in htmlDescription) do not break extraction.
  * Exported for diagnostic logging when parse fails.
  */
 export function extractJSON(response: string): string {
@@ -220,77 +231,6 @@ export function extractJSON(response: string): string {
   return cleaned;
 }
 
-/** Result of pre-parse repair of htmlDescriptionBase64 in raw JSON text */
-interface RepairResult {
-  json: string;
-  wasRepaired: boolean;
-}
-
-/**
- * If the value of "htmlDescriptionBase64" in the extracted JSON is raw HTML (starts with '<'),
- * Base64-encode it in place so the JSON becomes parseable. Mixed content (Base64 then <) is
- * treated as raw HTML and fully Base64-encoded.
- */
-function repairHtmlDescriptionBase64InJson(extracted: string): RepairResult {
-  const key = '"htmlDescriptionBase64"';
-  const keyIdx = extracted.indexOf(key);
-  if (keyIdx === -1) {
-    return { json: extracted, wasRepaired: false };
-  }
-
-  const afterKey = keyIdx + key.length;
-  const colonIdx = extracted.indexOf(':', afterKey);
-  if (colonIdx === -1 || colonIdx > afterKey + 10) {
-    return { json: extracted, wasRepaired: false };
-  }
-
-  let valueStart = colonIdx + 1;
-  while (valueStart < extracted.length && /[\s]/.test(extracted[valueStart])) {
-    valueStart++;
-  }
-  if (valueStart >= extracted.length || extracted[valueStart] !== '"') {
-    return { json: extracted, wasRepaired: false };
-  }
-  valueStart += 1; // first char of value
-
-  let valueEnd = valueStart;
-  let escape = false;
-  while (valueEnd < extracted.length) {
-    const c = extracted[valueEnd];
-    if (escape) {
-      escape = false;
-      valueEnd++;
-      continue;
-    }
-    if (c === '\\') {
-      escape = true;
-      valueEnd++;
-      continue;
-    }
-    if (c === '"') {
-      break;
-    }
-    valueEnd++;
-  }
-
-  if (valueEnd >= extracted.length) {
-    return { json: extracted, wasRepaired: false };
-  }
-
-  const value = extracted.substring(valueStart, valueEnd);
-  const trimmed = value.trim();
-  const looksLikeRawHtml = trimmed.startsWith('<') || (trimmed.length > 0 && /<[a-zA-Z]/.test(trimmed));
-  if (!looksLikeRawHtml) {
-    return { json: extracted, wasRepaired: false };
-  }
-
-  const base64Value = Buffer.from(value, 'utf-8').toString('base64');
-  const before = extracted.substring(0, valueStart);
-  const after = extracted.substring(valueEnd);
-  const json = before + base64Value + after;
-  return { json, wasRepaired: true };
-}
-
 /** Remove/replace JSON-invalid control characters (U+0000–U+001F except \t \n \r) from string */
 function sanitizeJsonString(s: string): string {
   return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ');
@@ -305,23 +245,15 @@ function safeParseAIResponse(response: string): any {
     extractedPreviewFirst200: extracted.substring(0, 200)
   });
 
-  let toParse = extracted;
-  const repairResult = repairHtmlDescriptionBase64InJson(extracted);
-  if (repairResult.wasRepaired) {
-    toParse = repairResult.json;
-    logger.debug('Pre-parse repair: htmlDescriptionBase64 raw HTML → Base64', {
-      repairedLength: toParse.length
-    });
-  }
+  const toParse = extracted;
 
   try {
     const parsed = JSON.parse(toParse);
     logger.debug('AI JSON parsed successfully', {
       parseSucceeded: true,
       jsonrepairApplied: false,
-      htmlDescriptionBase64Repaired: repairResult.wasRepaired,
       hasTitle: typeof parsed?.title === 'string',
-      hasHtmlField: typeof parsed?.htmlDescriptionBase64 === 'string'
+      hasHtmlField: typeof parsed?.htmlDescription === 'string'
     });
     return parsed;
   } catch (firstParseErr) {
@@ -337,9 +269,8 @@ function safeParseAIResponse(response: string): any {
     logger.debug('AI JSON repaired and parsed', {
       parseSucceeded: true,
       jsonrepairApplied: true,
-      htmlDescriptionBase64Repaired: repairResult.wasRepaired,
       hasTitle: typeof parsed?.title === 'string',
-      hasHtmlField: typeof parsed?.htmlDescriptionBase64 === 'string'
+      hasHtmlField: typeof parsed?.htmlDescription === 'string'
     });
     return parsed;
   } catch (err) {
@@ -388,42 +319,12 @@ function safeParseAIResponse(response: string): any {
   }
 }
 
-/**
- * Decode htmlDescriptionBase64: if the value is Base64, decode to HTML;
- * if it is already raw HTML (starts with '<'), use as-is for backward compatibility.
- */
-function decodeHtmlDescriptionBase64(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('<')) {
-    logger.debug('htmlDescriptionBase64: using raw HTML fallback', { valueLength: trimmed.length });
-    return trimmed;
-  }
-  try {
-    const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
-    if (decoded && decoded.trim().startsWith('<')) {
-      logger.debug('htmlDescriptionBase64: decoded from Base64', { decodedLength: decoded.length });
-      return stripTrailingGarbageFromHtml(decoded.trim());
-    }
-    logger.debug('htmlDescriptionBase64: Base64 decode did not yield HTML, using original', {
-      decodedLength: decoded?.length ?? 0,
-      decodedPreview: decoded?.substring(0, 80)
-    });
-    return trimmed;
-  } catch (decodeErr) {
-    logger.warn('htmlDescriptionBase64: Base64 decode failed, using original value', {
-      errorMessage: decodeErr instanceof Error ? decodeErr.message : String(decodeErr),
-      valueLength: trimmed.length,
-      valuePreview: trimmed.substring(0, 80)
-    });
-    return trimmed;
-  }
-}
-
-/** Valid HTML block closing tags we can truncate after when the end of the string looks corrupted */
+/** Valid HTML block closing tags we can truncate after when the end of the string looks corrupted (legacy decode only). */
 const VALID_HTML_ENDINGS = [/<\/table>\s*$/i, /<\/ul>\s*$/i, /<\/ol>\s*$/i, /<\/p>\s*$/i, /<\/h2>\s*$/i, /<\/li>\s*$/i, /<\/td>\s*$/i, /<\/tr>\s*$/i];
 
 /**
  * If decoded HTML ends with invalid UTF-8 or incomplete/garbled content, truncate at the last valid closing tag.
+ * Used only for legacy Base64-decoded HTML that may have been truncated or corrupted.
  */
 function stripTrailingGarbageFromHtml(html: string): string {
   const last150 = html.substring(Math.max(0, html.length - 150));
@@ -447,6 +348,27 @@ function stripTrailingGarbageFromHtml(html: string): string {
 }
 
 /**
+ * Temporary backwards compatibility: if response contains only htmlDescriptionBase64, decode once to HTML.
+ * Do not write htmlDescriptionBase64 into the returned object.
+ * Applies stripTrailingGarbageFromHtml after decode to handle truncated/corrupted Base64 payloads.
+ */
+function legacyDecodeHtmlDescriptionBase64(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('<')) {
+    return trimmed;
+  }
+  try {
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
+    if (decoded && decoded.trim().startsWith('<')) {
+      return stripTrailingGarbageFromHtml(decoded.trim());
+    }
+    return trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
  * Validate Task work item output from AI
  */
 export function validateTaskOutput(data: any): TaskWorkItemOutput {
@@ -455,14 +377,14 @@ export function validateTaskOutput(data: any): TaskWorkItemOutput {
     throw new Error('Missing required field: title');
   }
 
-  // Check htmlDescriptionBase64 field
-  if (!data.htmlDescriptionBase64 || typeof data.htmlDescriptionBase64 !== 'string' || data.htmlDescriptionBase64.trim() === '') {
-    throw new Error('Missing required field: htmlDescriptionBase64');
+  // Check htmlDescription field
+  if (!data.htmlDescription || typeof data.htmlDescription !== 'string' || data.htmlDescription.trim() === '') {
+    throw new Error('Missing required field: htmlDescription');
   }
 
   return {
     title: data.title.trim(),
-    htmlDescriptionBase64: data.htmlDescriptionBase64.trim()
+    htmlDescription: data.htmlDescription.trim()
   };
 }
 
@@ -546,7 +468,8 @@ export async function generateTestCases(
         config: {
           temperature: 0.7,
           maxOutputTokens: MAX_OUTPUT_TOKENS,
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          responseSchema: AI_RESPONSE_SCHEMA
         }
       });
 
@@ -607,17 +530,19 @@ export async function generateTestCases(
         throw new Error(`Failed to parse AI response: ${parseError}`);
       }
 
-      // Decode htmlDescriptionBase64 (Base64 → HTML) or use raw HTML as-is (fallback)
-      const rawValueLength = parsed.htmlDescriptionBase64?.length ?? 0;
-      if (parsed.htmlDescriptionBase64 && typeof parsed.htmlDescriptionBase64 === 'string') {
-        parsed.htmlDescriptionBase64 = decodeHtmlDescriptionBase64(parsed.htmlDescriptionBase64);
+      // Temporary backwards compatibility: if only htmlDescriptionBase64 present, decode once to htmlDescription
+      if (parsed.htmlDescriptionBase64 != null && parsed.htmlDescription == null) {
+        parsed.htmlDescription = legacyDecodeHtmlDescriptionBase64(
+          typeof parsed.htmlDescriptionBase64 === 'string' ? parsed.htmlDescriptionBase64 : String(parsed.htmlDescriptionBase64)
+        );
+        logger.debug('Legacy htmlDescriptionBase64 decoded to htmlDescription', {
+          prId: prMetadata.prId,
+          decodedLength: parsed.htmlDescription?.length ?? 0
+        });
       }
-      logger.debug('After decode: html length', {
-        prId: prMetadata.prId,
-        rawValueLength,
-        decodedLength: parsed.htmlDescriptionBase64?.length ?? 0,
-        startsWithAngle: parsed.htmlDescriptionBase64?.trim().startsWith('<') ?? false
-      });
+      if (parsed.htmlDescription != null && typeof parsed.htmlDescription === 'string') {
+        parsed.htmlDescription = sanitizeHTML(parsed.htmlDescription);
+      }
 
       // Validate task output
       let taskOutput: TaskWorkItemOutput;
@@ -628,17 +553,17 @@ export async function generateTestCases(
           prId: prMetadata.prId,
           errorMessage: validationErr instanceof Error ? validationErr.message : String(validationErr),
           hasTitle: !!parsed?.title,
-          hasHtmlField: !!(parsed?.htmlDescriptionBase64 != null),
-          htmlFieldType: typeof parsed?.htmlDescriptionBase64,
+          hasHtmlField: !!(parsed?.htmlDescription != null),
+          htmlFieldType: typeof parsed?.htmlDescription,
           attempt
         });
         throw validationErr;
       }
 
       // Validate response completeness to detect truncation (11 sections need substantial content)
-      const htmlLength = taskOutput.htmlDescriptionBase64.length;
-      const hasAutomationNotes = taskOutput.htmlDescriptionBase64.includes('<h2>Automation Notes</h2>');
-      const sectionCount = (taskOutput.htmlDescriptionBase64.match(/<h2>/g) || []).length;
+      const htmlLength = taskOutput.htmlDescription.length;
+      const hasAutomationNotes = taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>');
+      const sectionCount = (taskOutput.htmlDescription.match(/<h2>/g) || []).length;
       const MIN_HTML_LENGTH = 2500;
       const LONG_FORM_MIN_LENGTH = 5000;
       const MIN_SECTION_COUNT = 9;
@@ -653,7 +578,7 @@ export async function generateTestCases(
       const sectionsOk = hasAutomationNotes || (htmlLength >= minLengthForSections && sectionCount >= minSectionCount);
 
       if (!lengthOk || !sectionsOk) {
-        const h2Titles = (taskOutput.htmlDescriptionBase64.match(/<h2>[^<]*<\/h2>/g) || []).map((h: string) => h.replace(/<\/?h2>/g, '').trim());
+        const h2Titles = (taskOutput.htmlDescription.match(/<h2>[^<]*<\/h2>/g) || []).map((h: string) => h.replace(/<\/?h2>/g, '').trim());
         logger.warn('AI response appears truncated', {
           prId: prMetadata.prId,
           htmlLength,
@@ -666,8 +591,8 @@ export async function generateTestCases(
           longFormMinLength: minLengthForSections,
           useRelaxedValidation,
           sectionTitlesFound: h2Titles,
-          htmlPreviewFirst200: taskOutput.htmlDescriptionBase64.substring(0, 200),
-          htmlPreviewLast150: taskOutput.htmlDescriptionBase64.substring(Math.max(0, taskOutput.htmlDescriptionBase64.length - 150)),
+          htmlPreviewFirst200: taskOutput.htmlDescription.substring(0, 200),
+          htmlPreviewLast200: taskOutput.htmlDescription.substring(Math.max(0, taskOutput.htmlDescription.length - 200)),
           attempt
         });
         throw new Error('AI response truncated - missing sections');
@@ -685,8 +610,8 @@ export async function generateTestCases(
       logger.info("Task work item output generated successfully", {
         prId: prMetadata.prId,
         title: taskOutput.title,
-        htmlLength: taskOutput.htmlDescriptionBase64.length,
-        hasPurpose: taskOutput.htmlDescriptionBase64.includes('<h2>Purpose</h2>'),
+        htmlLength: taskOutput.htmlDescription.length,
+        hasPurpose: taskOutput.htmlDescription.includes('<h2>Purpose</h2>'),
         hasAutomationNotes,
         sectionCount,
         attempt

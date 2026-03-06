@@ -99,7 +99,7 @@ describe('Custom Context - End-to-End Integration', () => {
 
   const mockAIResponse = {
     title: 'Test Case: Authentication',
-    htmlDescriptionBase64: MIN_VALID_HTML
+    htmlDescription: MIN_VALID_HTML
   };
 
   beforeEach(() => {

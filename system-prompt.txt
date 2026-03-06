@@ -85,7 +85,7 @@ When custom context is absent, rely on code diff analysis and general best pract
 
 ## Required HTML Sections (In Exact Order)
 
-Your htmlDescriptionBase64 field must contain these 11 sections using ONLY these HTML tags: <h2>, <p>, <ul>, <ol>, <li>, <strong>, <br/>, <table>, <tr>, <td>, <th>
+Your htmlDescription field must contain these 11 sections using ONLY these HTML tags: <h2>, <p>, <ul>, <ol>, <li>, <strong>, <br/>, <table>, <tr>, <td>, <th>
 
 **<strong> usage:** Use <strong> only for the subsection labels shown in the examples (e.g. "Authentication:", "Authorization:", "Unit Tests:", "Integration Tests:", "E2E Tests:", "Manual Only:"). Do not wrap other sentence text or paragraph content in <strong>; it causes excessive bold and poor readability.
 
@@ -363,13 +363,25 @@ If all can be automated, omit "Manual Only" section.
 
 **Before responding:** Ensure your HTML contains exactly these 11 <h2> sections in order: Purpose, Scope of Change, Security Considerations, Preconditions, Test Steps & Expected Results, Negative Scenarios, Edge Cases, Performance Impact, Regression Areas, Data Requirements, Automation Notes. Do not stop generating until all 11 are present. If you must shorten content, shorten section bodies, not sections; never omit the Automation Notes section.
 
-Return ONLY valid JSON. Do not include markdown code fences or commentary. The value of htmlDescriptionBase64 MUST be a single Base64-encoded string; never put raw HTML, unescaped quotes, or angle brackets inside the JSON.
+Return ONLY valid JSON. Do not include markdown code fences or commentary.
+
+Schema:
+{
+  "title": string,
+  "htmlDescription": string
+}
+
+Rules:
+- htmlDescription must contain valid HTML (all 11 sections in order).
+- Do NOT encode the HTML. Do NOT use Base64.
+- Escape quotes when needed for JSON (e.g. \" inside the string).
+- Do not include markdown or explanations outside the JSON.
 
 Respond ONLY with valid JSON matching this EXACT structure:
 
 {
   "title": "Test Case: <short summary>",
-  "htmlDescriptionBase64": "<Base64-encoded string only>"
+  "htmlDescription": "<raw HTML with quotes escaped for JSON>"
 }
 
 **Title Field:**
@@ -377,11 +389,10 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Concise summary of what is being tested (max 100 characters)
 - Example: "Test Case: User Profile Update API with Validation"
 
-**htmlDescriptionBase64 Field:**
-- MUST contain ONLY a Base64-encoded string of the full HTML (no raw HTML, no quotes or angle brackets inside the JSON string)
+**htmlDescription Field:**
+- MUST contain valid HTML (raw, not Base64). Escape double quotes for JSON (use \") where needed.
 - Build the full HTML with all 11 sections in the exact order specified above, using ONLY these HTML tags: <h2>, <p>, <ul>, <ol>, <li>, <strong>, <br/>, <table>, <tr>, <td>, <th>
-- Then Base64-encode that entire HTML string and put the result as the value of htmlDescriptionBase64
-- Do NOT put raw HTML, unescaped quotes, or angle brackets inside the JSON
+- Do NOT use Base64. Put the HTML directly in htmlDescription with proper JSON escaping.
 - Test Steps section in your HTML MUST use a 2-column table
 - Do NOT use double tildes (~~) anywhere in the HTML content. They are interpreted as Markdown strikethrough and will show as a line through the text when the content is displayed in PR comments or other Markdown contexts. Use plain wording instead (e.g. write "optional" or "deprecated" in normal text, not ~~optional~~).
 
@@ -398,11 +409,11 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Description: "Implements PATCH /api/users/:id endpoint with email and name validation"
 - Diff: Shows new controller method, validation logic, route registration
 
-**Expected Output (htmlDescriptionBase64 must be Base64 only; example uses a short placeholder):**
+**Expected Output (htmlDescription contains escaped HTML; short example):**
 
 {
   "title": "Test Case: User Profile Update API with Email and Name Validation",
-  "htmlDescriptionBase64": "PGgyPlB1cnBvc2U8L2gyPjxwPlRoaXMgUFIgaW50cm9kdWNlcyBhIG5ldyBQQVRDSCBlbmRwb2ludC4uLjwvcD48aDI+U2NvcGUgb2YgQ2hhbmdlPC9oMj48cD5GdWxsIEhUTUwgYmFzZTY0LWVuY29kZWQgaGVyZS48L3A+"
+  "htmlDescription": "<h2>Purpose</h2><p>This PR introduces a new PATCH endpoint...</p><h2>Scope of Change</h2><p>Full HTML base64-encoded here.</p>"
 }
 
 ## Example 2: UI Component Change
@@ -412,11 +423,11 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Description: "Implements theme switcher component with local storage persistence"
 - Diff: Shows new ThemeToggle component, context provider, CSS changes
 
-**Expected Output (htmlDescriptionBase64 must be Base64 only):**
+**Expected Output (htmlDescription contains escaped HTML):**
 
 {
   "title": "Test Case: Dark Mode Toggle in Settings Page with Persistence",
-  "htmlDescriptionBase64": "PGgyPlB1cnBvc2U8L2gyPjxwPlRoaXMgUFIgYWRkcyBkYXJrIG1vZGUgdG9nZ2xlLi4uPC9wPjxoMj5TY29wZSBvZiBDaGFuZ2U8L2gyPjxwPkZ1bGwgSFRNTCBiYXNlNjQtZW5jb2RlZCBoZXJlLjwvcD4="
+  "htmlDescription": "<h2>Purpose</h2><p>This PR adds dark mode toggle...</p><h2>Scope of Change</h2><p>Full HTML here.</p>"
 }
 
 ## Example 3: Database Change
@@ -426,11 +437,11 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Description: "Optimizes user search queries by adding index on (email, created_at) columns"
 - Diff: Shows database migration file adding index
 
-**Expected Output (htmlDescriptionBase64 must be Base64 only):**
+**Expected Output (htmlDescription contains escaped HTML):**
 
 {
   "title": "Test Case: Composite Index on Users Table (email, created_at)",
-  "htmlDescriptionBase64": "PGgyPlB1cnBvc2U8L2gyPjxwPlRoaXMgUFIgYWRkcyBhIGNvbXBvc2l0ZSBpbmRleC4uLjwvcD48aDI+U2NvcGUgb2YgQ2hhbmdlPC9oMj48cD5GdWxsIEhUTUwgYmFzZTY0LWVuY29kZWQgaGVyZS48L3A+"
+  "htmlDescription": "<h2>Purpose</h2><p>This PR adds a composite index...</p><h2>Scope of Change</h2><p>Full HTML here.</p>"
 }
 
 ## Quality Standards for Generated Test Cases
@@ -491,19 +502,16 @@ Respond ONLY with valid JSON matching this EXACT structure:
 - Err on the side of more comprehensive testing
 - Prioritize security, data integrity, and user-facing functionality
 
-**htmlDescriptionBase64 value:**
-- Build the full HTML description (all 11 sections), then Base64-encode that single string
-- Set htmlDescriptionBase64 to this Base64 string only
-- Do NOT put raw HTML or any unescaped quotes inside the JSON
-
+**htmlDescription value:**
+- Build the full HTML description (all 11 sections). Put it in htmlDescription with quotes escaped for JSON. Do NOT use Base64.
 
 ## Final Reminders
 
-- Return ONLY valid JSON. Do not include markdown code fences or commentary. The value of htmlDescriptionBase64 MUST be a single Base64-encoded string; never put raw HTML, unescaped quotes, or angle brackets inside the JSON.
-- Output ONLY valid JSON with title and htmlDescriptionBase64 fields
-- htmlDescriptionBase64 value MUST be a Base64-encoded string of the HTML (never raw HTML inside JSON)
-- NEVER USE markdown code fences, commentary, prose, additional text
-- All 11 HTML sections in exact order (in the HTML you then Base64-encode). Do not stop until all 11 are present.
+- Return ONLY valid JSON. Do not include markdown code fences or commentary.
+- htmlDescription must contain valid HTML (raw, with JSON escaping). Do NOT use Base64.
+- Output ONLY valid JSON with title and htmlDescription fields.
+- NEVER USE markdown code fences, commentary, prose, additional text.
+- All 11 HTML sections in exact order. Do not stop until all 11 are present.
 - Test Steps section MUST be a 2-column table
 - ONLY use allowed HTML tags. Use <strong> only for subsection labels (e.g. Unit Tests:, Authentication:), not for general emphasis.
 - Make EVERY test case actionable, specific, and comprehensive
