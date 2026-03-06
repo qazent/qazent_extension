@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 import { CodeDiff, DiffChange, } from './types';
 import * as logger from './utils/logger';
-import {generateUnifiedDiff} from "./ado-client";
+import { generateUnifiedDiff, DIFF_MAX_CHARS_PER_FILE } from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { fetchPRDiffFallback } from "./ado-client";
 import * as azdev from 'azure-devops-node-api';
@@ -142,7 +142,8 @@ export async function fetchPRDiff(
     }
 
     const diffChanges: DiffChange[] = [];
-    const MAX_FILES = 100; // Limit files to prevent overwhelming AI and API rate limits
+    /** Max files included in diff for AI prompt (keeps user prompt under ~5k tokens). */
+    const MAX_FILES_FOR_AI = 28;
 
     // Step 4: Process each changed file and fetch actual content via REST
 
@@ -187,7 +188,7 @@ export async function fetchPRDiff(
        '.idea/', '.gradle/', '.mvn/', '.pytest_cache/', '.nyc_output/','.sass-cache/', '.parcel-cache/', '.eslintcache/','.next/', '.nuxt/', '.angular/', '.vite/',
         '.storybook-static/', '.expo/','__pycache__/', 'target/', 'gen/'];
 
-    for (const change of changes.changeEntries.slice(0, MAX_FILES)) {
+    for (const change of changes.changeEntries.slice(0, MAX_FILES_FOR_AI)) {
       if (!change.item?.path) {
         continue;
       }
@@ -273,7 +274,7 @@ export async function fetchPRDiff(
             oldContent
               .split("\n")
               .map((line) => `- ${line}`)
-              .slice(0, 50)
+              .slice(0, 25)
               .join("\n");
 
         } else if (changeType === "add") {
@@ -313,7 +314,7 @@ export async function fetchPRDiff(
             newContent
               .split("\n")
               .map((line) => `+ ${line}`)
-              .slice(0, 50)
+              .slice(0, 25)
               .join("\n");
         } else {
           // For edited files, fetch both old and new content
@@ -345,7 +346,7 @@ export async function fetchPRDiff(
           const oldContent = oldContentRaw || "";
           const newContent = newContentRaw || "";
 
-          const diff = generateUnifiedDiff(filePath, oldContent, newContent);
+          const diff = generateUnifiedDiff(filePath, oldContent, newContent, DIFF_MAX_CHARS_PER_FILE);
           diffContent = diff.diffContent;
           linesAdded = diff.linesAdded;
           linesDeleted = diff.linesDeleted;
@@ -372,11 +373,11 @@ export async function fetchPRDiff(
       });
     }
 
-    if (changes.changeEntries.length > MAX_FILES) {
+    if (changes.changeEntries.length > MAX_FILES_FOR_AI) {
       logger.warn("Truncated diff to prevent overwhelming AI", {
         prId,
         totalFiles: changes.changeEntries.length,
-        included: MAX_FILES,
+        included: MAX_FILES_FOR_AI,
       });
     }
 

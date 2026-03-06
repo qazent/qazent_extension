@@ -138,7 +138,7 @@ describe('AI Custom Context Integration', () => {
 
       const prTitleIndex = sentPrompt.indexOf('PR Title:');
       const contextIndex = sentPrompt.indexOf('Repository-Specific Context:');
-      const jsonFormatIndex = sentPrompt.indexOf('Please provide test cases');
+      const jsonFormatIndex = sentPrompt.indexOf('Return JSON only:');
 
       expect(prTitleIndex).toBeLessThan(contextIndex);
       expect(contextIndex).toBeLessThan(jsonFormatIndex);
@@ -245,9 +245,10 @@ describe('AI Custom Context Integration', () => {
 
       const sentPrompt = getCallArgs().contents[0].parts[0].text;
 
-      expect(sentPrompt).toContain('File: src/auth.ts');
-      expect(sentPrompt).toContain('Type: add');
+      expect(sentPrompt).toContain('src/auth.ts');
+      expect(sentPrompt).toContain('(add)');
       expect(sentPrompt).toContain('+function authenticate()');
+      expect(sentPrompt).toContain('Key changes (diffs):');
 
       expect(sentPrompt).toContain('Focus on security testing');
     });
@@ -289,6 +290,40 @@ describe('AI Custom Context Integration', () => {
 
       expect(firstCallPrompt).toContain('Retry-safe context');
       expect(secondCallPrompt).toContain('Retry-safe context');
+    });
+  });
+
+  describe('compressed prompt and compression report', () => {
+    it('should return compressionReport with summary and sectionsRemoved', async () => {
+      const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+      expect(result.compressionReport).toBeDefined();
+      expect(result.compressionReport!.compressionSummary).toBeDefined();
+      expect(result.compressionReport!.compressionSummary.length).toBeGreaterThan(0);
+      expect(Array.isArray(result.compressionReport!.sectionsRemoved)).toBe(true);
+      expect(result.compressionReport!.sectionsRemoved.length).toBeGreaterThan(0);
+    });
+
+    it('should send prompt with compact format (bullet file list, key changes)', async () => {
+      await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
+
+      expect(sentPrompt).toContain('Files changed: 2');
+      expect(sentPrompt).toContain('- src/auth.ts (add) +50 -0');
+      expect(sentPrompt).toContain('Key changes (diffs):');
+      expect(sentPrompt).toContain('--- src/auth.ts ---');
+      expect(sentPrompt).toContain('Return JSON only:');
+    });
+
+    it('should keep prompt under token target for typical PR', async () => {
+      const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
+      const estimatedTokens = Math.ceil(sentPrompt.length / 4);
+
+      expect(estimatedTokens).toBeLessThanOrEqual(5500);
+      expect(result.title).toBeDefined();
+      expect(result.htmlDescription).toBeDefined();
     });
   });
 });

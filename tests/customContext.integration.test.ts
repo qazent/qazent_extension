@@ -253,7 +253,7 @@ describe('Custom Context - End-to-End Integration', () => {
 
       const prTitleIndex = aiPrompt.indexOf('PR Title:');
       const contextIndex = aiPrompt.indexOf('Repository-Specific Context:');
-      const outputIndex = aiPrompt.indexOf('Please provide test cases');
+      const outputIndex = aiPrompt.indexOf('Return JSON only:');
 
       expect(prTitleIndex).toBeGreaterThan(-1);
       expect(contextIndex).toBeGreaterThan(prTitleIndex);
@@ -268,7 +268,7 @@ describe('Custom Context - End-to-End Integration', () => {
       const aiCallArgs = mockGenerateContent.mock.calls[0][0];
       const aiPrompt = aiCallArgs.contents[0].parts[0].text;
 
-      const diffIndex = aiPrompt.indexOf('Detailed Changes:');
+      const diffIndex = aiPrompt.indexOf('Key changes (diffs):');
       const contextIndex = aiPrompt.indexOf('Repository-Specific Context:');
 
       expect(diffIndex).toBeLessThan(contextIndex);

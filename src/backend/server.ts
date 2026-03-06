@@ -575,8 +575,8 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
 
       const customContext = payload.customContext; // Optional field
 
-      // Validate custom context length
-      const MAX_CONTEXT_LENGTH = 50000; // 50KB limit
+      // Validate custom context length (~3–4 paragraphs; prompt truncates to 2k chars in ai.buildUserPrompt).
+      const MAX_CONTEXT_LENGTH = 3000;
       if (customContext && typeof customContext === 'string' && customContext.length > MAX_CONTEXT_LENGTH) {
         const errorResponse: ErrorResponse = {
           error: 'Custom context too large',
@@ -644,15 +644,17 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         totalChanges: codeDiff.totalChanges,
         customContextLength: customContext?.length ?? 0
       });
-      const taskOutput: TaskWorkItemOutput = await ai.generateTestCases(prMetadata, codeDiff, customContext);
-      logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: taskOutput.title });
+      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext);
+      logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: result.title });
 
-      // Return test case + commit IDs for work item creation
+      // Return test case + commit IDs + optional compression report for observability
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        ...taskOutput,
+        title: result.title,
+        htmlDescription: result.htmlDescription,
         sourceCommitId: codeDiff.sourceCommitId,
-        targetCommitId: codeDiff.targetCommitId
+        targetCommitId: codeDiff.targetCommitId,
+        ...(result.compressionReport && { compressionReport: result.compressionReport }),
       }));
 
     } catch (error) {

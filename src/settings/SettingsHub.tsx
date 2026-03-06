@@ -25,6 +25,9 @@ import { AIContextDocument } from '../types/extension-types';
 
 const PROJECT_DEFAULT_LABEL = "Project Default (applies to all repos)";
 
+/** Max custom context length: ~3–4 paragraphs (matches server limit). */
+const MAX_CONTEXT_LENGTH = 3000;
+
 export const SettingsHub: React.FC = () => {
   const [projectId, setProjectId] = React.useState<string>('');
   const [repositories, setRepositories] = React.useState<GitRepository[]>([]);
@@ -499,17 +502,26 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
       <div style={{ marginBottom: "20px" }}>
         <Field
           label="Custom Context"
-          hint="This context will be provided to the AI for all prompts in the selected repository"
+          hint="This context will be provided to the AI for all prompts in the selected repository. Keep to 3–4 paragraphs (max 3,000 characters)."
         >
           <Textarea
             spellCheck={false}
             rows={12}
             value={contextText}
-            onChange={(_e, data) => setContextText(data.value)}
+            onChange={(_e, data) => setContextText((data.value ?? "").slice(0, MAX_CONTEXT_LENGTH))}
             disabled={isLoading}
             placeholder="Enter custom context for the AI assistant..."
             style={{ width: "100%" }}
           />
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "12px",
+              color: contextText.length >= MAX_CONTEXT_LENGTH ? "#a4262c" : "#605e5c",
+            }}
+          >
+            {contextText.length.toLocaleString()} / {MAX_CONTEXT_LENGTH.toLocaleString()} characters
+          </div>
         </Field>
       </div>
 
@@ -766,11 +778,11 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         domain knowledge, and testing expectations.
       </p>
 
-      <strong>Recommended length:</strong>
+      <strong>Length:</strong>
       <ul style={{ marginTop: "6px", marginBottom: "12px" }}>
-        <li>200–1,500 words</li>
-        <li>Up to ~10,000 characters</li>
-        <li>Short, focused, high‑signal information</li>
+        <li>Keep to 3–4 paragraphs</li>
+        <li>Maximum: {MAX_CONTEXT_LENGTH.toLocaleString()} characters (enforced)</li>
+        <li>Short, focused, high‑signal information works best</li>
       </ul>
 
       <strong>Good things to include:</strong>
