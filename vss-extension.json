@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
   "targets": [
@@ -51,25 +51,7 @@
       "url": "https://www.qazent.com"
     }
   ],
-  "screenshots": [
-    {
-      "alt": "Generate Testcase Screenshot",
-      "path": "public/generate-testcase.png"
-    },
-    {
-      "alt": "Custom Context",
-      "path": "public/step-3.png"
-    },
-    {
-      "alt": "Linking PR Screenshot",
-      "path": "public/work-item-created.png"
-    },
-    {
-      "alt": "Workitem Created Screenshot",
-      "path": "public/generated-test-case.png"
-    }
-    
-  ],
+
   "contributions": [
 
     {
