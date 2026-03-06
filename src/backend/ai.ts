@@ -11,6 +11,35 @@ import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import { jsonrepair } from "jsonrepair";
 
+/** Target user prompt size to avoid MAX_TOKENS and truncation (tokens). */
+const TARGET_USER_PROMPT_TOKENS = 5000;
+/** Approximate chars per token for estimation. */
+const CHARS_PER_TOKEN_ESTIMATE = 4;
+/** Max PR description chars in prompt. */
+const MAX_DESCRIPTION_CHARS = 800;
+/** Max repository context chars in prompt. */
+const MAX_CONTEXT_CHARS = 2000;
+/** Max diff lines per file in prompt (first pass). */
+const MAX_DIFF_LINES_PER_FILE = 15;
+/** Stricter limits for second pass when over token budget. */
+const MAX_DESCRIPTION_CHARS_STRICT = 500;
+const MAX_CONTEXT_CHARS_STRICT = 1500;
+const MAX_DIFF_LINES_PER_FILE_STRICT = 8;
+/** When over budget, include full (truncated) diff only for first N files; rest bullet-only. */
+const MAX_FILES_WITH_DIFF_STRICT = 12;
+
+export const COMPRESSION_SUMMARY =
+  'User prompt is capped by (1) including at most 25–30 changed files and up to 2000 characters of diff per file, (2) truncating PR description to the first 500–800 characters and repository context to 1500–2000 characters, (3) replacing per-file blocks with a one-line bullet per file (path, type, +lines/-lines), (4) keeping only the first portion of each file\'s diff (first hunks / ~15 lines), and (5) using a single short JSON output instruction. Optional token estimation triggers a second pass that further shortens description, context, and per-file diffs if the prompt still exceeds 5000 tokens. All critical PR and file-level context is retained for test case generation; only redundant or excessive detail is removed.';
+
+const SECTIONS_REMOVED = [
+  'Full PR description → summarized to first 500–800 chars',
+  'Per-file "File:/Type:/Lines Added:/Lines Deleted:" blocks → replaced by one-line bullet list',
+  'Full diff content per file → truncated to first ~15 lines (or ~8 on second pass)',
+  'Repository-Specific Context → truncated to 1500–2000 chars',
+  'Redundant JSON structure block → replaced by one-line instruction',
+  'Excess files → only first 25–30 files included; "(N more files not shown)" in summary if applicable',
+] as const;
+
 /** Response schema for Gemini structured output: guarantees valid JSON with title + htmlDescription */
 const AI_RESPONSE_SCHEMA = {
   type: "object",
@@ -98,49 +127,125 @@ function getGenAI(): GoogleGenAI {
   return genAI;
 }
 
+function estimateTokens(s: string): number {
+  return Math.ceil(s.length / CHARS_PER_TOKEN_ESTIMATE);
+}
+
+function truncateToLines(text: string, maxLines: number): { text: string; omitted: number } {
+  const lines = text.split('\n');
+  if (lines.length <= maxLines) return { text, omitted: 0 };
+  return {
+    text: lines.slice(0, maxLines).join('\n'),
+    omitted: lines.length - maxLines,
+  };
+}
+
+export interface BuildUserPromptResult {
+  prompt: string;
+  sectionsRemoved: readonly string[];
+}
+
+/** Result of generateTestCases; includes optional compression report for observability. */
+export interface GenerateTestCasesResult extends TaskWorkItemOutput {
+  compressionReport?: { compressionSummary: string; sectionsRemoved: string[] };
+}
+
 /**
- * Construct user prompt from PR metadata and code diff
+ * Build compressed user prompt from PR metadata and code diff.
+ * Truncates description, context, and per-file diffs to stay under TARGET_USER_PROMPT_TOKENS.
  */
-function buildUserPrompt(prMetadata: PRMetadata, codeDiff: CodeDiff, customContext?: string): string {
+function buildUserPrompt(
+  prMetadata: PRMetadata,
+  codeDiff: CodeDiff,
+  customContext?: string,
+  options?: {
+    maxDescriptionChars: number;
+    maxContextChars: number;
+    maxDiffLinesPerFile: number;
+    maxFilesWithDiff?: number;
+  }
+): BuildUserPromptResult {
+  const maxDesc = options?.maxDescriptionChars ?? MAX_DESCRIPTION_CHARS;
+  const maxCtx = options?.maxContextChars ?? MAX_CONTEXT_CHARS;
+  const maxLines = options?.maxDiffLinesPerFile ?? MAX_DIFF_LINES_PER_FILE;
+  const maxFilesWithDiff = options?.maxFilesWithDiff ?? codeDiff.changes.length;
+
+  const description = prMetadata.description?.trim() || 'N/A';
+  const descriptionTruncated =
+    description.length <= maxDesc
+      ? description
+      : description.slice(0, maxDesc) + '... (description truncated)';
+
   let prompt = `Generate test cases for this Pull Request:
 
 PR Title: ${prMetadata.title}
-PR Description: ${prMetadata.description || 'N/A'}
+PR Description: ${descriptionTruncated}
 Author: ${prMetadata.author}
 Source Branch: ${prMetadata.sourceBranch}
 Target Branch: ${prMetadata.targetBranch}
 
-Code Changes Summary:
-- Total files changed: ${codeDiff.totalChanges}
-
-Detailed Changes:
+Files changed: ${codeDiff.totalChanges}
 `;
 
-  for (const change of codeDiff.changes) {
-    prompt += `
-File: ${change.filePath}
-Type: ${change.changeType}
-Lines Added: ${change.linesAdded}
-Lines Deleted: ${change.linesDeleted}
-
-Diff:
-${change.diffContent}
-`;
+  // Bullet list: one line per file
+  for (const c of codeDiff.changes) {
+    prompt += `- ${c.filePath} (${c.changeType}) +${c.linesAdded} -${c.linesDeleted}\n`;
   }
 
-  // Append custom context if provided
+  const moreFiles = codeDiff.totalChanges - codeDiff.changes.length;
+  if (moreFiles > 0) {
+    prompt += `(${moreFiles} more files not shown)\n`;
+  }
+
+  prompt += `\nKey changes (diffs):\n`;
+
+  for (let i = 0; i < codeDiff.changes.length; i++) {
+    const change = codeDiff.changes[i];
+    const includeDiff = i < maxFilesWithDiff;
+    if (includeDiff && change.diffContent) {
+      const { text, omitted } = truncateToLines(change.diffContent, maxLines);
+      prompt += `\n--- ${change.filePath} ---\n${text}`;
+      if (omitted > 0) prompt += `\n... (diff truncated, ${omitted} lines omitted)`;
+      prompt += '\n';
+    }
+  }
+
   if (customContext && customContext.trim().length > 0) {
-    prompt += `\n\nRepository-Specific Context:\n${customContext}\n`;
+    const contextTruncated =
+      customContext.length <= maxCtx
+        ? customContext
+        : customContext.slice(0, maxCtx) + '... (context truncated)';
+    prompt += `\nRepository-Specific Context:\n${contextTruncated}\n`;
   }
 
-  prompt += `
-Please provide test cases in the following JSON structure:
-{
-  "title": "Test Case: <short summary>",
-  "htmlDescription": "<escaped HTML string - valid HTML with quotes escaped for JSON>"
-}`;
+  prompt += `\nReturn JSON only: { "title": "Test Case: <short summary>", "htmlDescription": "<encoded HTML>" }`;
 
-  return prompt;
+  return { prompt, sectionsRemoved: SECTIONS_REMOVED };
+}
+
+/**
+ * If prompt exceeds token target, rebuild with stricter limits and optionally fewer files with diffs.
+ */
+function buildUserPromptWithTokenCap(
+  prMetadata: PRMetadata,
+  codeDiff: CodeDiff,
+  customContext?: string
+): BuildUserPromptResult {
+  let result = buildUserPrompt(prMetadata, codeDiff, customContext);
+  if (estimateTokens(result.prompt) <= TARGET_USER_PROMPT_TOKENS) {
+    return result;
+  }
+  logger.debug('User prompt exceeded token target, applying second-pass compression', {
+    estimatedTokens: estimateTokens(result.prompt),
+    target: TARGET_USER_PROMPT_TOKENS,
+  });
+  result = buildUserPrompt(prMetadata, codeDiff, customContext, {
+    maxDescriptionChars: MAX_DESCRIPTION_CHARS_STRICT,
+    maxContextChars: MAX_CONTEXT_CHARS_STRICT,
+    maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE_STRICT,
+    maxFilesWithDiff: Math.min(MAX_FILES_WITH_DIFF_STRICT, codeDiff.changes.length),
+  });
+  return result;
 }
 
 /**
@@ -431,7 +536,7 @@ export async function generateTestCases(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
   customContext?: string
-): Promise<TaskWorkItemOutput> {
+): Promise<GenerateTestCasesResult> {
   const MAX_ATTEMPTS = 2;
   let lastError: Error | null = null;
 
@@ -446,17 +551,25 @@ export async function generateTestCases(
       // Initialize Gemini
       const ai = getGenAI();
 
-      // Build user prompt
-      const userPrompt = buildUserPrompt(prMetadata, codeDiff, customContext);
+      // Build compressed user prompt (with token cap and optional second pass)
+      const { prompt: userPrompt, sectionsRemoved } = buildUserPromptWithTokenCap(
+        prMetadata,
+        codeDiff,
+        customContext
+      );
 
       const MAX_OUTPUT_TOKENS = 32768;
+      const estimatedUserTokens = estimateTokens(userPrompt);
       logger.debug('Sending prompt to AI', {
         systemPromptLength: sysPrompt.length,
         userPromptLength: userPrompt.length,
+        estimatedUserPromptTokens: estimatedUserTokens,
         totalPromptLength: sysPrompt.length + userPrompt.length,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         useShortPrompt,
-        attempt
+        attempt,
+        compressionSummary: COMPRESSION_SUMMARY,
+        sectionsRemoved: [...sectionsRemoved],
       });
 
       // Generate content using new SDK API
@@ -617,7 +730,14 @@ export async function generateTestCases(
         attempt
       });
 
-      return taskOutput;
+      const result: GenerateTestCasesResult = {
+        ...taskOutput,
+        compressionReport: {
+          compressionSummary: COMPRESSION_SUMMARY,
+          sectionsRemoved: [...sectionsRemoved],
+        },
+      };
+      return result;
 
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));

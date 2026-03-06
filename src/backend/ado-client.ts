@@ -85,6 +85,9 @@ export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): P
   }
 }
 
+/** Character budget per file for AI prompt (keeps user prompt under token limit). */
+export const DIFF_MAX_CHARS_PER_FILE = 2000;
+
 /**
  * Generate a unified diff with proper hunks, context, and safe truncation.
  */
@@ -92,8 +95,8 @@ export function generateUnifiedDiff(
   filePath: string,
   oldContent: string,
   newContent: string,
-  maxChars = 8000,          // character budget instead of line count
-  contextLines = 4          // lines of context around changes
+  maxChars = DIFF_MAX_CHARS_PER_FILE,
+  contextLines = 4
 ): { diffContent: string; linesAdded: number; linesDeleted: number } {
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
