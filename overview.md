@@ -124,5 +124,7 @@ This helps the AI tailor test cases to your organization’s standards and workf
 ---
 
 **Publisher:** QAZent  
+-
 **Category:** Azure Repos
+-
 **Website** https://qazent.com

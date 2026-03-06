@@ -1,8 +1,8 @@
 {
   "manifestVersion": 1,
-  "id": "QAZent",
+  "id": "pr-assistant-extension",
   "name": "PR Assistant",
-  "version": "1.2.86",
+  "version": "2.0.4",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
   "targets": [
@@ -23,11 +23,7 @@
         "theme": "dark"
     },
 
-  "categories": ["Azure Repos", 
-  "Pull Requests", 
-  "AI", 
-  "Testing", 
-  "Utilities"],
+  "categories": ["Azure Repos", "Azure Boards"],
   
   "tags": ["pull-request", 
   "testing", 
@@ -44,6 +40,10 @@
       "path":"license-terms.md"
     }
 
+  },
+  "badge": {  
+    "url": "https://img.shields.io/badge/status-stable-brightgreen",
+    "description": "Indicates that the extension is stable and ready for production use."
   },
   "link": [
     {
