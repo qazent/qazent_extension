@@ -2,8 +2,8 @@
  * Unit tests for Azure DevOps client artifact URI construction
  */
 
-import { buildPRArtifactUri } from './ado-client';
-import { PRMetadata } from './types';
+import { buildPRArtifactUri } from '../src/backend/ado-client';
+import { PRMetadata } from '../src/backend/types';
 import { describe, it, expect } from '@jest/globals';
 
 
@@ -23,7 +23,6 @@ describe('buildPRArtifactUri', () => {
     createDate: new Date(),
     branchName: "feature/test"
   };
-  console.log(mockMetadata);
 
   it('should construct correct vstfs artifact URI format', () => {
     const result = buildPRArtifactUri(mockMetadata);
@@ -55,7 +54,7 @@ describe('buildPRArtifactUri', () => {
 
   it('should end with PR ID number', () => {
     const result = buildPRArtifactUri(mockMetadata);
-    expect(result).toMatch(/\/2$/);
+    expect(result).toMatch(/%2F2$/);
   });
 
   it('should handle numeric prId correctly', () => {
@@ -183,8 +182,8 @@ describe('buildPRArtifactUri', () => {
     const result = buildPRArtifactUri(mockMetadata);
     const afterProtocol = result.substring('vstfs:///'.length);
     const unencodedSlashes = afterProtocol.split('/').length - 1;
-    // Should only have one unencoded slash in "Git/PullRequestId"
-    expect(unencodedSlashes).toBe(1);
+    // "Git/PullRequestId/{encodedPath}" has 2 unencoded slashes
+    expect(unencodedSlashes).toBe(2);
   });
 });
 

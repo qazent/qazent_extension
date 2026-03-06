@@ -6,17 +6,7 @@ import * as React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { SettingsHub } from './SettingsHub';
 
-// Mock Azure DevOps SDK
-// Mock the Azure DevOps SDK module
-jest.mock('azure-devops-extension-sdk', () => ({
-  init: jest.fn(),
-  ready: jest.fn(),
-  getService: jest.fn(),
-  getAccessToken: jest.fn(),
-  getUser: jest.fn()
-}));
-
-// Import AFTER mocking
+// SDK provided by Jest moduleNameMapper -> tests/utils/azure-devops-mock.ts
 import * as SDK from 'azure-devops-extension-sdk';
 
 // ---- Types for Git API mocks ----
@@ -27,10 +17,6 @@ interface GitRepository {
 
 type GetRepositoriesFn = () => Promise<GitRepository[]>;
 type GetClientFn = () => { getRepositories: GetRepositoriesFn };
-  CommonServiceIds: {
-    ProjectPageService: 'ms.vss-tfs-web.tfs-page-data-service';
-    ExtensionDataService: 'ms.vss-features.extension-data-service'
-  }
 
 // Mock Git API client
 const mockGetRepositories = jest.fn() as jest.MockedFunction<GetRepositoriesFn>;
@@ -66,7 +52,7 @@ describe('SettingsHub Component', () => {
     (SDK.init as jest.Mock).mockResolvedValue(undefined);
     (SDK.ready as jest.Mock).mockResolvedValue(undefined);
     (SDK.getService as jest.Mock).mockImplementation((serviceId: string) => {
-      if (serviceId === 'ms.vss-tfs-web.tfs-page-data-service') {
+      if (serviceId === 'ms.vss-work-web.project-page-service') {
         return Promise.resolve({ getProject: mockGetProject });
       }
       return Promise.resolve({ getExtensionDataManager: mockGetExtensionDataManager });
@@ -89,7 +75,7 @@ describe('SettingsHub Component', () => {
       render(<SettingsHub />);
       
       await waitFor(() => {
-        expect(screen.getByText('AI Assistant Context')).toBeInTheDocument();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
     });
 

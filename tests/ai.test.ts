@@ -4,6 +4,7 @@
 
 import { generateTestCases, extractJSON } from '../src/backend/ai';
 import { PRMetadata, CodeDiff } from '../src/backend/types';
+import { MIN_VALID_HTML } from './utils/fixtures';
 
 
 // Mock GoogleGenAI with a controlled mock function
@@ -19,8 +20,8 @@ jest.mock('@google/genai', () => {
   };
 });
 
-// Mock logger
-jest.mock('./logger', () => ({
+// Mock logger (path used by src/backend/ai.ts)
+jest.mock('../src/backend/utils/logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
   error: jest.fn(),
@@ -107,7 +108,7 @@ describe('generateTestCases', () => {
 <h2>Edge Cases</h2><ul><li>Test with empty data</li></ul>
 <h2>Regression Areas</h2><ul><li>Existing features</li></ul>
 <h2>Data Requirements</h2><ul><li>Test user account</li></ul>
-<h2>Automation Notes</h2><p>Can be automated with Selenium</p>`;
+<h2>Automation Notes</h2><p>Can be automated with Selenium</p>` + 'x'.repeat(2600);
 
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
@@ -125,14 +126,14 @@ describe('generateTestCases', () => {
 
   it('should handle AI response with markdown JSON wrapper', async () => {
     mockGenerateContent.mockResolvedValue({
-      text: '```json\n{"title": "Test Case: Test Title", "htmlDescriptionBase64": "<h2>Purpose</h2><p>Test Purpose</p><h2>Scope of Change</h2><p>Test</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate with unit tests</p>"}\n```'
+      text: '```json\n' + JSON.stringify({ title: 'Test Case: Test Title', htmlDescriptionBase64: MIN_VALID_HTML }) + '\n```'
     });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Test Title');
     expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
-    expect(result.htmlDescriptionBase64).toContain('<p>Test Purpose</p>');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Automation Notes</h2>');
   });
 
   it('should throw error when AI returns empty response', async () => {
@@ -172,17 +173,7 @@ describe('generateTestCases', () => {
   });
 
   it('should retry once on parsing failure then succeed', async () => {
-    const mockhtmlDescriptionBase64 = `<h2>Purpose</h2><p>Retry test</p>
-<h2>Scope of Change</h2><p>Test module</p>
-<h2>Preconditions</h2><p>None</p>
-<h2>Test Steps & Expected Results</h2>
-<table><tr><th>Step</th><th>Expected Result</th></tr>
-<tr><td>Step 1</td><td>Result 1</td></tr></table>
-<h2>Negative Scenarios</h2><p>None</p>
-<h2>Edge Cases</h2><p>None</p>
-<h2>Regression Areas</h2><p>None</p>
-<h2>Data Requirements</h2><p>None</p>
-<h2>Automation Notes</h2><p>Unit tests</p>`;
+    const mockhtmlDescriptionBase64 = MIN_VALID_HTML;
 
     mockGenerateContent
       .mockResolvedValueOnce({ text: 'Invalid JSON on first attempt' })
@@ -212,7 +203,7 @@ describe('generateTestCases', () => {
   });
 
   it('should parse when AI returns raw HTML with } inside htmlDescriptionBase64 value', async () => {
-    const rawHtmlWithBrace = '<h2>Purpose</h2><p>Test with code } and more</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Unit tests</p>';
+    const rawHtmlWithBrace = '<h2>Purpose</h2><p>Test with code } and more</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Unit tests</p>' + 'x'.repeat(2600);
     const responseText = JSON.stringify({
       title: 'Test Case: Brace in HTML',
       htmlDescriptionBase64: rawHtmlWithBrace
@@ -227,10 +218,9 @@ describe('generateTestCases', () => {
   });
 
   it('should parse when AI returns markdown-wrapped JSON with raw HTML (repair path)', async () => {
-    const rawHtml = '<h2>Purpose</h2><p>Test</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate</p>';
     const responseText = '```json\n' + JSON.stringify({
       title: 'Test Case: Raw HTML in wrapper',
-      htmlDescriptionBase64: rawHtml
+      htmlDescriptionBase64: MIN_VALID_HTML
     }) + '\n```';
     mockGenerateContent.mockResolvedValue({ text: responseText });
 

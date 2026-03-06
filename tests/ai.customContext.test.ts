@@ -2,8 +2,9 @@
  * Unit tests for AI module - Custom Context feature
  */
 
-import { generateTestCases } from './ai';
-import { PRMetadata, CodeDiff } from './types';
+import { generateTestCases } from '../src/backend/ai';
+import { PRMetadata, CodeDiff } from '../src/backend/types';
+import { MIN_VALID_HTML } from './utils/fixtures';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 //
@@ -48,7 +49,7 @@ jest.mock('@google/genai', () => {
 //
 // ---- Mock logger ----
 //
-jest.mock('./logger', () => ({
+jest.mock('../src/backend/utils/logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
   error: jest.fn(),
@@ -102,11 +103,11 @@ describe('AI Custom Context Integration', () => {
       ]
     };
 
-    // Default mock response
+    // Default mock response (must pass AI truncation validation: length >= 2500, has Automation Notes)
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Authentication',
-        htmlDescriptionBase64: '<html><body>Test description</body></html>'
+        htmlDescriptionBase64: MIN_VALID_HTML
       })
     });
   });
@@ -257,7 +258,7 @@ describe('AI Custom Context Integration', () => {
   //
   describe('error handling with custom context', () => {
     it('should propagate AI errors even when custom context is provided', async () => {
-      mockGenerateContent.mockRejectedValueOnce(new Error('AI service unavailable'));
+      mockGenerateContent.mockRejectedValue(new Error('AI service unavailable'));
 
       const customContext = 'Use TDD';
 
@@ -272,7 +273,7 @@ describe('AI Custom Context Integration', () => {
         .mockResolvedValueOnce({
           text: JSON.stringify({
             title: 'Test Case',
-            htmlDescriptionBase64: '<html>Test</html>'
+            htmlDescriptionBase64: MIN_VALID_HTML
           })
         });
 

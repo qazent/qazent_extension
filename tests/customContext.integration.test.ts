@@ -3,9 +3,10 @@
  * Tests the complete flow from frontend to backend to AI
  */
 
-import { generateTestCases as aiGenerateTestCases } from '.././ai';
-import * as backendClient from '.././backendClient';
+import { generateTestCases as aiGenerateTestCases } from '../src/backend/ai';
+import * as backendClient from '../src/services/backendClient';
 import { PRMetadata, CodeDiff } from '../src/backend/types';
+import { MIN_VALID_HTML } from './utils/fixtures';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 //
@@ -42,7 +43,7 @@ jest.mock('@google/genai', () => ({
 //
 // ---- Mock logger ----
 //
-jest.mock('./logger', () => ({
+jest.mock('../src/backend/utils/logger', () => ({
   info: jest.fn(),
   debug: jest.fn(),
   error: jest.fn(),
@@ -98,7 +99,7 @@ describe('Custom Context - End-to-End Integration', () => {
 
   const mockAIResponse = {
     title: 'Test Case: Authentication',
-    htmlDescriptionBase64: '<html><body>Test case for authentication</body></html>'
+    htmlDescriptionBase64: MIN_VALID_HTML
   };
 
   beforeEach(() => {

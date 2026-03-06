@@ -16,10 +16,11 @@
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version --output-path ./output",
     "publish:all": "powershell src/backend/utils/publish-all.ps1",
     "start": "node dist/backend/server.js",
-    "test:local": "ts-node test-local.ts",
+    "test": "jest --config jest.config.ts",
+    "test:local": "ts-node tests/test-local.ts",
     "lint": "tsc --noEmit",
     "test:jest": "jest --config jest.config.ts",
-    "test:context": "jest --config jest.config.ts --testPathPatterns= ./test/customContext"
+    "test:context": "jest --config jest.config.ts --testPathPattern=customContext"
   },
   "keywords": [
     "azure-devops",
@@ -60,6 +61,7 @@
     "cpx": "^1.5.0",
     "dotenv": "^16.4.0",
     "html-webpack-plugin": "^5.5.3",
+    "identity-obj-proxy": "^3.0.0",
     "jest": "^30.2.0",
     "jest-dom": "^4.0.0",
     "jest-environment-jsdom": "^30.2.0",

@@ -1,9 +1,9 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["jest", "node"],
+    "types": ["jest", "node", "@testing-library/jest-dom"],
     "isolatedModules": false
   },
-  "include": ["tests/**/*", "**/*.test.ts", "**/*.test.tsx"]
+  "include": ["tests/**/*", "src/**/*.test.ts", "src/**/*.test.tsx"]
 }

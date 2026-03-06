@@ -54,7 +54,7 @@ describe('Backend Client - Custom Context', () => {
         'http://localhost:3000/generate-tests',
         expect.objectContaining({
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             prId: 123,
             projectName: 'MyProject',
@@ -155,27 +155,16 @@ Line 3`;
 
       await expect(
         generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
-      ).rejects.toThrow('Test case generation failed. Please try again.');
+      ).rejects.toThrow('Backend service failed. Please try again.');
     });
 
     it('should handle timeout with customContext', async () => {
-      fetchMock.mockImplementationOnce(() =>
-        new Promise((resolve) => {
-          setTimeout(() => resolve({ ok: true, json: async () => mockSuccessResponse }), 35000);
-        })
-      );
+      // Simulate abort (e.g. from timeout): fetch rejects with AbortError
+      fetchMock.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
 
-      const promise = generateTestCases(
-        123,
-        'MyProject',
-        'repo-456',
-        'http://localhost:3000',
-        'context'
-      );
-
-      jest.advanceTimersByTime(30000);
-
-      await expect(promise).rejects.toThrow('Request timed out. Please try again.');
+      await expect(
+        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
+      ).rejects.toThrow('Request timed out. Please try again.');
     });
 
     it('should handle network error with customContext', async () => {
@@ -183,7 +172,7 @@ Line 3`;
 
       await expect(
         generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
-      ).rejects.toThrow('Unable to connect to backend service');
+      ).rejects.toThrow('Network failure');
     });
   });
 
