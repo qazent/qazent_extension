@@ -131,11 +131,14 @@ Use ONLY these HTML tags:
 
 <h2> <p> <ul> <ol> <li> <strong> <br/> <table> <tr> <td> <th>
 
+Do NOT use double tildes (~~) anywhere in the HTML content. They are interpreted as Markdown strikethrough and will show as a line through the text when the content is displayed in PR comments or other Markdown contexts. Use plain wording instead.
+
 Use <strong> only for subsection labels such as:
 
 Authentication:
 Authorization:
 Unit Tests:
+Integration Tests:
 E2E Tests:
 Manual Only:
 
@@ -168,6 +171,8 @@ Organize automation strategy into these categories:
 <strong>Unit Tests:</strong>  
 functions or logic to test in isolation
 
+<strong>Integration Tests:</strong>  
+API endpoints to test with real/test database, service interactions to verify
 
 <strong>E2E Tests:</strong>  
 user workflows or UI flows
@@ -189,7 +194,7 @@ Structure:
 
 {
   "title": "Test Case: <short summary>",
-  "htmlDescription": "<encoded HTML>"
+  "htmlDescription": "<escaped HTML string - valid HTML with quotes escaped for JSON>"
 }
 
 TITLE RULES
@@ -203,9 +208,8 @@ TITLE RULES
 HTML ENCODING RULE
 
 1. Build the full HTML containing all 11 sections.
-3. Place ONLY the encoded string in htmlDescription.
-
-Never include raw HTML in the JSON.
+2. Place the HTML directly in htmlDescription with proper JSON escaping (escape quotes, backslashes, etc.).
+3. Do NOT encode the HTML. Do NOT use Base64. Put the HTML directly in htmlDescription with proper JSON escaping.
 
 ------------------------------------------------
 
@@ -268,6 +272,16 @@ When uncertain:
 
 • make reasonable engineering assumptions
 • prioritize regression, real changes, and real user flows
+
+------------------------------------------------
+
+## Example 1: API Endpoint Change
+
+## Example 2: Frontend Component Update
+
+## Example 3: Database Schema Change
+
+## Quality Standards for Generated Test Cases
 
 ------------------------------------------------
 
