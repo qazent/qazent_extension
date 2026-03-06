@@ -134,6 +134,8 @@ Please provide test cases in the following JSON structure:
 
 /**
  * Extract JSON from AI response (handle markdown wrappers).
+ * Uses brace-matching that respects double-quoted strings so that { or } inside
+ * string values (e.g. raw HTML in htmlDescriptionBase64) do not break extraction.
  * Exported for diagnostic logging when parse fails.
  */
 export function extractJSON(response: string): string {
@@ -153,15 +155,145 @@ export function extractJSON(response: string): string {
 
   cleaned = cleaned.trim();
 
-  // Try to extract JSON between first { and last }
   const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace === -1) {
+    return cleaned;
+  }
 
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+  // Brace-matching that respects double-quoted strings (do not count {/} inside strings)
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  let endBrace = -1;
+
+  for (let i = firstBrace; i < cleaned.length; i++) {
+    const c = cleaned[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (inString) {
+      if (c === '"' && !escapeNext) {
+        inString = false;
+        continue;
+      }
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      if (c === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      continue;
+    }
+
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '{') {
+      depth++;
+      continue;
+    }
+    if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        endBrace = i;
+        break;
+      }
+    }
+  }
+
+  if (endBrace !== -1) {
+    return cleaned.substring(firstBrace, endBrace + 1);
+  }
+
+  // Fallback: first { to last } (original behavior for edge cases)
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.substring(firstBrace, lastBrace + 1);
   }
 
   return cleaned;
+}
+
+/** Result of pre-parse repair of htmlDescriptionBase64 in raw JSON text */
+interface RepairResult {
+  json: string;
+  wasRepaired: boolean;
+}
+
+/**
+ * If the value of "htmlDescriptionBase64" in the extracted JSON is raw HTML (starts with '<'),
+ * Base64-encode it in place so the JSON becomes parseable. Mixed content (Base64 then <) is
+ * treated as raw HTML and fully Base64-encoded.
+ */
+function repairHtmlDescriptionBase64InJson(extracted: string): RepairResult {
+  const key = '"htmlDescriptionBase64"';
+  const keyIdx = extracted.indexOf(key);
+  if (keyIdx === -1) {
+    return { json: extracted, wasRepaired: false };
+  }
+
+  const afterKey = keyIdx + key.length;
+  const colonIdx = extracted.indexOf(':', afterKey);
+  if (colonIdx === -1 || colonIdx > afterKey + 10) {
+    return { json: extracted, wasRepaired: false };
+  }
+
+  let valueStart = colonIdx + 1;
+  while (valueStart < extracted.length && /[\s]/.test(extracted[valueStart])) {
+    valueStart++;
+  }
+  if (valueStart >= extracted.length || extracted[valueStart] !== '"') {
+    return { json: extracted, wasRepaired: false };
+  }
+  valueStart += 1; // first char of value
+
+  let valueEnd = valueStart;
+  let escape = false;
+  while (valueEnd < extracted.length) {
+    const c = extracted[valueEnd];
+    if (escape) {
+      escape = false;
+      valueEnd++;
+      continue;
+    }
+    if (c === '\\') {
+      escape = true;
+      valueEnd++;
+      continue;
+    }
+    if (c === '"') {
+      break;
+    }
+    valueEnd++;
+  }
+
+  if (valueEnd >= extracted.length) {
+    return { json: extracted, wasRepaired: false };
+  }
+
+  const value = extracted.substring(valueStart, valueEnd);
+  const trimmed = value.trim();
+  const looksLikeRawHtml = trimmed.startsWith('<') || (trimmed.length > 0 && /<[a-zA-Z]/.test(trimmed));
+  if (!looksLikeRawHtml) {
+    return { json: extracted, wasRepaired: false };
+  }
+
+  const base64Value = Buffer.from(value, 'utf-8').toString('base64');
+  const before = extracted.substring(0, valueStart);
+  const after = extracted.substring(valueEnd);
+  const json = before + base64Value + after;
+  return { json, wasRepaired: true };
+}
+
+/** Remove/replace JSON-invalid control characters (U+0000–U+001F except \t \n \r) from string */
+function sanitizeJsonString(s: string): string {
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ');
 }
 
 function safeParseAIResponse(response: string): any {
@@ -169,15 +301,27 @@ function safeParseAIResponse(response: string): any {
   const hadMarkdown = response.trim().startsWith('```');
   logger.debug('JSON extraction', {
     extractionLength: extracted.length,
-    hadMarkdown
+    hadMarkdown,
+    extractedPreviewFirst200: extracted.substring(0, 200)
   });
 
+  let toParse = extracted;
+  const repairResult = repairHtmlDescriptionBase64InJson(extracted);
+  if (repairResult.wasRepaired) {
+    toParse = repairResult.json;
+    logger.debug('Pre-parse repair: htmlDescriptionBase64 raw HTML → Base64', {
+      repairedLength: toParse.length
+    });
+  }
+
   try {
-    const parsed = JSON.parse(extracted);
-    logger.debug('AI JSON parsed without repair', {
+    const parsed = JSON.parse(toParse);
+    logger.debug('AI JSON parsed successfully', {
       parseSucceeded: true,
       jsonrepairApplied: false,
-      first200Chars: extracted.substring(0, 200)
+      htmlDescriptionBase64Repaired: repairResult.wasRepaired,
+      hasTitle: typeof parsed?.title === 'string',
+      hasHtmlField: typeof parsed?.htmlDescriptionBase64 === 'string'
     });
     return parsed;
   } catch (firstParseErr) {
@@ -188,31 +332,59 @@ function safeParseAIResponse(response: string): any {
   }
 
   try {
-    const repaired = jsonrepair(extracted);
+    const repaired = jsonrepair(toParse);
+    const parsed = JSON.parse(repaired);
     logger.debug('AI JSON repaired and parsed', {
-      parseSucceeded: false,
+      parseSucceeded: true,
       jsonrepairApplied: true,
-      first200Chars: repaired.substring(0, 200)
+      htmlDescriptionBase64Repaired: repairResult.wasRepaired,
+      hasTitle: typeof parsed?.title === 'string',
+      hasHtmlField: typeof parsed?.htmlDescriptionBase64 === 'string'
     });
-    return JSON.parse(repaired);
+    return parsed;
   } catch (err) {
-    const errMsg = String(err);
-    const posMatch = errMsg.match(/position\s+(\d+)/i);
-    logger.error('JSON parse and jsonrepair both failed', {
-      errorMessage: err instanceof Error ? err.message : errMsg,
-      errorName: err instanceof Error ? err.name : 'Unknown',
-      extractionLength: extracted.length,
-      first150Chars: extracted.substring(0, 150),
-      last100Chars: extracted.substring(Math.max(0, extracted.length - 100))
-    });
-    if (posMatch) {
-      const pos = parseInt(posMatch[1], 10);
-      logger.warn('JSON parse/repair failed at position', {
-        position: pos,
-        rawSubstringAroundPosition: extracted.substring(Math.max(0, pos - 60), pos + 60)
+    const sanitized = sanitizeJsonString(toParse);
+    try {
+      const parsed = JSON.parse(sanitized);
+      logger.debug('AI JSON parsed after sanitize (control chars removed)', {
+        parseSucceeded: true,
+        jsonrepairApplied: false,
+        sanitizeApplied: true
       });
+      return parsed;
+    } catch (_sanitizeErr) {
+      // ignore
     }
-    throw new Error("Failed to repair AI JSON: " + err);
+    try {
+      const repaired = jsonrepair(sanitized);
+      const parsed = JSON.parse(repaired);
+      logger.debug('AI JSON parsed after sanitize + jsonrepair', {
+        parseSucceeded: true,
+        jsonrepairApplied: true,
+        sanitizeApplied: true
+      });
+      return parsed;
+    } catch (finalErr) {
+      const errMsg = String(finalErr);
+      const posMatch = errMsg.match(/position\s+(\d+)/i);
+      logger.error('JSON parse and jsonrepair both failed', {
+        errorMessage: finalErr instanceof Error ? finalErr.message : errMsg,
+        errorName: finalErr instanceof Error ? finalErr.name : 'Unknown',
+        extractionLength: extracted.length,
+        first150Chars: extracted.substring(0, 150),
+        last100Chars: extracted.substring(Math.max(0, extracted.length - 100)),
+        rawResponsePreview: response.substring(0, 300),
+        rawResponseEnding: response.substring(Math.max(0, response.length - 200))
+      });
+      if (posMatch) {
+        const pos = parseInt(posMatch[1], 10);
+        logger.warn('JSON parse/repair failed at position', {
+          position: pos,
+          rawSubstringAroundPosition: extracted.substring(Math.max(0, pos - 60), pos + 60)
+        });
+      }
+      throw new Error("Failed to repair AI JSON: " + finalErr);
+    }
   }
 }
 
@@ -401,8 +573,8 @@ export async function generateTestCases(
       logger.debug('AI response received', {
         prId: prMetadata.prId,
         responseLength: text?.length || 0,
-        textPreview: text?.substring(0, 100) || 'null',
-        textEnding: text?.substring(text.length - 100) || 'null',
+        rawResponsePreview: text?.substring(0, 300) || 'null',
+        rawResponseEnding: text?.substring(Math.max(0, text.length - 200)) || 'null',
         hasCompleteJSON: text?.endsWith('}'),
         attempt
       });

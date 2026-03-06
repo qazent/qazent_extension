@@ -363,6 +363,8 @@ If all can be automated, omit "Manual Only" section.
 
 **Before responding:** Ensure your HTML contains exactly these 11 <h2> sections in order: Purpose, Scope of Change, Security Considerations, Preconditions, Test Steps & Expected Results, Negative Scenarios, Edge Cases, Performance Impact, Regression Areas, Data Requirements, Automation Notes. Do not stop generating until all 11 are present. If you must shorten content, shorten section bodies, not sections; never omit the Automation Notes section.
 
+Return ONLY valid JSON. Do not include markdown code fences or commentary. The value of htmlDescriptionBase64 MUST be a single Base64-encoded string; never put raw HTML, unescaped quotes, or angle brackets inside the JSON.
+
 Respond ONLY with valid JSON matching this EXACT structure:
 
 {
@@ -497,6 +499,7 @@ Respond ONLY with valid JSON matching this EXACT structure:
 
 ## Final Reminders
 
+- Return ONLY valid JSON. Do not include markdown code fences or commentary. The value of htmlDescriptionBase64 MUST be a single Base64-encoded string; never put raw HTML, unescaped quotes, or angle brackets inside the JSON.
 - Output ONLY valid JSON with title and htmlDescriptionBase64 fields
 - htmlDescriptionBase64 value MUST be a Base64-encoded string of the HTML (never raw HTML inside JSON)
 - NEVER USE markdown code fences, commentary, prose, additional text

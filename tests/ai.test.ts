@@ -2,7 +2,7 @@
  * Unit tests for AI module
  */
 
-import { generateTestCases } from '../src/backend/ai';
+import { generateTestCases, extractJSON } from '../src/backend/ai';
 import { PRMetadata, CodeDiff } from '../src/backend/types';
 
 
@@ -211,4 +211,61 @@ describe('generateTestCases', () => {
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
   });
 
+  it('should parse when AI returns raw HTML with } inside htmlDescriptionBase64 value', async () => {
+    const rawHtmlWithBrace = '<h2>Purpose</h2><p>Test with code } and more</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Unit tests</p>';
+    const responseText = JSON.stringify({
+      title: 'Test Case: Brace in HTML',
+      htmlDescriptionBase64: rawHtmlWithBrace
+    });
+    mockGenerateContent.mockResolvedValue({ text: responseText });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(result.title).toBe('Test Case: Brace in HTML');
+    expect(result.htmlDescriptionBase64).toContain('code } and more');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
+  });
+
+  it('should parse when AI returns markdown-wrapped JSON with raw HTML (repair path)', async () => {
+    const rawHtml = '<h2>Purpose</h2><p>Test</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Automate</p>';
+    const responseText = '```json\n' + JSON.stringify({
+      title: 'Test Case: Raw HTML in wrapper',
+      htmlDescriptionBase64: rawHtml
+    }) + '\n```';
+    mockGenerateContent.mockResolvedValue({ text: responseText });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(result.title).toBe('Test Case: Raw HTML in wrapper');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescriptionBase64).toContain('<h2>Automation Notes</h2>');
+  });
+});
+
+describe('extractJSON', () => {
+  it('should return full JSON when } appears inside htmlDescriptionBase64 string value', () => {
+    const inner = '<p>Step with } character</p>';
+    const json = '{"title":"Test Case: Title","htmlDescriptionBase64":"' + inner.replace(/"/g, '\\"') + '"}';
+    const wrapped = '```json\n' + json + '\n```';
+    const extracted = extractJSON(wrapped);
+    expect(extracted).toBe(json);
+    const parsed = JSON.parse(extracted);
+    expect(parsed.title).toBe('Test Case: Title');
+    expect(parsed.htmlDescriptionBase64).toBe(inner);
+  });
+
+  it('should use brace-matching so first balanced object is returned', () => {
+    const json = '{"title":"T","htmlDescriptionBase64":"<p>text } here</p>"}';
+    const extracted = extractJSON(json);
+    expect(extracted).toBe(json);
+    const parsed = JSON.parse(extracted);
+    expect(parsed.htmlDescriptionBase64).toBe('<p>text } here</p>');
+  });
+
+  it('should strip markdown fences and return first { } object', () => {
+    const json = '{"title":"X","htmlDescriptionBase64":"c2hvcnQ="}';
+    const withFences = '```json\n' + json + '\n```';
+    const extracted = extractJSON(withFences);
+    expect(extracted).toBe(json);
+  });
 });
