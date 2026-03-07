@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "ts-node server.ts",
-    "build": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist && cpx public/**/* dist/public",
+    "build": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist && cpx public/**/* dist/public -u",
     "build:extension": "webpack --config webpack.config.js",
     "build:backend": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist && cpx public/**/* dist/public",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
