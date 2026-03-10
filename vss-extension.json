@@ -95,7 +95,7 @@
       "addressable": true
     }
   ],
-  "scopes": ["vso.code_write", 
+  "scopes": ["vso.code", 
   "vso.work_write",
   "vso.notification_write", 
   "vso.hooks_interact", 
