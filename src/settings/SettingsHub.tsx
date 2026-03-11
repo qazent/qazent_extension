@@ -170,25 +170,23 @@ React.useEffect(() => {
 // -----------------------------
 
 const ensureCollectionExists = async (dataManager: IExtensionDataManager) => {
+  const defaultDocument = {
+    id: "project-default",
+    contextText: "",
+    updatedAt: now(),
+    updatedBy: SDK.getUser().displayName
+  };
   try {
-    await dataManager.getDocument("ai-contexts", "project-default");
-  } catch (err: any) {
-    const typeKey = err?.typeKey || "";
-
-    if (
-      typeKey === "CollectionNotFoundException" ||
-      typeKey === "DocumentNotFoundException"
-    ) {
-      await dataManager.setDocument("ai-contexts", {
-        id: "project-default",
-        contextText: "",
-        updatedAt: now(),
-        updatedBy: SDK.getUser().displayName
-      });
-      return;
+    const doc = await dataManager.getDocument("ai-contexts", "project-default");
+    if (doc == null) {
+      await dataManager.setDocument("ai-contexts", defaultDocument);
     }
-
-    throw err;
+  } catch (_err: any) {
+    try {
+      await dataManager.setDocument("ai-contexts", defaultDocument);
+    } catch (setErr) {
+      throw setErr;
+    }
   }
 };
 
@@ -222,8 +220,13 @@ const loadContext = async (repoId: string) => {
     setContextText((document as AIContextDocument)?.contextText ?? "");
   } catch (err: any) {
     const typeKey = err?.typeKey || "";
+    const message = err?.message ?? "";
+    const isNotFound =
+      typeKey === "DocumentNotFoundException" ||
+      typeKey === "CollectionNotFoundException" ||
+      /not found|does not exist/i.test(String(message));
 
-    if (typeKey === "DocumentNotFoundException") {
+    if (isNotFound) {
       setLoadedDocument(null);
       setContextText("");
     } else {

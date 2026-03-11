@@ -179,13 +179,13 @@ describe('SettingsHub Component', () => {
     });
 
     it('should handle context loading errors gracefully', async () => {
-      mockGetDocument.mockRejectedValueOnce(new Error('Network error'));
+      // First call (ensureCollectionExists) returns null; second (loadContext) throws so we show error
+      mockGetDocument.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('Network error'));
 
       render(<SettingsHub />);
 
       await waitFor(() => {
-        // Should show error message
-        expect(screen.getByText(/Failed to load context/i)).toBeInTheDocument();
+        expect(screen.getByText(/We couldn't load your saved context/i)).toBeInTheDocument();
       });
     });
 
@@ -199,6 +199,19 @@ describe('SettingsHub Component', () => {
         const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
         expect(textarea.value).toBe('');
       });
+    });
+
+    it('should treat unrecognized "not found" error as empty context and not show error', async () => {
+      const error = new Error('Resource not found');
+      mockGetDocument.mockResolvedValueOnce(null).mockRejectedValueOnce(error);
+
+      render(<SettingsHub />);
+
+      await waitFor(() => {
+        const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+        expect(textarea.value).toBe('');
+      });
+      expect(screen.queryByText(/couldn't load your saved context/i)).not.toBeInTheDocument();
     });
   });
 
