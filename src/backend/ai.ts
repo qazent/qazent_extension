@@ -574,7 +574,7 @@ export async function generateTestCases(
 
       // Generate content using new SDK API
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Use stable GA model instead of preview
+        model: 'gemini-3.1-pro-preview', // TODO: LATEST, please migrate quickly to the next-gen API and model versions as they become available
         contents: [
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],

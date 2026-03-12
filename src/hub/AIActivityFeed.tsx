@@ -1,13 +1,13 @@
 /**
  * AI Activity Feed Component
- * Displays real-time progress of the 5-step test case generation workflow
+ * Displays real-time progress of the 6-step test case generation workflow
  */
 
 import * as React from 'react';
 import { Spinner } from '@fluentui/react-components';
 
 interface AIActivityFeedProps {
-  currentStep: number | null;  // 1-5 for active step, null when not generating
+  currentStep: number | null;  // 1-6 for active step, null when not generating
   completedSteps: number[];    // Array of completed step indices
 }
 
@@ -17,7 +17,8 @@ const AIActivityFeed: React.FC<AIActivityFeedProps> = ({ currentStep, completedS
     { id: 2, label: 'Analyzing code diff' },
     { id: 3, label: 'Generating AI test cases' },
     { id: 4, label: 'Creating work item' },
-    { id: 5, label: 'Posting PR comment' }
+    { id: 5, label: 'Posting PR comment' },
+    { id: 6, label: 'Posting PR label' }
   ];
 
   const getStepState = (stepId: number): 'pending' | 'active' | 'completed' => {

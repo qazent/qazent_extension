@@ -184,6 +184,16 @@ export const rateLimitPostPRComment = createRateLimiter({
 });
 
 /**
+ * Rate limiter for /post-pr-label
+ * Limit: 20 requests per 10 minutes per IP
+ */
+export const rateLimitPostPRLabel = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many PR label requests.'
+});
+
+/**
  * Rate limiter for /api/extract-purpose-scope
  * Limit: 20 requests per 10 minutes per IP
  */

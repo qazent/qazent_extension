@@ -19,6 +19,7 @@ import {
   rateLimitGenerateTests,
   rateLimitCreateWorkItem,
   rateLimitPostPRComment,
+  rateLimitPostPRLabel,
   rateLimitExtractPurposeScope,
   rateLimitHealth
 } from './middleware/rateLimiter';
@@ -895,6 +896,94 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
 }
 
 /**
+ * Handle post PR label POST request
+ * Security: User identity verified by authentication middleware
+ */
+async function handlePostPRLabel(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      // Validate request body
+      if (
+        typeof payload.prId !== 'number' ||
+        !payload.projectName ||
+        !payload.repositoryId ||
+        !payload.labelName ||
+        typeof payload.labelName !== 'string' ||
+        payload.labelName.trim() === ''
+      ) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing required fields',
+          details: 'prId, projectName, repositoryId, and labelName (non-empty string) are required'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.info('Post PR label request', {
+        prId: payload.prId,
+        projectName: payload.projectName,
+        labelName: payload.labelName,
+        userId: req.user?.id,
+        userDisplayName: req.user?.displayName,
+        requestId: req.requestId
+      });
+
+      // Create connection using user's token and organization
+      const token = req.headers['authorization']!.split(' ')[1];
+      logger.debug('Token extracted for post-pr-label', {
+        tokenLength: token?.length,
+        tokenContainsDots: token?.includes('.'),
+        orgUrl: req.orgUrl,
+        tokenSource: 'authorization-header'
+      });
+      const connection = adoClient.createConnection(token, req.orgUrl!);
+
+      await adoClient.postPRLabel({
+        projectName: payload.projectName,
+        repositoryId: payload.repositoryId,
+        prId: payload.prId,
+        connection,
+        labelName: payload.labelName.trim()
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    } catch (error) {
+      logger.error('Failed to post PR label', { error: String(error) });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Failed to post label',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
  * Handle extract purpose-scope POST request
  * Security: User identity verified by authentication middleware
  */
@@ -1218,6 +1307,22 @@ function startServer(): void {
       }
 
       await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
+      return;
+    }
+
+    // Post PR label endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/post-pr-label' && method === 'POST') {
+      logger.info("POST /post-pr-label hit");
+
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitPostPRLabel, handlePostPRLabel)(req, res);
       return;
     }
 

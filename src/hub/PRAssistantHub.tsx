@@ -329,8 +329,25 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
               console.warn('Failed to post Purpose and Scope of Change comment:', err);
             }
 
+            setCompletedSteps(prev => [...prev, 5]);
+            setCurrentStep(6);
+
+            // Step 6c: Post PR label (non-blocking)
+            try {
+              await backendClient.postPRLabel({
+                prId: prData.prId,
+                projectName,
+                repositoryId,
+                connection: backendUrl,
+                labelName: 'Test Case Generated'
+              });
+            } catch (err) {
+              console.warn('PR label failed but work item was created:', err);
+            }
+
+            setCompletedSteps(prev => [...prev, 6]);
+
       // Step 7: Show success message
-      setCompletedSteps(prev => [...prev, 5]);
       setCurrentStep(null);
       setSuccessMessage({
         text: "Work item created successfully!",

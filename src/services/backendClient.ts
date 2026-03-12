@@ -294,3 +294,35 @@ export async function postPRComment({
     180000 // Increased from 10 seconds → 180 seconds - posting comments can take longer if the PR has a lot of activity or if there are API rate limits 
   );
 }
+
+/**
+ * Parameters for posting a label on a PR.
+ *
+ * `connection` is the backend base URL that exposes the `/post-pr-label` endpoint.
+ */
+export interface PostPRLabelParams {
+  prId: number;
+  projectName: string;
+  repositoryId: string;
+  labelName: string;
+  connection: string;
+}
+
+/**
+ * Post a label on a pull request via the backend.
+ */
+export async function postPRLabel({
+  prId,
+  projectName,
+  repositoryId,
+  labelName,
+  connection
+}: PostPRLabelParams): Promise<void> {
+  const url = buildUrl(connection, '/post-pr-label');
+
+  await postJson<{ success: boolean }>(
+    url,
+    { prId, projectName, repositoryId, labelName },
+    30000
+  );
+}

@@ -143,7 +143,7 @@ export async function fetchPRDiff(
 
     const diffChanges: DiffChange[] = [];
     /** Max files included in diff for AI prompt (keeps user prompt under ~5k tokens). */
-    const MAX_FILES_FOR_AI = 28;
+    const MAX_FILES_FOR_AI = 40;
 
     // Step 4: Process each changed file and fetch actual content via REST
 
