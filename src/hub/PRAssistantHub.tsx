@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 
 import { CommonServiceIds, getClient, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 
-import { FluentProvider, webLightTheme } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Checkbox } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -41,6 +41,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const [currentStep, setCurrentStep] = React.useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
+  const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
+  const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
 
 
   React.useEffect(() => {
@@ -293,66 +295,68 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       );
 
 
-            // Step 6: Post main comment on PR
+            // Step 6: Post main comment on PR (optional)
             setCompletedSteps(prev => [...prev, 4]);
-            setCurrentStep(5);
-            try {
-              await backendClient.postPRComment({
-                prId: prData.prId,
-                projectName,
-                repositoryId,
-                workItemId: result.workItemId,
-                connection: backendUrl
-              });
-
-            
-            } catch (err) {
-              console.warn('PR comment failed but work item was created:', err);
-            }
-
-            // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
-            try {
-              const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
-              if (scopeHtml && scopeHtml.length > 0) {
-                // Post Scope of Change as a separate comment
+            if (postCommentOnPR) {
+              setCurrentStep(5);
+              try {
                 await backendClient.postPRComment({
                   prId: prData.prId,
                   projectName,
                   repositoryId,
                   workItemId: result.workItemId,
-                  connection: backendUrl,
-                  commentContent: scopeHtml
+                  connection: backendUrl
                 });
-
+              } catch (err) {
+                console.warn('PR comment failed but work item was created:', err);
               }
-            } catch (err) {
-              console.warn('Failed to post Purpose and Scope of Change comment:', err);
+
+              // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
+              try {
+                const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
+                if (scopeHtml && scopeHtml.length > 0) {
+                  await backendClient.postPRComment({
+                    prId: prData.prId,
+                    projectName,
+                    repositoryId,
+                    workItemId: result.workItemId,
+                    connection: backendUrl,
+                    commentContent: scopeHtml
+                  });
+                }
+              } catch (err) {
+                console.warn('Failed to post Purpose and Scope of Change comment:', err);
+              }
+              setCompletedSteps(prev => [...prev, 5]);
             }
 
-            setCompletedSteps(prev => [...prev, 5]);
-            setCurrentStep(6);
-
-            // Step 6c: Post PR label (non-blocking)
-            try {
-              await backendClient.postPRLabel({
-                prId: prData.prId,
-                projectName,
-                repositoryId,
-                connection: backendUrl,
-                labelName: 'Test Case Generated'
-              });
-            } catch (err) {
-              console.warn('PR label failed but work item was created:', err);
+            // Step 6c: Post PR label (optional)
+            if (addLabelToPR) {
+              setCurrentStep(6);
+              try {
+                await backendClient.postPRLabel({
+                  prId: prData.prId,
+                  projectName,
+                  repositoryId,
+                  connection: backendUrl,
+                  labelName: 'Test Case Generated'
+                });
+              } catch (err) {
+                console.warn('PR label failed but work item was created:', err);
+              }
+              setCompletedSteps(prev => [...prev, 6]);
             }
-
-            setCompletedSteps(prev => [...prev, 6]);
 
       // Step 7: Show success message
       setCurrentStep(null);
+      const detailParts: string[] = [];
+      if (postCommentOnPR) detailParts.push('A comment has been posted on this PR with the test case details.');
+      if (addLabelToPR) detailParts.push('A label has been added to this PR.');
+      if (detailParts.length === 0) detailParts.push('Work item created. No comment or label was added.');
       setSuccessMessage({
         text: "Work item created successfully!",
         url: result.workItemUrl,
-        details: "A comment has been posted on this PR with the test case details."
+        details: detailParts.join(' ')
       });
       setTimeout(() => setSuccessMessage(null), 60000); // Clear success message after 60 seconds
 
@@ -513,12 +517,42 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }}
       >
         <p style={{ margin: 0 }}>
-          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically, and a comment will be posted on the PR with the generated test coverage details.
+          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically. You can optionally post a comment and add a label on the PR (uncheck below to skip).
         </p>
         <p style={{ marginTop: '12px' }}>
           This process may take some time, especially for larger pull requests or when the backend is under heavy load. Please wait after clicking
           <strong> "Generate"</strong>. If something goes wrong, an error message will appear above.
         </p>
+      </div>
+
+      {/* Optional: Post comment / Add label */}
+      <div
+        style={{
+          background: 'white',
+          padding: '16px 24px',
+          borderRadius: '12px',
+          boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+          border: '1px solid #e1e1e1',
+          marginTop: '12px'
+        }}
+      >
+        <div style={{ fontSize: '14px', fontWeight: 600, color: '#444', marginBottom: '10px' }}>
+          After generating
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <Checkbox
+            checked={postCommentOnPR}
+            onChange={(_e, data) => setPostCommentOnPR(!!data.checked)}
+            label="Post comment on PR with work item link and test case summary"
+            disabled={isGenerating}
+          />
+          <Checkbox
+            checked={addLabelToPR}
+            onChange={(_e, data) => setAddLabelToPR(!!data.checked)}
+            label={'Add label "Test Case Generated" to PR'}
+            disabled={isGenerating}
+          />
+        </div>
       </div>
 
       {/* AI Activity Feed - shows during generation */}
