@@ -11,7 +11,7 @@
     "dev": "ts-node server.ts",
     "build": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist && cpx public/**/* dist/public -u",
     "build:extension": "webpack --config webpack.config.js",
-    "build:backend": "tsc -p tsconfig.backend.json && cp system-prompt.txt dist/ && if [ -d public ]; then cp -r public dist/; fi",
+    "build:backend": "tsc -p tsconfig.backend.json && cp system-prompt.txt dist/ && cp system-prompt.txt dist/backend/ && if [ -d public ]; then cp -r public dist/; fi",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "package:extension": "tfx extension create --manifest-globs vss-extension.json --rev-version --output-path ./output",
     "publish:all": "powershell src/backend/utils/publish-all.ps1",
