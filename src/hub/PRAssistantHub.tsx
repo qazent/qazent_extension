@@ -42,7 +42,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [currentStep, setCurrentStep] = React.useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
-  const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
+  // --- POST PR LABEL VAULTED ---
+  // const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
 
 
   React.useEffect(() => {
@@ -330,29 +331,30 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
               setCompletedSteps(prev => [...prev, 5]);
             }
 
+            // --- POST PR LABEL VAULTED ---
             // Step 6c: Post PR label (optional)
-            if (addLabelToPR) {
-              setCurrentStep(6);
-              try {
-                await backendClient.postPRLabel({
-                  prId: prData.prId,
-                  projectName,
-                  repositoryId,
-                  connection: backendUrl,
-                  labelName: 'Test Case Generated'
-                });
-              } catch (err) {
-                console.warn('PR label failed but work item was created:', err);
-              }
-              setCompletedSteps(prev => [...prev, 6]);
-            }
+            // if (addLabelToPR) {
+            //   setCurrentStep(6);
+            //   try {
+            //     await backendClient.postPRLabel({
+            //       prId: prData.prId,
+            //       projectName,
+            //       repositoryId,
+            //       connection: backendUrl,
+            //       labelName: 'Test Case Generated'
+            //     });
+            //   } catch (err) {
+            //     console.warn('PR label failed but work item was created:', err);
+            //   }
+            //   setCompletedSteps(prev => [...prev, 6]);
+            // }
 
       // Step 7: Show success message
       setCurrentStep(null);
       const detailParts: string[] = [];
       if (postCommentOnPR) detailParts.push('A comment has been posted on this PR with the test case details.');
-      if (addLabelToPR) detailParts.push('A label has been added to this PR.');
-      if (detailParts.length === 0) detailParts.push('Work item created. No comment or label was added.');
+      // if (addLabelToPR) detailParts.push('A label has been added to this PR.');
+      if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
       setSuccessMessage({
         text: "Work item created successfully!",
         url: result.workItemUrl,
@@ -517,7 +519,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }}
       >
         <p style={{ margin: 0 }}>
-          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically. You can optionally post a comment and add a label on the PR (uncheck below to skip).
+          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically. You can optionally post a comment on the PR (uncheck below to skip).
         </p>
         <p style={{ marginTop: '12px' }}>
           This process may take some time, especially for larger pull requests or when the backend is under heavy load. Please wait after clicking
@@ -546,12 +548,13 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
             label="Post comment on PR with work item link and test case summary"
             disabled={isGenerating}
           />
-          <Checkbox
+          {/* --- POST PR LABEL VAULTED --- */}
+          {/* <Checkbox
             checked={addLabelToPR}
             onChange={(_e, data) => setAddLabelToPR(!!data.checked)}
             label={'Add label "Test Case Generated" to PR'}
             disabled={isGenerating}
-          />
+          /> */}
         </div>
       </div>
 

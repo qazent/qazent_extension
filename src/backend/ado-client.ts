@@ -449,53 +449,30 @@ export async function createFallbackWorkItem(
     throw new Error(`Failed to create fallback work item: ${error}`);
   }
 }
-   /**
- * Post a label on a pull request (non-blocking)
- */
-    export async function postPRLabel({
-      projectName,
-      repositoryId,
-      prId,
-      connection,
-      labelName
-    }: {
-      projectName: string;
-      repositoryId: string;
-      prId: number;
-      connection: azdev.WebApi;
-      labelName: string;
-    }): Promise<void> {
-      logger.info("Posting PR label", { projectName, prId, labelName });
-
-      try {
-        const gitApi: GitApi = await connection.getGitApi();
-
-        const prLabel = {
-          name: labelName
-        };
-
-        await gitApi.createPullRequestLabel(
-          prLabel,
-          repositoryId,
-          prId,
-          projectName
-        );
-
-        logger.info("PR label posted successfully", {
-          projectName,
-          prId,
-          labelName
-        });
-      } catch (error) {
-        logger.error("Failed to post PR label", {
-          projectName,
-          prId,
-          labelName,
-          error: String(error)
-        });
-
-      }
-    }
+   // --- POST PR LABEL VAULTED ---
+   // export async function postPRLabel({
+   //   projectName,
+   //   repositoryId,
+   //   prId,
+   //   connection,
+   //   labelName
+   // }: {
+   //   projectName: string;
+   //   repositoryId: string;
+   //   prId: number;
+   //   connection: azdev.WebApi;
+   //   labelName: string;
+   // }): Promise<void> {
+   //   logger.info("Posting PR label", { projectName, prId, labelName });
+   //   try {
+   //     const gitApi: GitApi = await connection.getGitApi();
+   //     const prLabel = { name: labelName };
+   //     await gitApi.createPullRequestLabel(prLabel, repositoryId, prId, projectName);
+   //     logger.info("PR label posted successfully", { projectName, prId, labelName });
+   //   } catch (error) {
+   //     logger.error("Failed to post PR label", { projectName, prId, labelName, error: String(error) });
+   //   }
+   // }
       /**
        * Post a comment on a pull request
        */

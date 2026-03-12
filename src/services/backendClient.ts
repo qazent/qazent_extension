@@ -295,34 +295,21 @@ export async function postPRComment({
   );
 }
 
-/**
- * Parameters for posting a label on a PR.
- *
- * `connection` is the backend base URL that exposes the `/post-pr-label` endpoint.
- */
-export interface PostPRLabelParams {
-  prId: number;
-  projectName: string;
-  repositoryId: string;
-  labelName: string;
-  connection: string;
-}
-
-/**
- * Post a label on a pull request via the backend.
- */
-export async function postPRLabel({
-  prId,
-  projectName,
-  repositoryId,
-  labelName,
-  connection
-}: PostPRLabelParams): Promise<void> {
-  const url = buildUrl(connection, '/post-pr-label');
-
-  await postJson<{ success: boolean }>(
-    url,
-    { prId, projectName, repositoryId, labelName },
-    30000
-  );
-}
+// --- POST PR LABEL VAULTED ---
+// export interface PostPRLabelParams {
+//   prId: number;
+//   projectName: string;
+//   repositoryId: string;
+//   labelName: string;
+//   connection: string;
+// }
+// export async function postPRLabel({
+//   prId,
+//   projectName,
+//   repositoryId,
+//   labelName,
+//   connection
+// }: PostPRLabelParams): Promise<void> {
+//   const url = buildUrl(connection, '/post-pr-label');
+//   await postJson<{ success: boolean }>(url, { prId, projectName, repositoryId, labelName }, 30000);
+// }
