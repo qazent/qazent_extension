@@ -55,6 +55,9 @@ export class InMemoryLicenseStore implements LicenseStore {
     if (patch.organization !== undefined && patch.organization !== current.organization) {
       this.byOrg.delete(current.organization);
     }
+    if (patch.licenseKeyHash !== undefined && patch.licenseKeyHash !== current.licenseKeyHash) {
+      this.byHash.delete(current.licenseKeyHash);
+    }
     this.records.set(id, updated);
     this.byOrg.set(updated.organization, id);
     if (patch.licenseKeyHash !== undefined) this.byHash.set(updated.licenseKeyHash, id);

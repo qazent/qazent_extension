@@ -3,10 +3,10 @@
  * @see https://docs.lemonsqueezy.com/help/webhooks/signing-requests
  */
 
-import * as crypto from 'crypto';
 import * as logger from '../utils/logger';
 import { loadLicenseConfig, isLicenseConfigReadyForWebhooks } from '../config/license-config';
 import { getDefaultLicenseStore, createLicenseRecord } from './model';
+import { hashLicenseKey, planFromVariant } from './utils';
 import type { LicenseRecord, LicenseStatus } from './types';
 import type { IncomingMessage } from 'http';
 
@@ -136,7 +136,7 @@ async function handleLicenseKeyEvent(
   const activationLimit = attrs.activation_limit as number | null | undefined;
   const expiresAt = parseDate(attrs.expires_at);
   if (!key) return;
-  const keyHash = hashKey(key);
+  const keyHash = hashLicenseKey(key);
   const existing = await store.findByLicenseHash(keyHash);
   const statusMap: Record<string, LicenseStatus> = {
     active: 'active',
@@ -162,11 +162,6 @@ async function handleLicenseKeyEvent(
   logger.info('License key event processed', { event: 'license_key', lemonId, status: ourStatus });
 }
 
-function hashKey(key: string): string {
-  const salt = config.licenseHashSalt || 'default-salt-change-me';
-  return crypto.createHash('sha256').update(key + salt).digest('hex');
-}
-
 async function handleOrderCreated(
   store: ReturnType<typeof getDefaultLicenseStore>,
   _orderId: string,
@@ -181,7 +176,7 @@ async function handleOrderCreated(
   const licenseKey = attrs.license_key as Record<string, unknown> | undefined;
   const key = licenseKey?.key as string | undefined;
   if (!key) return;
-  const keyHash = hashKey(key);
+  const keyHash = hashLicenseKey(key);
   const existing = await store.findByLicenseHash(keyHash);
   const plan = planFromVariant(variantName);
   const record = createLicenseRecord({
@@ -220,15 +215,6 @@ async function findRecordsByOrderId(
   const id = typeof orderId === 'number' ? orderId : null;
   if (id == null) return [];
   return store.findByLemonOrderId(id);
-}
-
-function planFromVariant(variantName: string | undefined): string {
-  if (!variantName) return 'default';
-  const lower = variantName.toLowerCase();
-  if (lower.includes('pro')) return 'Pro';
-  if (lower.includes('team')) return 'Team';
-  if (lower.includes('enterprise')) return 'Enterprise';
-  return variantName;
 }
 
 async function handleSubscriptionActive(

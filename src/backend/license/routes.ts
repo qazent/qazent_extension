@@ -9,10 +9,6 @@ import * as licenseService from './service';
 import * as webhookHandler from './webhook-handler';
 import * as logger from '../utils/logger';
 
-export interface LicenseRoutesOptions {
-  handleWebhook: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
-}
-
 /**
  * GET /license/status?organization=...&userId=...
  * Responds with LicenseStatusResponse. Organization and userId are taken from authenticated request context.
