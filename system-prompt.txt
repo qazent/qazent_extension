@@ -138,7 +138,7 @@ Organize automation strategy into:
 
 <strong>Unit Tests:</strong> functions or logic to test in isolation
 <strong>E2E Tests:</strong> user workflows or UI flows
-<strong>Ad hoc Tests::</strong> cases requiring human verification
+<strong>Ad hoc Tests:</strong> cases requiring human verification
 
 If everything can be automated, omit Manual Only.
 

@@ -2,11 +2,11 @@
  * License module: core business logic for status, activation, and seat enforcement
  */
 
-import * as crypto from 'crypto';
 import * as logger from '../utils/logger';
 import { loadLicenseConfig, isLicenseConfigReadyForActivation } from '../config/license-config';
 import { validateLicenseKey } from './lemon-api';
 import { getDefaultLicenseStore, createLicenseRecord, createSeatAssignment } from './model';
+import { hashLicenseKey, planFromVariant } from './utils';
 import type {
   LicenseStatus,
   LicenseStatusResponse,
@@ -16,20 +16,6 @@ import type {
 } from './types';
 
 const config = loadLicenseConfig();
-
-function hashLicenseKey(key: string): string {
-  const salt = config.licenseHashSalt || 'default-salt-change-me';
-  return crypto.createHash('sha256').update(key + salt).digest('hex');
-}
-
-function planFromVariant(variantName: string | null): string {
-  if (!variantName || typeof variantName !== 'string') return 'default';
-  const lower = variantName.toLowerCase();
-  if (lower.includes('pro')) return 'Pro';
-  if (lower.includes('team')) return 'Team';
-  if (lower.includes('enterprise')) return 'Enterprise';
-  return variantName;
-}
 
 /**
  * Compute effective status for display (grace period, suspended, etc.)
