@@ -100,6 +100,26 @@ PORT=3000
 3. Select or create a Google Cloud project
 4. Copy the API key
 
+#### License configuration (optional)
+
+The extension supports license activation and status via a backend license service and [Lemon Squeezy](https://www.lemonsqueezy.com/) (API + webhooks). Configure the following for license features:
+
+- **Backend (e.g. Render Web Service or same Node server)**  
+  Set these environment variables:
+
+  - `LICENSE_HASH_SALT` – Required for activation. A secret string used to hash license keys (never store raw keys).
+  - `LEMON_SQUEEZY_WEBHOOK_SECRET` – Required for webhooks. The signing secret you set when creating the webhook in the Lemon Squeezy dashboard.
+  - `LEMON_SQUEEZY_LICENSE_API_URL` – Optional. Defaults to `https://api.lemonsqueezy.com/v1/licenses`.
+  - `LICENSE_DEFAULT_SEATS_PER_KEY` – Optional. Default seat count when a key has no `activation_limit` (default: 5).
+  - `LICENSE_EXPIRY_GRACE_DAYS` – Optional. Days after expiry to still consider the license active (default: 0).
+  - `LICENSE_ALLOWED_PRODUCT_IDS` – Optional. Comma-separated product/variant IDs that are valid for this extension.
+
+- **Lemon Squeezy**  
+  In [Settings → Webhooks](https://app.lemonsqueezy.com/settings/webhooks), add an endpoint URL (e.g. `https://your-api.example.com/webhooks/lemon-squeezy`), set a signing secret (store it in `LEMON_SQUEEZY_WEBHOOK_SECRET`), and subscribe to events such as `order_created`, `order_refunded`, `subscription_created`, `subscription_updated`, `subscription_expired`, `subscription_cancelled`, `subscription_payment_failed`, `license_key_created`, `license_key_updated`.
+
+- **Azure DevOps extension**  
+  The License panel is under **Project Settings** → **QAZent - License**. The panel uses the `backendUrl` from the contribution in `vss-extension.json` (e.g. `https://api.qazent.com`) to call `GET /license/status` and `POST /license/activate`. Users must be signed in to Azure DevOps; the backend derives organization and user from the token and `X-Ado-Org-Url` header.
+
 ### 3. Run Development Server
 
 ```bash

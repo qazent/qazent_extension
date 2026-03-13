@@ -221,6 +221,36 @@ export const rateLimitHealth = createRateLimiter({
 });
 
 /**
+ * Rate limiter for /license/status
+ * Limit: 60 requests per minute per IP
+ */
+export const rateLimitLicenseStatus = createRateLimiter({
+  windowMs: 1 * 60 * 1000,
+  maxRequests: 60,
+  message: 'Too many license status requests.'
+});
+
+/**
+ * Rate limiter for /license/activate
+ * Limit: 20 requests per 10 minutes per IP
+ */
+export const rateLimitLicenseActivate = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many license activation requests.'
+});
+
+/**
+ * Rate limiter for /webhooks/lemon-squeezy
+ * Limit: 200 requests per 10 minutes per IP
+ */
+export const rateLimitLemonSqueezyWebhook = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 200,
+  message: 'Too many webhook requests.'
+});
+
+/**
  * Get rate limiter statistics (for monitoring)
  */
 export function getRateLimitStats(): {
