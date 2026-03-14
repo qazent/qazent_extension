@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 
 import { CommonServiceIds, getClient, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 
-import { FluentProvider, webLightTheme, Checkbox, Spinner } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Checkbox } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -19,6 +19,8 @@ import { GitRestClient } from 'azure-devops-extension-api/Git';
 import { getLicenseStatus } from '../license/api';
 import type { LicenseStatusResponse } from '../license/api';
 import { LicenseGateMessage } from '../license/LicenseGateMessage';
+import { LicenseCheckScreen } from '../license/LicenseCheckScreen';
+import { useElapsedTimer } from '../hooks/useElapsedTimer';
 
 const PRAssistantHub: React.FC = () => {
   const [prData, setPRData] = React.useState<PRData | null>(null);
@@ -38,8 +40,33 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   'https://api.qazent.com');  // Default backend URL, should be overridden by config
 
   type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
+  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>('loading');
   const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
   const [licenseError, setLicenseError] = React.useState(false);
+  const licenseAbortRef = React.useRef<AbortController | null>(null);
+
+  const runCheckLicense = React.useCallback((baseUrl: string) => {
+    setLicenseCheckState('loading');
+    setLicenseError(false);
+    licenseAbortRef.current?.abort();
+    const controller = new AbortController();
+    licenseAbortRef.current = controller;
+    getLicenseStatus(baseUrl, controller.signal)
+      .then((data) => {
+        setLicenseStatus(data.status);
+        setLicenseCheckState('success');
+      })
+      .catch((err) => {
+        // Ignore abort: timeout or Retry aborted the request; state is handled elsewhere
+        if (err?.name === 'AbortError') return;
+        setLicenseStatus('none');
+        setLicenseError(true);
+        setLicenseCheckState('success');
+      });
+  }, []);
+
+  const isLicenseChecking = licenseCheckState === 'loading';
+  const { elapsedSeconds, timedOut } = useElapsedTimer(isLicenseChecking, { timeoutSeconds: 90 });
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
@@ -76,16 +103,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       }
       const baseUrl = backend || 'https://api.qazent.com';
 
-      // 3b. License check (block main UI until resolved)
-      setLicenseStatus('loading');
-      setLicenseError(false);
-      try {
-        const data = await getLicenseStatus(baseUrl);
-        setLicenseStatus(data.status);
-      } catch {
-        setLicenseStatus('none');
-        setLicenseError(true);
-      }
+      // 3b. License check (runs in parallel; UI shows LicenseCheckScreen with timer)
+      runCheckLicense(baseUrl);
 
       // 4. Get project ID (GUID) for artifact URI construction
       const projectService = await SDK.getService<IProjectPageService>(CommonServiceIds.ProjectPageService);
@@ -107,7 +126,15 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   };
 
   init();
-}, []);
+}, [runCheckLicense]);
+
+  // Timeout: at 90s abort the request and show error + Retry
+  React.useEffect(() => {
+    if (timedOut && licenseCheckState === 'loading') {
+      licenseAbortRef.current?.abort();
+      setLicenseCheckState('timeout');
+    }
+  }, [timedOut, licenseCheckState]);
 
   // Countdown timer: ticks down from 180s while generating, clears on success/error/completion
   React.useEffect(() => {
@@ -268,6 +295,9 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
     setCompletedSteps([]);
 
     try {
+      let workItemCommentPosted = false;
+      let detailsCommentPosted = false;
+
       // Step 3: Validate metadata
       setCurrentStep(1);
       if (!repositoryId || !projectName) {
@@ -323,13 +353,14 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
             if (postCommentOnPR) {
               setCurrentStep(5);
               try {
-                await backendClient.postPRComment({
+                const commentResponse = await backendClient.postPRComment({
                   prId: prData.prId,
                   projectName,
                   repositoryId,
                   workItemId: result.workItemId,
                   connection: backendUrl
                 });
+                workItemCommentPosted = commentResponse.success === true;
               } catch (err) {
                 console.warn('PR comment failed but work item was created:', err);
               }
@@ -338,7 +369,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
               try {
                 const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
                 if (scopeHtml && scopeHtml.length > 0) {
-                  await backendClient.postPRComment({
+                  const detailsCommentResponse = await backendClient.postPRComment({
                     prId: prData.prId,
                     projectName,
                     repositoryId,
@@ -346,6 +377,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
                     connection: backendUrl,
                     commentContent: scopeHtml
                   });
+                  detailsCommentPosted = detailsCommentResponse.success === true;
                 }
               } catch (err) {
                 console.warn('Failed to post Purpose and Scope of Change comment:', err);
@@ -374,7 +406,13 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       // Step 7: Show success message
       setCurrentStep(null);
       const detailParts: string[] = [];
-      if (postCommentOnPR) detailParts.push('A comment has been posted on this PR with the test case details.');
+      if (detailsCommentPosted) {
+        detailParts.push('A PR comment with the test case details was posted successfully.');
+      } else if (workItemCommentPosted) {
+        detailParts.push('A PR comment with the work item link was posted successfully.');
+      } else if (postCommentOnPR) {
+        detailParts.push('Work item created, but the PR comment was not posted successfully.');
+      }
       // if (addLabelToPR) detailParts.push('A label has been added to this PR.');
       if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
       setSuccessMessage({
@@ -423,15 +461,17 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   return (
   <FluentProvider theme={webLightTheme}>
     <div style={containerStyle}>
-      {licenseStatus === 'loading' && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px' }}>
-          <Spinner size="medium" label="Checking license…" />
-        </div>
+      {(licenseCheckState === 'loading' || licenseCheckState === 'timeout') && (
+        <LicenseCheckScreen
+          elapsedSeconds={elapsedSeconds}
+          timedOut={licenseCheckState === 'timeout'}
+          onRetry={() => runCheckLicense(backendUrl)}
+        />
       )}
-      {licenseStatus !== 'loading' && licenseStatus !== 'active' && (
+      {licenseCheckState === 'success' && licenseStatus !== 'active' && (
         <LicenseGateMessage showNetworkHint={licenseError} />
       )}
-      {licenseStatus === 'active' && (
+      {licenseCheckState === 'success' && licenseStatus === 'active' && (
         <>
       {/* Error message */}
       {error && (
