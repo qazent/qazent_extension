@@ -654,7 +654,11 @@ export async function generateTestCases(
         });
       }
       if (parsed.htmlDescription != null && typeof parsed.htmlDescription === 'string') {
-        parsed.htmlDescription = sanitizeHTML(parsed.htmlDescription);
+        parsed.htmlDescription = sanitizeHTML(parsed.htmlDescription, {
+          source: 'ai.generateTestCases',
+          prId: prMetadata.prId,
+          projectName: prMetadata.projectName,
+        });
       }
 
       // Validate task output

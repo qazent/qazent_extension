@@ -2,10 +2,16 @@
  * Unit tests for Azure DevOps client artifact URI construction
  */
 
-import { buildPRArtifactUri } from '../src/backend/ado-client';
+import { buildPRArtifactUri, createTaskWorkItem, postPRComment } from '../src/backend/ado-client';
 import { PRMetadata } from '../src/backend/types';
 import { describe, it, expect } from '@jest/globals';
 
+jest.mock('../src/backend/utils/logger', () => ({
+  info: jest.fn(),
+  debug: jest.fn(),
+  error: jest.fn(),
+  warn: jest.fn(),
+}));
 
 describe('buildPRArtifactUri', () => {
     const mockMetadata: PRMetadata = {
@@ -184,6 +190,75 @@ describe('buildPRArtifactUri', () => {
     const unencodedSlashes = afterProtocol.split('/').length - 1;
     // "Git/PullRequestId/{encodedPath}" has 2 unencoded slashes
     expect(unencodedSlashes).toBe(2);
+  });
+});
+
+describe('Azure DevOps content persistence', () => {
+  const mockMetadata: PRMetadata = {
+    prId: 42,
+    title: 'Sanitize persisted HTML',
+    description: 'Description',
+    repositoryId: 'repo-123',
+    repositoryName: 'repo-name',
+    projectName: 'project-name',
+    projectId: 'project-123',
+    sourceBranch: 'refs/heads/feature/security',
+    targetBranch: 'refs/heads/main',
+    author: 'Security Tester',
+    authorEmail: 'security@example.com',
+    createDate: new Date(),
+    branchName: 'feature/security',
+  };
+
+  it('sanitizes task descriptions before creating the work item', async () => {
+    const createWorkItem = jest.fn().mockResolvedValue({ id: 9001 });
+    const connection = {
+      getWorkItemTrackingApi: jest.fn().mockResolvedValue({ createWorkItem }),
+    } as unknown as any;
+
+    await createTaskWorkItem(
+      mockMetadata.projectName,
+      {
+        title: 'Test Case: Safe HTML',
+        htmlDescription: '<h2 onclick="alert(1)">Purpose</h2><p>Keep me</p><script>alert(2)</script>',
+      },
+      mockMetadata,
+      connection
+    );
+
+    const patchDocument = createWorkItem.mock.calls[0][1];
+    const descriptionOperation = patchDocument.find((op: { path: string }) => op.path === '/fields/System.Description');
+
+    expect(descriptionOperation.value).toContain('<h2>Purpose</h2>');
+    expect(descriptionOperation.value).toContain('<p>Keep me</p>');
+    expect(descriptionOperation.value).not.toContain('onclick');
+    expect(descriptionOperation.value).not.toContain('<script');
+    expect(descriptionOperation.value).not.toContain('alert(');
+  });
+
+  it('sanitizes PR comment HTML before posting the thread', async () => {
+    const createThread = jest.fn().mockResolvedValue({});
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({ createThread }),
+    } as unknown as any;
+
+    await postPRComment({
+      projectName: mockMetadata.projectName,
+      repositoryId: mockMetadata.repositoryId,
+      prId: mockMetadata.prId,
+      workItemId: 9001,
+      connection,
+      commentContent: '<p onclick="alert(1)">Scope</p><img src=x onerror="alert(2)"><script>alert(3)</script>',
+    });
+
+    const thread = createThread.mock.calls[0][0];
+    const content = thread.comments[0].content;
+
+    expect(content).toContain('<p>Scope</p>');
+    expect(content).not.toContain('onclick');
+    expect(content).not.toContain('<img');
+    expect(content).not.toContain('<script');
+    expect(content).not.toContain('alert(');
   });
 });
 

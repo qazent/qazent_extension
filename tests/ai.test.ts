@@ -91,7 +91,8 @@ describe('generateTestCases', () => {
     expect(result.title).toBe('Test Case: Feature Functionality');
     expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
     expect(result.htmlDescription).toContain('<table>');
-    expect(result.htmlDescription).toBe(html);
+    expect(result.htmlDescription).toContain('Verify the new feature works correctly.');
+    expect(result.htmlDescription).not.toContain('<script');
   });
 
   it('should return htmlDescription with multi-line HTML', async () => {
@@ -228,6 +229,37 @@ describe('generateTestCases', () => {
     expect(result.htmlDescription).toContain('<h2>Automation Notes</h2>');
   });
 
+  it('should sanitize unsafe HTML before returning generated output', async () => {
+    const unsafeHtml =
+      '<h2 onclick="alert(1)">Purpose</h2>' +
+      '<p>Safe</p>' +
+      '<script>alert(2)</script>' +
+      '<h2>Scope of Change</h2><p>Scope</p>' +
+      '<h2>Preconditions</h2><p>None</p>' +
+      '<h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table>' +
+      '<h2>Negative Scenarios</h2><p>None</p>' +
+      '<h2>Edge Cases</h2><p>None</p>' +
+      '<h2>Regression Areas</h2><p>None</p>' +
+      '<h2>Data Requirements</h2><p>None</p>' +
+      '<h2>Automation Notes</h2><p>Unit tests.</p>' +
+      'x'.repeat(2600);
+
+    mockGenerateContent.mockResolvedValue({
+      text: JSON.stringify({
+        title: 'Test Case: Sanitized',
+        htmlDescription: unsafeHtml
+      })
+    });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<p>Safe</p>');
+    expect(result.htmlDescription).not.toContain('onclick');
+    expect(result.htmlDescription).not.toContain('<script');
+    expect(result.htmlDescription).not.toContain('alert(');
+  });
+
   it('should accept legacy htmlDescriptionBase64 and decode to htmlDescription', async () => {
     const html = '<h2>Purpose</h2><p>Legacy.</p><h2>Scope of Change</h2><p>Scope.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Unit tests.</p>' + 'x'.repeat(2600);
     const base64Value = Buffer.from(html, 'utf-8').toString('base64');
@@ -242,7 +274,8 @@ describe('generateTestCases', () => {
 
     expect(result.title).toBe('Test Case: Legacy');
     expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
-    expect(result.htmlDescription).toBe(html);
+    expect(result.htmlDescription).toContain('<h2>Automation Notes</h2>');
+    expect(result.htmlDescription).not.toContain('<script');
   });
 });
 

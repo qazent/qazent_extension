@@ -8,6 +8,7 @@ import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
 import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
+import { sanitizeHTML } from './utils/sanitize-html';
 
 /**
  * Create a new Azure DevOps connection using user's OAuth JWT token and organization URL
@@ -286,6 +287,11 @@ export async function createTaskWorkItem(
     logger.info('Creating task work item', { projectName, prId: prMetadata.prId });
 
     const witApi: WorkItemTrackingApi = await connection.getWorkItemTrackingApi();
+    const sanitizedDescription = sanitizeHTML(taskOutput.htmlDescription, {
+      source: 'ado.createTaskWorkItem',
+      prId: prMetadata.prId,
+      projectName,
+    });
 
     // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
     const prArtifactUri = buildPRArtifactUri(prMetadata);
@@ -307,7 +313,7 @@ export async function createTaskWorkItem(
       {
         op: Operation.Add,
         path: '/fields/System.Description',
-        value: taskOutput.htmlDescription
+        value: sanitizedDescription
       },
       {
         op: Operation.Add,
@@ -374,13 +380,17 @@ export async function createFallbackWorkItem(
 
     const title = `Test Case: ${prMetadata.title} (Auto-generated - AI unavailable)`;
 
-    const descriptionHtml = `
+    const descriptionHtml = sanitizeHTML(`
 <p>AI test case generation failed after multiple attempts.</p>
 <p><strong>PR #${prMetadata.prId}:</strong> ${escapeHtml(prMetadata.title)}</p>
 <p><strong>Author:</strong> ${escapeHtml(prMetadata.author)}</p>
 <p><strong>Description:</strong> ${escapeHtml(prMetadata.description || 'N/A')}</p>
 <hr/>
-<p><em>Please manually review this PR and create appropriate test cases.</em></p>`;
+<p><em>Please manually review this PR and create appropriate test cases.</em></p>`, {
+      source: 'ado.createFallbackWorkItem',
+      prId: prMetadata.prId,
+      projectName,
+    });
 
     // Build PR artifact URI for linking (vstfs format required by Azure DevOps API)
     const prArtifactUri = buildPRArtifactUri(prMetadata);
@@ -497,7 +507,12 @@ export async function createFallbackWorkItem(
         const gitApi: GitApi = await connection.getGitApi();
 
         const commentText =
-          commentContent ?? `Testcase workitem has been created! #${workItemId}`;
+          sanitizeHTML(commentContent ?? `Testcase workitem has been created! #${workItemId}`, {
+            source: 'ado.postPRComment',
+            prId,
+            projectName,
+            workItemId,
+          });
 
         const commentThread = {
           comments: [
