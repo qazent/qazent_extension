@@ -21,8 +21,12 @@ import {
   rateLimitPostPRComment,
   // rateLimitPostPRLabel, // --- POST PR LABEL VAULTED ---
   rateLimitExtractPurposeScope,
-  rateLimitHealth
+  rateLimitHealth,
+  rateLimitLicenseStatus,
+  rateLimitLicenseActivate,
+  rateLimitLemonSqueezyWebhook
 } from './middleware/rateLimiter';
+import * as licenseRoutes from './license/routes';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
 // import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
@@ -1336,6 +1340,49 @@ function startServer(): void {
       }
 
       await applyMiddleware(rateLimitExtractPurposeScope, handleExtractPurposeScope)(req, res);
+      return;
+    }
+
+    // License status (PROTECTED - authentication + rate limiting)
+    const licenseStatusPath = normalizedUrl?.split('?')[0];
+    if (licenseStatusPath === '/license/status' && method === 'GET') {
+      rateLimitLicenseStatus(req, res, async () => {
+        await createAuthMiddleware(licenseRoutes.handleLicenseStatus)(req, res);
+      });
+      return;
+    }
+
+    // License activate (PROTECTED - authentication + rate limiting)
+    if (licenseStatusPath === '/license/activate' && method === 'POST') {
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'invalid', message: 'Expected application/json' }));
+        return;
+      }
+      let activateBody = '';
+      req.on('data', (chunk: Buffer) => { activateBody += chunk.toString(); });
+      req.on('end', async () => {
+        const activateStartTime = Date.now();
+        rateLimitLicenseActivate(req, res, async () => {
+          await createAuthMiddleware(async (authReq: AuthenticatedRequest) => {
+            logAuthenticatedRequest(authReq, res, activateStartTime);
+            await licenseRoutes.handleLicenseActivate(authReq, res, activateBody);
+          })(req, res);
+        });
+      });
+      return;
+    }
+
+    // Lemon Squeezy webhook (PUBLIC - no auth, signature verification inside handler, raw body required)
+    if (normalizedUrl === '/webhooks/lemon-squeezy' && method === 'POST') {
+      let webhookBody = '';
+      req.on('data', (chunk: Buffer) => { webhookBody += chunk.toString(); });
+      req.on('end', async () => {
+        rateLimitLemonSqueezyWebhook(req, res, async () => {
+          await licenseRoutes.handleLemonSqueezyWebhook(req, res, webhookBody);
+        });
+      });
       return;
     }
 

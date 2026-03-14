@@ -579,7 +579,7 @@ export async function generateTestCases(
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],
         config: {
-          temperature: 0.7,
+          temperature: 0.35, // Adjusted for more focused output; can be tuned based on observed response quality
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           responseMimeType: 'application/json',
           responseSchema: AI_RESPONSE_SCHEMA

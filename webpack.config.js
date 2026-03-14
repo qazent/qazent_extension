@@ -8,7 +8,8 @@ module.exports = (env, argv) => {
   return {
     entry: {
       hub: './src/index.tsx',
-      settings: './src/settings/index.tsx'
+      settings: './src/settings/index.tsx',
+      license: './src/license/index.tsx'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -41,6 +42,12 @@ module.exports = (env, argv) => {
         template: './src/settings/settings.html',
         filename: 'settings.html',
         chunks: ['settings'],
+        inject: 'body'
+      }),
+      new HtmlWebpackPlugin({
+        template: './src/license/license.html',
+        filename: 'license.html',
+        chunks: ['license'],
         inject: 'body'
       })
     ]

@@ -12,10 +12,10 @@ Analyze the PR and generate a single test case. The work item must contain:
 • impacted scope
 • security considerations
 • executable test steps
-• negative scenarios
-• edge cases
+• negative scenarios (minimum of 3 negative scenarios)
+• edge cases (minimum of 3 edge cases)
 • performance impact
-• regression areas
+• regression areas 
 • required data
 • automation strategy
 
@@ -79,7 +79,7 @@ Technology stack
 Constraints
 → reflect known limitations in Edge Cases or Regression Areas
 
-If context is absent, rely on code analysis and standard engineering practices.
+If context is absent, rely on code analysis and standard QA engineering practices.
 
 ------------------------------------------------
 
@@ -115,11 +115,10 @@ Use ONLY these HTML tags:
 
 Use <strong> only for subsection labels such as:
 
-Authentication:
-Authorization:
 Unit Tests:
 E2E Tests:
-Manual Only:
+Ad hoc Tests:
+
 
 ------------------------------------------------
 
@@ -129,7 +128,7 @@ The section Test Steps & Expected Results MUST use a 2-column table.
 
 Columns: Step | Expected Result
 
-Each step must be specific, executable, measurable, based on user flows. Minimum 3–5 steps.
+Each step must be specific, executable, measurable, based on real user flows. Minimum 3–5 steps.
 
 ------------------------------------------------
 
@@ -139,7 +138,7 @@ Organize automation strategy into:
 
 <strong>Unit Tests:</strong> functions or logic to test in isolation
 <strong>E2E Tests:</strong> user workflows or UI flows
-<strong>Manual Only:</strong> cases requiring human verification
+<strong>Ad hoc Tests:</strong> cases requiring human verification
 
 If everything can be automated, omit Manual Only.
 
