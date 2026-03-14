@@ -39,6 +39,45 @@ const config: Config.InitialOptions = {
     '!src/settings/index.tsx',
   ],
 
+  coverageThreshold: {
+    './src/backend/server.ts': {
+      statements: 40,
+      branches: 40,
+      functions: 55,
+      lines: 40,
+    },
+    './src/backend/fetchPRdiff.ts': {
+      statements: 80,
+      branches: 70,
+      functions: 85,
+      lines: 80,
+    },
+    './src/backend/middleware/authenticate.ts': {
+      statements: 65,
+      branches: 50,
+      functions: 100,
+      lines: 65,
+    },
+    './src/backend/middleware/rateLimiter.ts': {
+      statements: 75,
+      branches: 60,
+      functions: 60,
+      lines: 75,
+    },
+    './src/backend/utils/tokenValidator.ts': {
+      statements: 70,
+      branches: 60,
+      functions: 65,
+      lines: 70,
+    },
+    './src/backend/license/routes.ts': {
+      statements: 55,
+      branches: 50,
+      functions: 100,
+      lines: 55,
+    },
+  },
+
   testTimeout: 30000,
 };
 
