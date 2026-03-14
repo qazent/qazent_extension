@@ -41,10 +41,11 @@
     "azure-devops-node-api": "^12.5.0",
     "cors": "^2.8.5",
     "jsonrepair": "^3.13.2",
+    "pg": "^8.13.0",
+    "postgres": "^3.4.8",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsconfig-paths": "^4.2.0",
-    "pg": "^8.13.0",
     "uuid": "^9.0.0"
   },
   "devDependencies": {

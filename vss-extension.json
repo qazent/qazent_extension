@@ -1,60 +1,78 @@
 {
   "manifestVersion": 1,
-  "id": "pr-assistant-extension",
+  "id": "pr-assistant-extension-pro",
   "name": "PR Assistant",
-  "version": "2.0.14",
+  "version": "2.0.13",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
+
   "targets": [
-    {
-      "id": "Microsoft.VisualStudio.Services"
-    }
+    { "id": "Microsoft.VisualStudio.Services" }
   ],
 
   "galleryFlags": [
-    "Public"
+    "Paid",
+    "Preview"
   ],
+
+  "galleryProperties": {
+    "trialDays": "14"
+  },
+
+  "tags": [
+    "__BYOLENFORCED",
+    "pull-request",
+    "testing",
+    "ai",
+    "test",
+    "utility",
+    "automatic",
+    "agile"
+  ],
+
+  "content": {
+    "details": { "path": "overview.md" },
+    "pricing": { "path": "pricing.md" },
+    "license": { "path": "license-terms.md" }
+  },
+
+  "licensing": {
+    "overrides": [
+      { "id": "ai-context-settings-hub", "behavior": "AlwaysInclude" },
+      { "id": "license-hub", "behavior": "AlwaysInclude" },
+      { "id": "pr-assistant-tab", "behavior": "AlwaysInclude" }
+    ]
+  },
 
   "icons": {
     "default": "128x128.png"
   },
+
   "branding": {
     "color": "#1F2937",
     "theme": "dark"
   },
 
-
   "categories": ["Azure Repos", "Azure Boards"],
-  
-  "tags": ["pull-request", 
-  "testing", 
-  "ai", "test", 
-  "utility", 
-  "automatic", 
-  "agile"],
-  
-  "content": {
-    "details": {
-      "path": "overview.md"
-    },
-    "license":{
-      "path":"license-terms.md"
-    }
 
-  },
-  "badge": {  
+  "badge": {
     "url": "https://img.shields.io/badge/status-stable-brightgreen",
     "description": "Indicates that the extension is stable and ready for production use."
   },
-  "link": [
-    {
-      "name": "QAZent Website",
-      "url": "https://www.qazent.com"
-    }
-  ],
+
+  "links": {
+  "home": {
+    "uri": "https://www.qazent.com"
+  },
+  "support": {
+    "uri": "https://www.qazent.com/support"
+  },
+  "contact": {
+    "uri": "mailto:oskar@qazent.com"
+  }
+},
 
   "contributions": [
-
     {
       "id": "ai-context-settings-hub",
       "type": "ms.vss-web.hub",
@@ -89,29 +107,21 @@
       }
     }
   ],
+
   "files": [
-    {
-      "path": "dist",
-      "addressable": true
-    },
-    {
-      "path": "overview.md",
-      "addressable": true
-    },
-    {
-      "path": "license-terms.md",
-      "addressable": true
-    },
-    {
-      "path": "public",
-      "addressable": true
-    }
+    { "path": "dist", "addressable": true },
+    { "path": "overview.md", "addressable": true },
+    { "path": "pricing.md", "addressable": true },
+    { "path": "license-terms.md", "addressable": true },
+    { "path": "public", "addressable": true }  
   ],
-  "scopes": ["vso.code", 
-  "vso.work_write",
-  "vso.notification_write", 
-  "vso.hooks_interact", 
-  "vso.threads_full",
-  "vso.extension.data_write"
+
+  "scopes": [
+    "vso.code",
+    "vso.work_write",
+    "vso.notification_write",
+    "vso.hooks_interact",
+    "vso.threads_full",
+    "vso.extension.data_write"
   ]
 }
