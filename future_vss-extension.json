@@ -39,6 +39,7 @@
   "licensing": {
     "overrides": [
       { "id": "ai-context-settings-hub", "behavior": "AlwaysInclude" },
+      { "id": "license-hub", "behavior": "AlwaysInclude" },
       { "id": "pr-assistant-tab", "behavior": "AlwaysInclude" }
     ]
   },
@@ -48,7 +49,7 @@
   },
 
   "branding": {
-    "color": "#00BFFF",
+    "color": "#1F2937",
     "theme": "dark"
   },
 
@@ -80,6 +81,17 @@
         "name": "QAZent - AI Context Settings",
         "order": 100,
         "uri": "dist/settings.html",
+        "backendUrl": "https://api.qazent.com"
+      }
+    },
+    {
+      "id": "license-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-web.project-admin-hub-group"],
+      "properties": {
+        "name": "QAZent - License",
+        "order": 101,
+        "uri": "dist/license.html",
         "backendUrl": "https://api.qazent.com"
       }
     },

@@ -7,13 +7,15 @@ import * as SDK from 'azure-devops-extension-sdk';
 import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
-import { FluentProvider, webLightTheme, Field, Textarea, Button, Spinner } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
 import { getLicenseStatus } from '../license/api';
 import type { LicenseStatusResponse } from '../license/api';
 import { LicenseGateMessage } from '../license/LicenseGateMessage';
+import { LicenseCheckScreen } from '../license/LicenseCheckScreen';
+import { useElapsedTimer } from '../hooks/useElapsedTimer';
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
 // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
@@ -32,9 +34,39 @@ const MAX_CONTEXT_LENGTH = 3000;
 
 type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
 
+const DEFAULT_BACKEND_URL = 'https://api.qazent.com';
+
 export const SettingsHub: React.FC = () => {
+  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>('loading');
   const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
   const [licenseError, setLicenseError] = React.useState(false);
+  const licenseAbortRef = React.useRef<AbortController | null>(null);
+  const baseUrlRef = React.useRef<string>(DEFAULT_BACKEND_URL);
+
+  const runCheckLicense = React.useCallback((baseUrl: string) => {
+    baseUrlRef.current = baseUrl;
+    setLicenseCheckState('loading');
+    setLicenseError(false);
+    licenseAbortRef.current?.abort();
+    const controller = new AbortController();
+    licenseAbortRef.current = controller;
+    getLicenseStatus(baseUrl, controller.signal)
+      .then((data) => {
+        setLicenseStatus(data.status);
+        setLicenseCheckState('success');
+      })
+      .catch((err) => {
+        // Ignore abort: timeout or Retry aborted the request; state is handled elsewhere
+        if (err?.name === 'AbortError') return;
+        setLicenseStatus('none');
+        setLicenseError(true);
+        setLicenseCheckState('success');
+      });
+  }, []);
+
+  const isLicenseChecking = licenseCheckState === 'loading';
+  const { elapsedSeconds, timedOut } = useElapsedTimer(isLicenseChecking, { timeoutSeconds: 90 });
+
   const [projectId, setProjectId] = React.useState<string>('');
   const [repositories, setRepositories] = React.useState<GitRepository[]>([]);
   const [selectedRepoId, setSelectedRepoId] = React.useState<string>('project-default');
@@ -122,18 +154,10 @@ React.useEffect(() => {
       const extContext = SDK.getExtensionContext() as unknown as IExtensionContextWithContributions;
       const contributionId = SDK.getContributionId();
       const contribution = extContext.contributions?.find((c: IContribution) => c.id === contributionId);
-      const baseUrl = contribution?.properties?.backendUrl || 'https://api.qazent.com';
+      const baseUrl = contribution?.properties?.backendUrl || DEFAULT_BACKEND_URL;
 
-      // License check (block main UI until resolved)
-      setLicenseStatus('loading');
-      setLicenseError(false);
-      try {
-        const data = await getLicenseStatus(baseUrl);
-        setLicenseStatus(data.status);
-      } catch {
-        setLicenseStatus('none');
-        setLicenseError(true);
-      }
+      // License check (runs in parallel; UI shows LicenseCheckScreen with timer)
+      runCheckLicense(baseUrl);
 
       const gitClient = getClient(GitRestClient);
       const repos = await gitClient.getRepositories(project.id);
@@ -152,7 +176,15 @@ React.useEffect(() => {
   };
 
   init();
-}, []);
+}, [runCheckLicense]);
+
+  // Timeout: at 90s abort the request and show error + Retry
+  React.useEffect(() => {
+    if (timedOut && licenseCheckState === 'loading') {
+      licenseAbortRef.current?.abort();
+      setLicenseCheckState('timeout');
+    }
+  }, [timedOut, licenseCheckState]);
 
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
@@ -474,15 +506,17 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         alignItems: "flex-start",
       }}
     >
-    {licenseStatus === 'loading' && (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px' }}>
-        <Spinner size="medium" label="Checking license…" />
-      </div>
+    {(licenseCheckState === 'loading' || licenseCheckState === 'timeout') && (
+      <LicenseCheckScreen
+        elapsedSeconds={elapsedSeconds}
+        timedOut={licenseCheckState === 'timeout'}
+        onRetry={() => runCheckLicense(baseUrlRef.current || DEFAULT_BACKEND_URL)}
+      />
     )}
-    {licenseStatus !== 'loading' && licenseStatus !== 'active' && (
+    {licenseCheckState === 'success' && licenseStatus !== 'active' && (
       <LicenseGateMessage showNetworkHint={licenseError} />
     )}
-    {licenseStatus === 'active' && (
+    {licenseCheckState === 'success' && licenseStatus === 'active' && (
     <>
     {/* LEFT COLUMN */}
     <div style={{ flex: 1, minWidth: 0 }}>

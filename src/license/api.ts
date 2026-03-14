@@ -38,8 +38,12 @@ function buildUrl(base: string, path: string): string {
 /**
  * GET /license/status
  * Backend derives organization and userId from Authorization and X-Ado-Org-Url
+ * @param signal - Optional AbortSignal to cancel the request (e.g. on timeout).
  */
-export async function getLicenseStatus(baseUrl: string): Promise<LicenseStatusResponse> {
+export async function getLicenseStatus(
+  baseUrl: string,
+  signal?: AbortSignal
+): Promise<LicenseStatusResponse> {
   const token = await getToken();
   const orgUrl = await getOrgUrl();
   const url = buildUrl(baseUrl, '/license/status');
@@ -49,6 +53,7 @@ export async function getLicenseStatus(baseUrl: string): Promise<LicenseStatusRe
       Authorization: `Bearer ${token}`,
       'X-Ado-Org-Url': orgUrl,
     },
+    signal,
   });
   if (!res.ok) {
     const text = await res.text();

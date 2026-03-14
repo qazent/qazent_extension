@@ -8,7 +8,7 @@ All new organizations receive a **14-day free trial** with full functionality. N
 ## Subscription Pricing
 QAZent PR Assistant is available at a single, transparent price:
 
-### **$25 per month (flat rate)**
+### **€24.99 per month (flat rate)**
 - Unlimited users within your Azure DevOps organization
 - Unlimited PR analyses
 - AI-generated test cases
