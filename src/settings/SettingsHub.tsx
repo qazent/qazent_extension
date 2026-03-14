@@ -229,7 +229,7 @@ const loadContext = async (repoId: string) => {
     }
 
     const dataManager = await dataServiceRef.current.getExtensionDataManager(
-      "QAZent.pr-assistant-extension",
+      SDK.getExtensionContext().id,
       await SDK.getAccessToken()
     );
 
@@ -244,10 +244,12 @@ const loadContext = async (repoId: string) => {
   } catch (err: any) {
     const typeKey = err?.typeKey || "";
     const message = err?.message ?? "";
+    const status = err?.status ?? err?.statusCode;
     const isNotFound =
       typeKey === "DocumentNotFoundException" ||
       typeKey === "CollectionNotFoundException" ||
-      /not found|does not exist/i.test(String(message));
+      status === 404 ||
+      /not found|does not exist|404/i.test(String(message));
 
     if (isNotFound) {
       setLoadedDocument(null);
@@ -301,7 +303,7 @@ const handleSave = async () => {
     }
 
     const dataManager = await dataServiceRef.current.getExtensionDataManager(
-      "QAZent.pr-assistant-extension",
+      SDK.getExtensionContext().id,
       await SDK.getAccessToken()
     );
 
@@ -450,14 +452,7 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
 
   return (
     <FluentProvider theme={webLightTheme}>
-  <div
-    style={{
-      padding: "24px",
-      display: "flex",
-      gap: "24px",
-      alignItems: "flex-start",
-    }}
-  >
+  <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "24px" }}>
     {errorMessage && (
       <div
         style={{
@@ -465,13 +460,20 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           border: "1px solid #e81123",
           color: "#e81123",
           padding: "12px",
-          marginBottom: "16px",
+          marginBottom: "0",
           borderRadius: "4px",
         }}
       >
         {errorMessage}
       </div>
     )}
+    <div
+      style={{
+        display: "flex",
+        gap: "24px",
+        alignItems: "flex-start",
+      }}
+    >
     {licenseStatus === 'loading' && (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px' }}>
         <Spinner size="medium" label="Checking license…" />
@@ -493,21 +495,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         generating test cases. Set a project-wide default or customize context
         for specific repositories.
       </p>
-
-      {errorMessage && (
-        <div
-          style={{
-            backgroundColor: "#fde7e9",
-            border: "1px solid #e81123",
-            color: "#e81123",
-            padding: "12px",
-            marginBottom: "16px",
-            borderRadius: "4px",
-          }}
-        >
-          {errorMessage}
-        </div>
-      )}
 
       {successMessage && (
         <div
@@ -862,6 +849,7 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
     </div>
     </>
     )}
+    </div>
   </div>
 </FluentProvider>
   );

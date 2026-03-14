@@ -108,7 +108,7 @@ describe('PRAssistantHub - Custom Context Loading', () => {
 
       await waitFor(() => {
         expect(mockGetDocument).toHaveBeenCalledWith('ai-contexts', 'project-default');
-        expect(mockGetDocument).toHaveBeenCalledWith('ai-contexts', 'repo-123');
+        expect(mockGetDocument).toHaveBeenCalledWith('ai-contexts', 'repo-repo-123');
       });
 
       expect(mockGetDocument.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -219,7 +219,7 @@ describe('PRAssistantHub - Custom Context Loading', () => {
 
       await waitFor(() => {
         expect(mockGetExtensionDataManager).toHaveBeenCalledWith(
-          'QAZent.pr-assistant-extension',
+          SDK.getExtensionContext().id,
           'mock-token'
         );
       });

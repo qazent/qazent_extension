@@ -225,7 +225,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         CommonServiceIds.ExtensionDataService
       );
       const dataManager = await dataService.getExtensionDataManager(
-        'QAZent.pr-assistant-extension',
+        SDK.getExtensionContext().id,
         await SDK.getAccessToken()
       );
     
@@ -235,8 +235,11 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         contextParts.push((projectDefault as AIContextDocument).contextText.trim());
       }
 
-      // Load repo-specific and append (not replace)
-      const repoContext = await dataManager.getDocument('ai-contexts', repositoryId);
+      // Load repo-specific and append (not replace); use same doc id as SettingsHub: repo-${id}
+      const repoDocId = repositoryId ? `repo-${repositoryId}` : null;
+      const repoContext = repoDocId
+        ? await dataManager.getDocument('ai-contexts', repoDocId).catch(() => null)
+        : null;
       if (repoContext && (repoContext as AIContextDocument).contextText && (repoContext as AIContextDocument).contextText.trim()) {
         contextParts.push((repoContext as AIContextDocument).contextText.trim());
       }
