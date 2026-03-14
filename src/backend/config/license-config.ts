@@ -4,6 +4,7 @@
 
 export interface LicenseConfig {
   lemonSqueezyLicenseApiUrl: string;
+  lemonSqueezyApiKey: string;
   lemonSqueezyWebhookSecret: string;
   licenseHashSalt: string;
   defaultSeatsPerKey: number;
@@ -33,6 +34,7 @@ export function loadLicenseConfig(): LicenseConfig {
   return {
     lemonSqueezyLicenseApiUrl:
       process.env.LEMON_SQUEEZY_LICENSE_API_URL || 'https://api.lemonsqueezy.com/v1/licenses',
+    lemonSqueezyApiKey: process.env.LEMON_SQUEEZY_API_KEY || '',
     lemonSqueezyWebhookSecret: process.env.LEMON_SQUEEZY_WEBHOOK_SECRET || '',
     licenseHashSalt: process.env.LICENSE_HASH_SALT || '',
     defaultSeatsPerKey: parseOptionalInt(process.env.LICENSE_DEFAULT_SEATS_PER_KEY, 5),

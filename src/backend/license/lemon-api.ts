@@ -45,20 +45,25 @@ const defaultBaseUrl = 'https://api.lemonsqueezy.com';
 function postForm(
   baseUrl: string,
   path: string,
-  params: Record<string, string>
+  params: Record<string, string>,
+  apiKey?: string
 ): Promise<string> {
   const body = new URLSearchParams(params).toString();
   const url = new URL(path, baseUrl);
+  const headers: Record<string, string | number> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    Accept: 'application/json',
+    'Content-Length': Buffer.byteLength(body, 'utf8'),
+  };
+  if (apiKey && apiKey.trim()) {
+    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+  }
   return new Promise((resolve, reject) => {
     const req = https.request(
       url,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-          'Content-Length': Buffer.byteLength(body, 'utf8'),
-        },
+        headers,
       },
       res => {
         let data = '';
@@ -81,15 +86,17 @@ function postForm(
 /**
  * Validate a license key with Lemon Squeezy.
  * POST /v1/licenses/validate with license_key (and optional instance_id).
+ * If apiKey is provided, sends Authorization: Bearer <apiKey> (recommended for server-side calls).
  */
 export async function validateLicenseKey(
   licenseKey: string,
-  apiBaseUrl?: string
+  apiBaseUrl?: string,
+  apiKey?: string
 ): Promise<ValidateLicenseResult> {
   const base = apiBaseUrl || defaultBaseUrl;
   const path = '/v1/licenses/validate';
   try {
-    const raw = await postForm(base, path, { license_key: licenseKey });
+    const raw = await postForm(base, path, { license_key: licenseKey }, apiKey);
     const json = JSON.parse(raw) as ValidateLicenseResult;
     logger.debug('Lemon Squeezy validate response', {
       valid: json.valid,
@@ -112,17 +119,21 @@ export async function validateLicenseKey(
 /**
  * Activate a license key (create an instance).
  * POST /v1/licenses/activate with license_key and instance_name.
+ * If apiKey is provided, sends Authorization: Bearer <apiKey>.
  */
 export async function activateLicenseKey(
   licenseKey: string,
   instanceName: string,
-  apiBaseUrl?: string
+  apiBaseUrl?: string,
+  apiKey?: string
 ): Promise<ActivateLicenseResult> {
   const base = apiBaseUrl || defaultBaseUrl;
   const path = '/v1/licenses/activate';
-  const raw = await postForm(base, path, {
-    license_key: licenseKey,
-    instance_name: instanceName,
-  });
+  const raw = await postForm(
+    base,
+    path,
+    { license_key: licenseKey, instance_name: instanceName },
+    apiKey
+  );
   return JSON.parse(raw) as ActivateLicenseResult;
 }

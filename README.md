@@ -109,6 +109,7 @@ The extension supports license activation and status via a backend license servi
 
   - `LICENSE_HASH_SALT` – Required for activation. A secret string used to hash license keys (never store raw keys).
   - `LEMON_SQUEEZY_WEBHOOK_SECRET` – Required for webhooks. The signing secret you set when creating the webhook in the Lemon Squeezy dashboard.
+  - `LEMON_SQUEEZY_API_KEY` – Optional but recommended. API key from **Settings → API** in Lemon Squeezy; sent as `Authorization: Bearer <key>` on license validate/activate calls. Use for server-side authentication and rate-limit protection.
   - `LEMON_SQUEEZY_LICENSE_API_URL` – Optional. Defaults to `https://api.lemonsqueezy.com/v1/licenses`.
   - `LICENSE_DEFAULT_SEATS_PER_KEY` – Optional. Default seat count when a key has no `activation_limit` (default: 5).
   - `LICENSE_EXPIRY_GRACE_DAYS` – Optional. Days after expiry to still consider the license active (default: 0).
