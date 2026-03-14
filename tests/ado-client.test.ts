@@ -260,5 +260,23 @@ describe('Azure DevOps content persistence', () => {
     expect(content).not.toContain('<script');
     expect(content).not.toContain('alert(');
   });
+
+  it('rethrows when PR comment thread creation fails', async () => {
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({
+        createThread: jest.fn().mockRejectedValue(new Error('thread create failed')),
+      }),
+    } as unknown as any;
+
+    await expect(
+      postPRComment({
+        projectName: mockMetadata.projectName,
+        repositoryId: mockMetadata.repositoryId,
+        prId: mockMetadata.prId,
+        workItemId: 9001,
+        connection,
+      })
+    ).rejects.toThrow('Failed to post PR comment: thread create failed');
+  });
 });
 

@@ -275,6 +275,10 @@ export interface PostPRCommentParams {
   commentContent?: string;
 }
 
+export interface PostPRCommentResponse {
+  success: boolean;
+}
+
 /**
  * Post comment on PR linking to created work item, or with custom content if provided.
  */
@@ -285,14 +289,18 @@ export async function postPRComment({
   workItemId,
   connection,
   commentContent
-}: PostPRCommentParams): Promise<void> {
+}: PostPRCommentParams): Promise<PostPRCommentResponse> {
   const url = buildUrl(connection, '/post-pr-comment');
 
-  await postJson<{ success: boolean }>(
+  const response = await postJson<PostPRCommentResponse>(
     url,
     { prId, projectName, repositoryId, workItemId, commentContent },
     180000 // Increased from 10 seconds → 180 seconds - posting comments can take longer if the PR has a lot of activity or if there are API rate limits 
   );
+
+  return {
+    success: response.success === true,
+  };
 }
 
 // --- POST PR LABEL VAULTED ---

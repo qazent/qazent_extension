@@ -540,6 +540,7 @@ export async function createFallbackWorkItem(
           workItemId,
           error: String(error)
         });
+      throw new Error(`Failed to post PR comment: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
         
