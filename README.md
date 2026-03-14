@@ -129,7 +129,7 @@ The extension supports license activation and status via a backend license servi
   - If `DATABASE_URL` is not set, the in-memory store is used (fine for single-instance dev; webhooks can repopulate after restarts).
   - **Supabase Postgres:** In the [Supabase Dashboard](https://supabase.com/dashboard) go to **Project Settings → Database**. Use the **Connection string** (URI format). Prefer **Session mode** (port 5432) for this backend; the **Transaction** pooler (port 6543) also works. The backend creates `license_records` and `license_seat_assignments` in the `public` schema automatically.
 
-  Required tables are created automatically: `license_records` and `license_seat_assignments`. No migrations or manual schema setup are required.
+  Required tables are created automatically: `license_records` and `license_seat_assignments`. No migrations or manual schema setup are required. To create them manually (e.g. in Supabase SQL Editor), run the SQL in `scripts/license-schema.sql`.
 
 ### 3. Run Development Server
 
