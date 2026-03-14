@@ -96,7 +96,11 @@ export async function activateLicense(
     keyHashPrefix: keyHash.slice(0, 8) + '...',
   });
 
-  const validation = await validateLicenseKey(normalizedKey, config.lemonSqueezyLicenseApiUrl);
+  const validation = await validateLicenseKey(
+    normalizedKey,
+    config.lemonSqueezyLicenseApiUrl,
+    config.lemonSqueezyApiKey || undefined
+  );
 
   if (!validation.valid || !validation.license_key) {
     return {
