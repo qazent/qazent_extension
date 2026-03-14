@@ -41,10 +41,10 @@ const config: Config.InitialOptions = {
 
   coverageThreshold: {
     './src/backend/server.ts': {
-      statements: 40,
-      branches: 40,
-      functions: 55,
-      lines: 40,
+      statements: 90,
+      branches: 80,
+      functions: 90,
+      lines: 90,
     },
     './src/backend/fetchPRdiff.ts': {
       statements: 80,
