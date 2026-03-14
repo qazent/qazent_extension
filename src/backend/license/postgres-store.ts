@@ -31,7 +31,7 @@ export class PostgresLicenseStore implements LicenseStore {
             lemon_license_id INTEGER,
             lemon_order_id INTEGER,
             lemon_customer_id INTEGER,
-            organization VARCHAR(2048) NOT NULL UNIQUE,
+            organization VARCHAR(2048) NOT NULL,
             status VARCHAR(32) NOT NULL,
             plan VARCHAR(256) NOT NULL,
             seats_used INTEGER NOT NULL DEFAULT 0,
@@ -57,7 +57,10 @@ export class PostgresLicenseStore implements LicenseStore {
       } finally {
         client.release();
       }
-    })();
+    })().catch((error) => {
+      this.tablesReady = null;
+      throw error;
+    });
     await this.tablesReady;
   }
 
