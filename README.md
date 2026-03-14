@@ -111,6 +111,7 @@ The extension supports license activation and status via a backend license servi
   - `LEMON_SQUEEZY_WEBHOOK_SECRET` – Required for webhooks. The signing secret you set when creating the webhook in the Lemon Squeezy dashboard.
   - `LEMON_SQUEEZY_API_KEY` – Optional but recommended. API key from **Settings → API** in Lemon Squeezy; sent as `Authorization: Bearer <key>` on license validate/activate calls. Use for server-side authentication and rate-limit protection.
   - `LEMON_SQUEEZY_LICENSE_API_URL` – Optional. Defaults to `https://api.lemonsqueezy.com/v1/licenses`.
+  - `DATABASE_URL` – Optional. Postgres connection string (e.g. `postgresql://user:pass@host:5432/dbname`). When set, license and seat data is stored in Postgres; tables are created automatically. When unset, an in-memory store is used (data lost on restart).
   - `LICENSE_DEFAULT_SEATS_PER_KEY` – Optional. Default seat count when a key has no `activation_limit` (default: 5).
   - `LICENSE_EXPIRY_GRACE_DAYS` – Optional. Days after expiry to still consider the license active (default: 0).
   - `LICENSE_ALLOWED_PRODUCT_IDS` – Optional. Comma-separated product/variant IDs that are valid for this extension.
@@ -120,6 +121,15 @@ The extension supports license activation and status via a backend license servi
 
 - **Azure DevOps extension**  
   The License panel is under **Project Settings** → **QAZent - License**. The panel uses the `backendUrl` from the contribution in `vss-extension.json` (e.g. `https://api.qazent.com`) to call `GET /license/status` and `POST /license/activate`. Users must be signed in to Azure DevOps; the backend derives organization and user from the token and `X-Ado-Org-Url` header.
+
+- **License data storage (database)**  
+  By default, license and seat data is kept **in memory** only. No database is required; nothing to configure. Restarts (or multiple server instances) clear or duplicate state. For production or multi-instance deployments, use a persistent store:
+
+  - Set **`DATABASE_URL`** to a Postgres connection string (e.g. `postgresql://user:password@host:5432/dbname`). The backend will use it for the license store and create the required tables automatically on first use.
+  - If `DATABASE_URL` is not set, the in-memory store is used (fine for single-instance dev; webhooks can repopulate after restarts).
+  - **Supabase Postgres:** In the [Supabase Dashboard](https://supabase.com/dashboard) go to **Project Settings → Database**. Use the **Connection string** (URI format). Prefer **Session mode** (port 5432) for this backend; the **Transaction** pooler (port 6543) also works. The backend creates `license_records` and `license_seat_assignments` in the `public` schema automatically.
+
+  Required tables are created automatically: `license_records` and `license_seat_assignments`. No migrations or manual schema setup are required.
 
 ### 3. Run Development Server
 

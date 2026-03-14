@@ -1,8 +1,9 @@
 /**
- * License module: in-memory store implementation (pluggable for Postgres/document store later)
+ * License module: in-memory store (default) or Postgres store when DATABASE_URL is set
  */
 
 import * as crypto from 'crypto';
+import { loadLicenseConfig } from '../config/license-config';
 import type {
   LicenseRecord,
   LicenseSeatAssignment,
@@ -82,12 +83,18 @@ export class InMemoryLicenseStore implements LicenseStore {
   }
 }
 
-/** Factory: single shared in-memory store instance for the process */
+/** Factory: single shared store instance (in-memory or Postgres when DATABASE_URL is set) */
 let defaultStore: LicenseStore | null = null;
 
 export function getDefaultLicenseStore(): LicenseStore {
-  if (!defaultStore) defaultStore = new InMemoryLicenseStore();
-  return defaultStore;
+  if (defaultStore) return defaultStore;
+  const config = loadLicenseConfig();
+  const store: LicenseStore =
+    config.databaseUrl && config.databaseUrl.trim()
+      ? new (require('./postgres-store').PostgresLicenseStore)(config.databaseUrl.trim())
+      : new InMemoryLicenseStore();
+  defaultStore = store;
+  return store;
 }
 
 export function createSeatAssignment(
