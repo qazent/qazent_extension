@@ -7,11 +7,13 @@ import * as SDK from 'azure-devops-extension-sdk';
 import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
-import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
-// --- WEBHOOK AUTO-GENERATION DISABLED --- Spinner only used in webhook UI
-// import { Spinner } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Field, Textarea, Button, Spinner } from '@fluentui/react-components';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
+import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
+import { getLicenseStatus } from '../license/api';
+import type { LicenseStatusResponse } from '../license/api';
+import { LicenseGateMessage } from '../license/LicenseGateMessage';
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
 // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
@@ -28,7 +30,11 @@ const PROJECT_DEFAULT_LABEL = "Project Default (applies to all repos)";
 /** Max custom context length: ~3–4 paragraphs (matches server limit). */
 const MAX_CONTEXT_LENGTH = 3000;
 
+type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
+
 export const SettingsHub: React.FC = () => {
+  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
+  const [licenseError, setLicenseError] = React.useState(false);
   const [projectId, setProjectId] = React.useState<string>('');
   const [repositories, setRepositories] = React.useState<GitRepository[]>([]);
   const [selectedRepoId, setSelectedRepoId] = React.useState<string>('project-default');
@@ -111,6 +117,23 @@ React.useEffect(() => {
       }
 
       setProjectId(project.id);
+
+      // Resolve backendUrl from contribution (same pattern as PRAssistantHub)
+      const extContext = SDK.getExtensionContext() as unknown as IExtensionContextWithContributions;
+      const contributionId = SDK.getContributionId();
+      const contribution = extContext.contributions?.find((c: IContribution) => c.id === contributionId);
+      const baseUrl = contribution?.properties?.backendUrl || 'https://api.qazent.com';
+
+      // License check (block main UI until resolved)
+      setLicenseStatus('loading');
+      setLicenseError(false);
+      try {
+        const data = await getLicenseStatus(baseUrl);
+        setLicenseStatus(data.status);
+      } catch {
+        setLicenseStatus('none');
+        setLicenseError(true);
+      }
 
       const gitClient = getClient(GitRestClient);
       const repos = await gitClient.getRepositories(project.id);
@@ -435,6 +458,30 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
       alignItems: "flex-start",
     }}
   >
+    {errorMessage && (
+      <div
+        style={{
+          backgroundColor: "#fde7e9",
+          border: "1px solid #e81123",
+          color: "#e81123",
+          padding: "12px",
+          marginBottom: "16px",
+          borderRadius: "4px",
+        }}
+      >
+        {errorMessage}
+      </div>
+    )}
+    {licenseStatus === 'loading' && (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px' }}>
+        <Spinner size="medium" label="Checking license…" />
+      </div>
+    )}
+    {licenseStatus !== 'loading' && licenseStatus !== 'active' && (
+      <LicenseGateMessage showNetworkHint={licenseError} />
+    )}
+    {licenseStatus === 'active' && (
+    <>
     {/* LEFT COLUMN */}
     <div style={{ flex: 1, minWidth: 0 }}>
       <h1 style={{ fontSize: "24px", fontWeight: 600, marginBottom: "8px" }}>
@@ -813,6 +860,8 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         domain‑driven validation....”
       </p>
     </div>
+    </>
+    )}
   </div>
 </FluentProvider>
   );

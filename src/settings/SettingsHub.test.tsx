@@ -8,6 +8,8 @@ import { SettingsHub } from './SettingsHub';
 
 // SDK provided by Jest moduleNameMapper -> tests/utils/azure-devops-mock.ts
 import * as SDK from 'azure-devops-extension-sdk';
+// Main API mock (component uses getClient from here, not from Git submodule)
+import * as Api from 'azure-devops-extension-api';
 
 // ---- Types for Git API mocks ----
 interface GitRepository {
@@ -24,6 +26,16 @@ const mockGetClient = jest.fn() as jest.MockedFunction<GetClientFn>;
 mockGetClient.mockReturnValue({ getRepositories: mockGetRepositories });
 jest.mock('azure-devops-extension-api/Git', () => ({
   getClient: () => mockGetClient()
+}));
+
+// Mock license API so hub shows main content (active license)
+jest.mock('../license/api', () => ({
+  getLicenseStatus: jest.fn().mockResolvedValue({
+    status: 'active',
+    planName: null,
+    expiresAt: null,
+    message: 'OK',
+  }),
 }));
 
 describe('SettingsHub Component', () => {
@@ -48,11 +60,13 @@ describe('SettingsHub Component', () => {
       name: 'TestProject'
     });
 
-    // Mock SDK methods
+    // Mock SDK methods (order: first call = ProjectPageService, then ExtensionDataService)
     (SDK.init as jest.Mock).mockResolvedValue(undefined);
     (SDK.ready as jest.Mock).mockResolvedValue(undefined);
-    (SDK.getService as jest.Mock).mockImplementation((serviceId: string) => {
-      if (serviceId === 'ms.vss-work-web.project-page-service') {
+    let getServiceCallCount = 0;
+    (SDK.getService as jest.Mock).mockImplementation(() => {
+      getServiceCallCount += 1;
+      if (getServiceCallCount === 1) {
         return Promise.resolve({ getProject: mockGetProject });
       }
       return Promise.resolve({ getExtensionDataManager: mockGetExtensionDataManager });
@@ -65,6 +79,9 @@ describe('SettingsHub Component', () => {
       { id: 'repo-1', name: 'backend-api' },
       { id: 'repo-2', name: 'frontend-app' }
     ]);
+
+    // Component uses getClient from azure-devops-extension-api (main), not from /Git
+    (Api.getClient as jest.Mock).mockReturnValue({ getRepositories: mockGetRepositories });
 
     // Mock default: no existing context
     mockGetDocument.mockResolvedValue(null);
@@ -91,8 +108,9 @@ describe('SettingsHub Component', () => {
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(mockGetRepositories).toHaveBeenCalledWith('project-123');
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
+      expect(mockGetRepositories).toHaveBeenCalledWith('project-123');
     });
 
     it('should load project default context on mount', async () => {
@@ -128,10 +146,9 @@ describe('SettingsHub Component', () => {
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(mockGetRepositories).toHaveBeenCalled();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
-
-      // Repositories are loaded into state
+      expect(mockGetRepositories).toHaveBeenCalled();
       expect(mockGetRepositories).toHaveBeenCalledWith('project-123');
     });
 
@@ -142,25 +159,30 @@ describe('SettingsHub Component', () => {
 
       render(<SettingsHub />);
 
-      // Initially should show loading
+      // Wait for license check to pass and form to start loading; combobox shows loading placeholder
       await waitFor(() => {
         const combobox = screen.getByRole('combobox');
         expect(combobox).toHaveAttribute('placeholder', expect.stringContaining('Loading'));
-      });
+      }, { timeout: 3000 });
     });
   });
 
   describe('context loading', () => {
     it('should load existing project default context', async () => {
-      mockGetDocument.mockResolvedValueOnce({
+      // ensureCollectionExists calls getDocument first (return null); loadContext calls it second (return doc)
+      const doc = {
         id: 'project-default',
         contextText: 'Existing project context',
         updatedAt: '2024-01-01',
         updatedBy: 'Admin'
-      });
+      };
+      mockGetDocument.mockResolvedValueOnce(null).mockResolvedValueOnce(doc);
 
       render(<SettingsHub />);
 
+      await waitFor(() => {
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
+      });
       await waitFor(() => {
         const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
         expect(textarea.value).toBe('Existing project context');
@@ -179,14 +201,18 @@ describe('SettingsHub Component', () => {
     });
 
     it('should handle context loading errors gracefully', async () => {
-      // First call (ensureCollectionExists) returns null; second (loadContext) throws so we show error
+      // ensureCollectionExists: first getDocument returns null; loadContext: second getDocument throws
       mockGetDocument.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('Network error'));
 
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(screen.getByText(/We couldn't load your saved context/i)).toBeInTheDocument();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
+      await waitFor(() => {
+        const errors = screen.getAllByText(/We couldn't load your saved context/i);
+        expect(errors.length).toBeGreaterThanOrEqual(1);
+      }, { timeout: 3000 });
     });
 
     it('should handle "does not exist" error as empty context', async () => {
@@ -254,21 +280,24 @@ describe('SettingsHub Component', () => {
     });
 
     it('should show error message on save failure', async () => {
-      mockSetDocument.mockRejectedValueOnce(new Error('Save failed'));
+      // First setDocument is from ensureCollectionExists; second is user Save — reject on second
+      mockSetDocument.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('Save failed'));
 
       render(<SettingsHub />);
 
       await waitFor(() => {
-        const textarea = screen.getByRole('textbox');
-        fireEvent.change(textarea, { target: { value: 'Context' } });
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
+      const textarea = await screen.findByRole('textbox');
+      fireEvent.change(textarea, { target: { value: 'Context' } });
 
       const saveButton = screen.getByRole('button', { name: /Save Context/i });
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(screen.getByText(/Failed to save context/i)).toBeInTheDocument();
-      });
+        const errors = screen.getAllByText(/Failed to save context/i);
+        expect(errors.length).toBeGreaterThanOrEqual(1);
+      }, { timeout: 3000 });
     });
 
     it('should include timestamp in saved document', async () => {
@@ -354,9 +383,9 @@ describe('SettingsHub Component', () => {
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(mockGetRepositories).toHaveBeenCalled();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
-
+      expect(mockGetRepositories).toHaveBeenCalled();
       // Change to a specific repository (simulated - actual combobox interaction is complex)
       // This would require more complex interaction testing with the Combobox component
       // For now, we verify the save logic structure
@@ -364,21 +393,23 @@ describe('SettingsHub Component', () => {
   });
 
   describe('UI elements', () => {
-    it('should show helpful tip section', async () => {
+    it('should show guidelines section', async () => {
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Tip:/i)).toBeInTheDocument();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
+      expect(screen.getByText(/Custom Context Guidelines/i)).toBeInTheDocument();
     });
 
     it('should show correct field labels', async () => {
       render(<SettingsHub />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Repository/i)).toBeInTheDocument();
-        expect(screen.getByText(/Custom Context/i)).toBeInTheDocument();
+        expect(screen.getByText(/Custom Context Settings/i)).toBeInTheDocument();
       });
+      expect(screen.getByLabelText(/Repository/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Custom Context/i)).toBeInTheDocument();
     });
   });
 });

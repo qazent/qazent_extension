@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 
 import { CommonServiceIds, getClient, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 
-import { FluentProvider, webLightTheme, Checkbox } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Checkbox, Spinner } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -16,6 +16,9 @@ import { PRData, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
 import { GitRestClient } from 'azure-devops-extension-api/Git';
+import { getLicenseStatus } from '../license/api';
+import type { LicenseStatusResponse } from '../license/api';
+import { LicenseGateMessage } from '../license/LicenseGateMessage';
 
 const PRAssistantHub: React.FC = () => {
   const [prData, setPRData] = React.useState<PRData | null>(null);
@@ -32,7 +35,11 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
 
  
   const [backendUrl, setBackendUrl] = React.useState<string>(
-  'https://api.qazent.com');  // Default backend URL, should be overridden by config  // Default backend URL, should be overridden by config
+  'https://api.qazent.com');  // Default backend URL, should be overridden by config
+
+  type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
+  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
+  const [licenseError, setLicenseError] = React.useState(false);
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
   const [projectName, setProjectName] = React.useState<string>('');
@@ -66,6 +73,18 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       const backend = contribution?.properties?.backendUrl;
       if (backend) {
         setBackendUrl(backend);
+      }
+      const baseUrl = backend || 'https://api.qazent.com';
+
+      // 3b. License check (block main UI until resolved)
+      setLicenseStatus('loading');
+      setLicenseError(false);
+      try {
+        const data = await getLicenseStatus(baseUrl);
+        setLicenseStatus(data.status);
+      } catch {
+        setLicenseStatus('none');
+        setLicenseError(true);
       }
 
       // 4. Get project ID (GUID) for artifact URI construction
@@ -389,18 +408,28 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
     }
   };
 
- return (
+  const containerStyle = {
+    padding: '32px',
+    maxWidth: '1100px',
+    margin: '0 auto' as const,
+    display: 'flex' as const,
+    flexDirection: 'column' as const,
+    gap: '24px'
+  };
+
+  return (
   <FluentProvider theme={webLightTheme}>
-    <div
-      style={{
-        padding: '32px',
-        maxWidth: '1100px',
-        margin: '0 auto',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '24px'
-      }}
-    >
+    <div style={containerStyle}>
+      {licenseStatus === 'loading' && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', padding: '24px' }}>
+          <Spinner size="medium" label="Checking license…" />
+        </div>
+      )}
+      {licenseStatus !== 'loading' && licenseStatus !== 'active' && (
+        <LicenseGateMessage showNetworkHint={licenseError} />
+      )}
+      {licenseStatus === 'active' && (
+        <>
       {/* Error message */}
       {error && (
         <div
@@ -581,6 +610,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           countdown={countdown}
         />
       </div>
+        </>
+      )}
     </div>
   </FluentProvider>
 );
