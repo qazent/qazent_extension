@@ -67,9 +67,42 @@ const AI_RESPONSE_SCHEMA = {
 let systemPrompt: string | null = null;
 let genAI: GoogleGenAI | null = null;
 
+const PROMPT_SECTION_DIVIDER = '------------------------------------------------';
+const OPTIONAL_SHORT_PROMPT_HEADINGS = [
+  'Before producing the final answer, think privately and follow this reasoning process:',
+  'REPOSITORY CONTEXT (IF PROVIDED)',
+  'PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)',
+] as const;
+
+function stripPromptSection(prompt: string, heading: string): string {
+  const sectionStart = prompt.indexOf(heading);
+  if (sectionStart === -1) {
+    return prompt;
+  }
+
+  const dividerStart = prompt.indexOf(PROMPT_SECTION_DIVIDER, sectionStart + heading.length);
+  if (dividerStart === -1) {
+    return prompt;
+  }
+
+  const sectionEnd = dividerStart + PROMPT_SECTION_DIVIDER.length;
+  const before = prompt.slice(0, sectionStart).trimEnd();
+  const after = prompt.slice(sectionEnd).trimStart();
+
+  if (!before) {
+    return after;
+  }
+  if (!after) {
+    return before;
+  }
+
+  return `${before}\n\n${after}`;
+}
+
 /**
  * Load system prompt from file (cached).
- * If useShortPrompt is true, returns a version with long examples stripped to leave more output budget (e.g. for retries after MAX_TOKENS).
+ * If useShortPrompt is true, returns a version with optional guidance blocks stripped
+ * to leave more output budget for retries after MAX_TOKENS.
  */
 export function loadSystemPrompt(useShortPrompt = false): string {
   if (systemPrompt === null) {
@@ -94,16 +127,19 @@ export function loadSystemPrompt(useShortPrompt = false): string {
     return systemPrompt;
   }
 
-  // Omit the long "## Example 1" through "## Example 3" blocks to leave more output tokens for the model
-  const example1Start = systemPrompt.indexOf('## Example 1: API Endpoint Change');
-  const qualityStandardsStart = systemPrompt.indexOf('## Quality Standards for Generated Test Cases');
-  if (example1Start === -1 || qualityStandardsStart === -1 || qualityStandardsStart <= example1Start) {
+  const shortPrompt = OPTIONAL_SHORT_PROMPT_HEADINGS.reduce(
+    (prompt, heading) => stripPromptSection(prompt, heading),
+    systemPrompt
+  );
+
+  if (shortPrompt === systemPrompt) {
     return systemPrompt;
   }
-  const shortPrompt = systemPrompt.substring(0, example1Start).trim() + '\n\n' + systemPrompt.substring(qualityStandardsStart).trim();
-  logger.debug('Using short system prompt (examples omitted)', {
+
+  logger.debug('Using short system prompt (optional sections omitted)', {
     fullLength: systemPrompt.length,
-    shortLength: shortPrompt.length
+    shortLength: shortPrompt.length,
+    removedSections: [...OPTIONAL_SHORT_PROMPT_HEADINGS].filter((heading) => !shortPrompt.includes(heading)),
   });
   return shortPrompt;
 }

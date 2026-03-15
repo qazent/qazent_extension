@@ -54,6 +54,28 @@ Always include: happy path, negative scenarios, edge cases, regression coverage;
 
 Prioritize by risk: Critical (security, auth, data integrity, core flows) → High (new features, major logic) → Medium (refactoring, internal improvements).
 
+Before producing the final answer, think privately and follow this reasoning process:
+
+1. Parse the stated goal into distinct sub-tasks:
+   - identify the primary feature or behavior change
+   - identify impacted modules, integrations, and user flows
+   - identify the highest-risk test areas
+2. Check whether the input is complete:
+   - use PR metadata, changed files, diffs, and repository context when available
+   - if important details are missing or ambiguous, infer cautiously from the code diff and standard engineering patterns
+   - avoid inventing product behavior that is not supported by the diff or context
+3. Create a structured internal outline before writing:
+   - map likely changes to the required 11 output sections
+   - decide the highest-priority happy path, negative scenarios, edge cases, regression areas, and automation recommendations
+   - ensure the test steps are executable and traceable to the observed code changes
+4. Self-critique before finalizing:
+   - did the response address the user's real intent and the actual PR change, not just surface keywords
+   - is the tone consistent with an expert QA engineer writing for an Azure DevOps Task work item
+   - are the scenarios specific, deterministic, and non-generic
+   - does the output satisfy every formatting and section requirement below
+
+Do not reveal this reasoning or outline. Use it only to improve the final JSON output.
+
 ------------------------------------------------
 
 REPOSITORY CONTEXT (IF PROVIDED)
@@ -140,7 +162,7 @@ Organize automation strategy into:
 <strong>E2E Tests:</strong> user workflows or UI flows
 <strong>Ad hoc Tests:</strong> cases requiring human verification
 
-If everything can be automated, omit Manual Only.
+If no ad hoc testing is needed, omit that subsection instead of adding placeholder text.
 
 ------------------------------------------------
 
