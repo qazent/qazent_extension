@@ -10,6 +10,11 @@ import {
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import * as azdev from 'azure-devops-node-api';
 import { classifyChangeType, getFallbackLineMetrics, MAX_FILES_FOR_AI } from './diff-config';
+function isMissingFileError(error: unknown): boolean {
+  const message = String(error);
+  return message.includes('REST getItem failed (404') || message.includes('TF401174');
+}
+
 
 
 
@@ -222,7 +227,7 @@ export async function fetchPRDiff(
         continue;
       }
 
-      const changeType = classifyChangeType(change.changeType);
+      let changeType = classifyChangeType(change.changeType);
 
       let diffContent = "";
       let linesAdded = 0;
@@ -319,7 +324,7 @@ export async function fetchPRDiff(
             sourceCommitId,
           });
 
-          const [oldContentRaw, newContentRaw] = await Promise.all([
+          const [oldContentResult, newContentResult] = await Promise.allSettled([
             fetchFileContentFromRest(
               organization,
               projectName,
@@ -338,13 +343,50 @@ export async function fetchPRDiff(
             ),
           ]);
 
-          const oldContent = oldContentRaw || "";
-          const newContent = newContentRaw || "";
+          const oldContentAvailable = oldContentResult.status === 'fulfilled';
+          const newContentAvailable = newContentResult.status === 'fulfilled';
+          const oldContentMissing = oldContentResult.status === 'rejected' && isMissingFileError(oldContentResult.reason);
+          const newContentMissing = newContentResult.status === 'rejected' && isMissingFileError(newContentResult.reason);
 
-          const diff = generateUnifiedDiff(filePath, oldContent, newContent);
-          diffContent = diff.diffContent;
-          linesAdded = diff.linesAdded;
-          linesDeleted = diff.linesDeleted;
+          if (oldContentAvailable && newContentAvailable) {
+            const oldContent = oldContentResult.value || "";
+            const newContent = newContentResult.value || "";
+
+            const diff = generateUnifiedDiff(filePath, oldContent, newContent);
+            diffContent = diff.diffContent;
+            linesAdded = diff.linesAdded;
+            linesDeleted = diff.linesDeleted;
+          } else if (oldContentMissing && newContentAvailable) {
+            changeType = "add";
+            const syntheticDiff = generateSyntheticFileDiff(filePath, newContentResult.value, "add");
+            diffContent = syntheticDiff.diffContent;
+            linesAdded = syntheticDiff.linesAdded;
+            linesDeleted = syntheticDiff.linesDeleted;
+            logger.info("Recovered added file from one-sided edit fetch", {
+              filePath,
+              sourceCommitId,
+              targetCommitId,
+            });
+          } else if (oldContentAvailable && newContentMissing) {
+            changeType = "delete";
+            const syntheticDiff = generateSyntheticFileDiff(filePath, oldContentResult.value, "delete");
+            diffContent = syntheticDiff.diffContent;
+            linesAdded = syntheticDiff.linesAdded;
+            linesDeleted = syntheticDiff.linesDeleted;
+            logger.info("Recovered deleted file from one-sided edit fetch", {
+              filePath,
+              sourceCommitId,
+              targetCommitId,
+            });
+          } else {
+            if (oldContentResult.status === 'rejected') {
+              throw oldContentResult.reason;
+            }
+            if (newContentResult.status === 'rejected') {
+              throw newContentResult.reason;
+            }
+            throw new Error(`Unable to recover diff for ${filePath}`);
+          }
         }
       } catch (diffError) {
         logger.warn("Failed to fetch content for file, using fallback", {

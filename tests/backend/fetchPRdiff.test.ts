@@ -356,6 +356,62 @@ describe('fetchPRdiff backend path', () => {
     ]);
   });
 
+  it('recovers added file content when Azure DevOps classifies it as edit but the old side is missing', async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        createFetchResponse({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          text: 'TF401174: Item does not exist',
+        }) as never
+      )
+      .mockResolvedValueOnce(
+        createFetchResponse({
+          text: [
+            "import { acp } from './client';",
+            '',
+            'export async function executeAcpTask(input: TaskInput) {',
+            '  return acp.run(input);',
+            '}',
+          ].join('\n'),
+        }) as never
+      );
+
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({
+        getPullRequest: jest.fn().mockResolvedValue({
+          lastMergeSourceCommit: { commitId: 'source-123' },
+          lastMergeTargetCommit: { commitId: 'target-456' },
+        }),
+        getPullRequestIterations: jest.fn().mockResolvedValue([{ id: 1 }]),
+        getPullRequestIterationChanges: jest.fn().mockResolvedValue({
+          changeEntries: [{ item: { path: '/server/src/adapters/acp/execute.ts' }, changeType: 'edit' }],
+        }),
+      }),
+    };
+
+    const result = await fetchPRDiff(
+      'MyProject',
+      'repo-1',
+      103,
+      connection as never,
+      'myorg',
+      'oauth-token'
+    );
+
+    expect(result.changes).toEqual([
+      expect.objectContaining({
+        filePath: '/server/src/adapters/acp/execute.ts',
+        changeType: 'add',
+        linesAdded: 5,
+        linesDeleted: 0,
+        diffContent: expect.stringContaining('export async function executeAcpTask'),
+      }),
+    ]);
+    expect(result.changes[0].diffContent).not.toContain('Content fetch failed');
+  });
+
   it('fetches all paged iteration changes through the helper', async () => {
     const firstPageEntries = Array.from({ length: ITERATION_CHANGES_PAGE_SIZE }, (_, index) => ({
       item: { path: `/src/file-${index}.ts` },
