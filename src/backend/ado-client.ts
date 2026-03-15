@@ -6,9 +6,19 @@ import * as azdev from 'azure-devops-node-api';
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
-import { CodeDiff, DiffChange, PRMetadata, TaskWorkItemOutput } from './types';
+import { CodeDiff, DiffChange, DiffChangeType, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
+import {
+  classifyChangeType,
+  countContentLines,
+  DIFF_CONTEXT_LINES,
+  DIFF_MAX_CHARS_PER_FILE,
+  getFallbackLineMetrics,
+  ITERATION_CHANGES_PAGE_SIZE,
+  MAX_SYNTHETIC_DIFF_LINES,
+  normalizeDiffPath,
+} from './diff-config';
 
 /**
  * Create a new Azure DevOps connection using user's OAuth JWT token and organization URL
@@ -86,9 +96,6 @@ export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): P
   }
 }
 
-/** Character budget per file for AI prompt (keeps user prompt under token limit). */
-export const DIFF_MAX_CHARS_PER_FILE = 2000;
-
 /**
  * Generate a unified diff with proper hunks, context, and safe truncation.
  */
@@ -97,8 +104,9 @@ export function generateUnifiedDiff(
   oldContent: string,
   newContent: string,
   maxChars = DIFF_MAX_CHARS_PER_FILE,
-  contextLines = 4
+  contextLines = DIFF_CONTEXT_LINES
 ): { diffContent: string; linesAdded: number; linesDeleted: number } {
+  const diffPath = normalizeDiffPath(filePath);
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
 
@@ -171,7 +179,7 @@ export function generateUnifiedDiff(
   }
 
   // Build final diff
-  let diff = `--- a/${filePath}\n+++ b/${filePath}\n`;
+  let diff = `--- a/${diffPath}\n+++ b/${diffPath}\n`;
 
   for (const hunk of hunks) {
     diff += `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@\n`;
@@ -184,6 +192,209 @@ export function generateUnifiedDiff(
   }
 
   return { diffContent: diff.trim(), linesAdded, linesDeleted };
+}
+
+export function generateSyntheticFileDiff(
+  filePath: string,
+  content: string,
+  changeType: DiffChangeType,
+  maxChars = DIFF_MAX_CHARS_PER_FILE,
+  maxLines = MAX_SYNTHETIC_DIFF_LINES
+): { diffContent: string; linesAdded: number; linesDeleted: number } {
+  const diffPath = normalizeDiffPath(filePath);
+  const lines = content.length === 0 ? [] : content.split('\n');
+  const linePrefix = changeType === 'delete' ? '- ' : '+ ';
+  const header =
+    changeType === 'delete'
+      ? `--- a/${diffPath}\n+++ /dev/null\n`
+      : `--- /dev/null\n+++ b/${diffPath}\n`;
+  const selectedRanges = selectSalientSyntheticRanges(lines, maxLines);
+  const shownLineCount = selectedRanges.reduce((sum, range) => sum + (range.end - range.start + 1), 0);
+  const omittedLines = Math.max(0, lines.length - shownLineCount);
+
+  let diffContent = header;
+  if (selectedRanges.length === 0) {
+    diffContent = header.trimEnd();
+  } else {
+    const hunks = selectedRanges.map((range) => {
+      const rangeLines = lines.slice(range.start, range.end + 1).map((line) => `${linePrefix}${line}`).join('\n');
+      const oldStart = changeType === 'delete' ? range.start + 1 : 0;
+      const oldCount = changeType === 'delete' ? range.end - range.start + 1 : 0;
+      const newStart = changeType === 'add' ? range.start + 1 : 0;
+      const newCount = changeType === 'add' ? range.end - range.start + 1 : 0;
+      return `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@\n${rangeLines}`;
+    });
+    diffContent += hunks.join('\n');
+  }
+  if (omittedLines > 0) {
+    diffContent += `\n... (${omittedLines} more lines omitted, selected the most relevant regions)`;
+  }
+  if (diffContent.length > maxChars) {
+    diffContent = diffContent.slice(0, maxChars).trimEnd() + '\n... (diff truncated for AI safety)';
+  }
+
+  return {
+    diffContent: diffContent.trim(),
+    linesAdded: changeType === 'add' ? countContentLines(content) : 0,
+    linesDeleted: changeType === 'delete' ? countContentLines(content) : 0,
+  };
+}
+
+function selectSalientSyntheticRanges(
+  lines: string[],
+  maxLines: number
+): Array<{ start: number; end: number }> {
+  if (lines.length === 0 || maxLines <= 0) {
+    return [];
+  }
+  if (lines.length <= Math.min(maxLines, 20)) {
+    return [{ start: 0, end: lines.length - 1 }];
+  }
+
+  const declarationPatterns = [
+    /^\s*(export\s+)?(default\s+)?(async\s+)?function\b/,
+    /^\s*(export\s+)?(abstract\s+)?class\b/,
+    /^\s*(export\s+)?interface\b/,
+    /^\s*(export\s+)?type\b/,
+    /^\s*(export\s+)?enum\b/,
+    /^\s*(export\s+)?const\s+\w+\s*=\s*(async\s*)?(function\b|\()/,
+    /^\s*(app|router)\.(get|post|put|patch|delete|use)\b/,
+    /^\s*(describe|it|test)\s*\(/,
+    /^\s*@\w+/,
+  ];
+
+  const preferredStarts: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (declarationPatterns.some((pattern) => pattern.test(line))) {
+      preferredStarts.push(index);
+    }
+  }
+
+  const fallbackStart = findFirstMeaningfulLine(lines);
+  if (preferredStarts.length === 0 && fallbackStart >= 0) {
+    preferredStarts.push(fallbackStart);
+  } else if (fallbackStart >= 0) {
+    preferredStarts.unshift(fallbackStart);
+  }
+
+  const windowBefore = 2;
+  const windowAfter = 12;
+  const candidateRanges = preferredStarts.map((start) => ({
+    start: Math.max(0, start - windowBefore),
+    end: Math.min(lines.length - 1, start + windowAfter),
+  }));
+
+  const mergedRanges: Array<{ start: number; end: number }> = [];
+  for (const range of candidateRanges) {
+    const previous = mergedRanges[mergedRanges.length - 1];
+    if (previous && range.start <= previous.end + 2) {
+      previous.end = Math.max(previous.end, range.end);
+      continue;
+    }
+    mergedRanges.push({ ...range });
+  }
+
+  const selectedRanges: Array<{ start: number; end: number }> = [];
+  let usedLines = 0;
+  for (const range of mergedRanges) {
+    const rangeLength = range.end - range.start + 1;
+    if (usedLines >= maxLines) {
+      break;
+    }
+    if (usedLines + rangeLength <= maxLines) {
+      selectedRanges.push(range);
+      usedLines += rangeLength;
+      continue;
+    }
+
+    const remainingLines = maxLines - usedLines;
+    if (remainingLines <= 0) {
+      break;
+    }
+
+    selectedRanges.push({
+      start: range.start,
+      end: range.start + remainingLines - 1,
+    });
+    usedLines += remainingLines;
+    break;
+  }
+
+  if (selectedRanges.length === 0 && fallbackStart >= 0) {
+    selectedRanges.push({
+      start: fallbackStart,
+      end: Math.min(lines.length - 1, fallbackStart + maxLines - 1),
+    });
+  }
+
+  return selectedRanges;
+}
+
+function findFirstMeaningfulLine(lines: string[]): number {
+  let inLeadingImportBlock = true;
+
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed === '{' || trimmed === '}') {
+      continue;
+    }
+
+    if (
+      inLeadingImportBlock &&
+      (
+        trimmed.startsWith('import ') ||
+        trimmed.startsWith('export {') ||
+        trimmed.startsWith('export *') ||
+        trimmed.startsWith("'use ") ||
+        trimmed.startsWith('"use ') ||
+        trimmed.startsWith('//') ||
+        trimmed.startsWith('/*') ||
+        trimmed.startsWith('*')
+      )
+    ) {
+      continue;
+    }
+
+    inLeadingImportBlock = false;
+    return index;
+  }
+
+  return lines.findIndex((line) => line.trim().length > 0);
+}
+
+export async function fetchAllIterationChangeEntries(
+  gitApi: GitApi,
+  repositoryId: string,
+  prId: number,
+  iterationId: number,
+  projectName: string
+): Promise<any[]> {
+  const entries: any[] = [];
+  let skip = 0;
+
+  while (true) {
+    const page = await (gitApi as any).getPullRequestIterationChanges(
+      repositoryId,
+      prId,
+      iterationId,
+      projectName,
+      ITERATION_CHANGES_PAGE_SIZE,
+      skip
+    );
+    const pageEntries = page?.changeEntries ?? [];
+    entries.push(...pageEntries);
+
+    if (pageEntries.length < ITERATION_CHANGES_PAGE_SIZE) {
+      break;
+    }
+
+    skip += pageEntries.length;
+  }
+
+  return entries;
 }
 
 /**
@@ -211,34 +422,30 @@ export async function fetchPRDiffFallback(
     return { changes: [], totalChanges: 0 };
   }
 
-  const changes = await gitApi.getPullRequestIterationChanges(repositoryId, prId, iterationId, projectName);
+  const changeEntries = await fetchAllIterationChangeEntries(gitApi, repositoryId, prId, iterationId, projectName);
 
-  if (!changes || !changes.changeEntries) {
+  if (changeEntries.length === 0) {
     return { changes: [], totalChanges: 0 };
   }
 
-  const diffChanges: DiffChange[] = changes.changeEntries.slice(0, 20).map(change => {
+  const diffChanges: DiffChange[] = changeEntries.slice(0, 20).map(change => {
     const filePath = change.item?.path || 'unknown';
-    let changeType: 'add' | 'edit' | 'delete' = 'edit';
-
-    if (change.changeType) {
-      const typeStr = change.changeType.toString().toLowerCase();
-      if (typeStr.includes('add')) changeType = 'add';
-      else if (typeStr.includes('delete')) changeType = 'delete';
-    }
+    const changeType = classifyChangeType(change.changeType);
+    const fallbackMetrics = getFallbackLineMetrics(changeType);
 
     return {
       filePath,
       changeType,
-      linesAdded: changeType === 'add' ? 10 : 5,
-      linesDeleted: changeType === 'delete' ? 10 : 3,
+      linesAdded: fallbackMetrics.linesAdded,
+      linesDeleted: fallbackMetrics.linesDeleted,
       diffContent: `File: ${filePath}\nChange type: ${changeType}\n[Detailed diff unavailable - fallback mode]`
     };
   });
 
   return {
     changes: diffChanges,
-    totalChanges: changes.changeEntries.length
+    totalChanges: changeEntries.length,
+    truncatedChanges: Math.max(0, changeEntries.length - diffChanges.length),
   };
 }
 

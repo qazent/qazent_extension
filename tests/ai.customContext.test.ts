@@ -6,6 +6,7 @@ import { generateTestCases } from '../src/backend/ai';
 import { PRMetadata, CodeDiff } from '../src/backend/types';
 import { MIN_VALID_HTML } from './utils/fixtures';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { MAX_FILES_WITH_DIFF, TARGET_USER_PROMPT_TOKENS } from '../src/backend/diff-config';
 
 //
 // ---- Types for the mock ----
@@ -321,9 +322,38 @@ describe('AI Custom Context Integration', () => {
       const sentPrompt = getCallArgs().contents[0].parts[0].text;
       const estimatedTokens = Math.ceil(sentPrompt.length / 4);
 
-      expect(estimatedTokens).toBeLessThanOrEqual(5500);
+      expect(estimatedTokens).toBeLessThanOrEqual(TARGET_USER_PROMPT_TOKENS + 500);
       expect(result.title).toBeDefined();
       expect(result.htmlDescription).toBeDefined();
+    });
+
+    it('prioritizes diff blocks for the top files and summarizes the rest', async () => {
+      mockCodeDiff = {
+        totalChanges: MAX_FILES_WITH_DIFF + 10,
+        changes: Array.from({ length: MAX_FILES_WITH_DIFF + 10 }, (_, index) => ({
+          filePath: `src/file-${index}.ts`,
+          changeType: index % 3 === 0 ? 'add' : 'edit',
+          linesAdded: index + 5,
+          linesDeleted: index % 2,
+          diffContent: [
+            `--- a/src/file-${index}.ts`,
+            `+++ b/src/file-${index}.ts`,
+            '@@ -1,1 +1,2 @@',
+            '- old line',
+            `+ new line ${index}`,
+          ].join('\n'),
+        })),
+      };
+
+      await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+      const sentPrompt = getCallArgs().contents[0].parts[0].text;
+
+      expect(sentPrompt).toContain(`Files analyzed in detail: ${MAX_FILES_WITH_DIFF + 10}`);
+      expect(sentPrompt).toContain(
+        `(${10} analyzed files are summarized above without full diff blocks to preserve prompt quality)`
+      );
+      expect(sentPrompt).toContain('--- src/file-39.ts ---');
     });
   });
 });

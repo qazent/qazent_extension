@@ -1,10 +1,15 @@
 import fetch from "node-fetch";
 import { CodeDiff, DiffChange, } from './types';
 import * as logger from './utils/logger';
-import { generateUnifiedDiff, DIFF_MAX_CHARS_PER_FILE } from "./ado-client";
+import {
+  fetchAllIterationChangeEntries,
+  fetchPRDiffFallback,
+  generateSyntheticFileDiff,
+  generateUnifiedDiff,
+} from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
-import { fetchPRDiffFallback } from "./ado-client";
 import * as azdev from 'azure-devops-node-api';
+import { classifyChangeType, getFallbackLineMetrics, MAX_FILES_FOR_AI } from './diff-config';
 
 
 
@@ -129,22 +134,20 @@ export async function fetchPRDiff(
     }
 
     // Step 3: Get list of changed files
-    const changes = await gitApi.getPullRequestIterationChanges(
+    const changeEntries = await fetchAllIterationChangeEntries(
+      gitApi,
       repositoryId,
       prId,
       iterationId,
       projectName
     );
 
-    if (!changes || !changes.changeEntries) {
+    if (changeEntries.length === 0) {
       logger.warn("No changes found in PR", { prId });
       return { changes: [], totalChanges: 0 };
     }
 
     const diffChanges: DiffChange[] = [];
-    /** Max files included in diff for AI prompt (keeps user prompt under ~5k tokens). */
-    const MAX_FILES_FOR_AI = 40;
-
     // Step 4: Process each changed file and fetch actual content via REST
 
 
@@ -188,7 +191,10 @@ export async function fetchPRDiff(
        '.idea/', '.gradle/', '.mvn/', '.pytest_cache/', '.nyc_output/','.sass-cache/', '.parcel-cache/', '.eslintcache/','.next/', '.nuxt/', '.angular/', '.vite/',
         '.storybook-static/', '.expo/','__pycache__/', 'target/', 'gen/'];
 
-    for (const change of changes.changeEntries.slice(0, MAX_FILES_FOR_AI)) {
+    const includedEntries = [];
+    let filteredChanges = 0;
+
+    for (const change of changeEntries) {
       if (!change.item?.path) {
         continue;
       }
@@ -201,19 +207,22 @@ export async function fetchPRDiff(
         ignoredDirs.some(dir => lowerFilePath.includes(`/${dir}`) || lowerFilePath.startsWith(dir))
       ) {
         logger.info('Skipping file from diff/AI analysis due to ignored extension or directory', { filePath });
+        filteredChanges++;
         continue;
       }
 
-      let changeType: "add" | "edit" | "delete" = "edit";
+      includedEntries.push(change);
+    }
 
-      if (change.changeType) {
-        const changeTypeStr = change.changeType.toString().toLowerCase();
-        if (changeTypeStr.includes("add")) {
-          changeType = "add";
-        } else if (changeTypeStr.includes("delete")) {
-          changeType = "delete";
-        }
+    const truncatedChanges = Math.max(0, includedEntries.length - MAX_FILES_FOR_AI);
+
+    for (const change of includedEntries.slice(0, MAX_FILES_FOR_AI)) {
+      const filePath = change.item?.path;
+      if (!filePath) {
+        continue;
       }
+
+      const changeType = classifyChangeType(change.changeType);
 
       let diffContent = "";
       let linesAdded = 0;
@@ -255,7 +264,7 @@ export async function fetchPRDiff(
           );
 
           // Validate returned content
-          if (!oldContent) {
+          if (oldContent == null) {
             throw new Error(`fetchFileContentFromRest returned empty content for ${filePath}`);
           }
 
@@ -266,16 +275,9 @@ export async function fetchPRDiff(
             );
           }
 
-          linesDeleted = oldContent.split("\n").length;
-
-          diffContent =
-            `--- a/${filePath}\n` +
-            `+++ /dev/null\n` +
-            oldContent
-              .split("\n")
-              .map((line) => `- ${line}`)
-              .slice(0, 25)
-              .join("\n");
+          const syntheticDiff = generateSyntheticFileDiff(filePath, oldContent, "delete");
+          diffContent = syntheticDiff.diffContent;
+          linesDeleted = syntheticDiff.linesDeleted;
 
         } else if (changeType === "add") {
           // For added files, fetch new content only (source commit = after PR)
@@ -296,7 +298,7 @@ export async function fetchPRDiff(
             token
           );
 
-          if (!newContent) {
+          if (newContent == null) {
             throw new Error(`fetchFileContentFromRest returned empty content for ${filePath}`);
           }
 
@@ -306,16 +308,9 @@ export async function fetchPRDiff(
             );
           }
 
-          linesAdded = newContent.split("\n").length;
-
-          diffContent =
-            `--- /dev/null\n` +
-            `+++ b/${filePath}\n` +
-            newContent
-              .split("\n")
-              .map((line) => `+ ${line}`)
-              .slice(0, 25)
-              .join("\n");
+          const syntheticDiff = generateSyntheticFileDiff(filePath, newContent, "add");
+          diffContent = syntheticDiff.diffContent;
+          linesAdded = syntheticDiff.linesAdded;
         } else {
           // For edited files, fetch both old and new content
           logger.info("Fetching old and new content via REST for edited file", {
@@ -346,7 +341,7 @@ export async function fetchPRDiff(
           const oldContent = oldContentRaw || "";
           const newContent = newContentRaw || "";
 
-          const diff = generateUnifiedDiff(filePath, oldContent, newContent, DIFF_MAX_CHARS_PER_FILE);
+          const diff = generateUnifiedDiff(filePath, oldContent, newContent);
           diffContent = diff.diffContent;
           linesAdded = diff.linesAdded;
           linesDeleted = diff.linesDeleted;
@@ -360,8 +355,9 @@ export async function fetchPRDiff(
           `File: ${filePath}\n` +
           `Change type: ${changeType}\n` +
           `[Content fetch failed - possibly binary file, too large, or access restricted]`;
-        linesAdded = changeType === "add" ? 10 : 5;
-        linesDeleted = changeType === "delete" ? 10 : 3;
+        const fallbackMetrics = getFallbackLineMetrics(changeType);
+        linesAdded = fallbackMetrics.linesAdded;
+        linesDeleted = fallbackMetrics.linesDeleted;
       }
 
       diffChanges.push({
@@ -373,10 +369,10 @@ export async function fetchPRDiff(
       });
     }
 
-    if (changes.changeEntries.length > MAX_FILES_FOR_AI) {
+    if (truncatedChanges > 0) {
       logger.warn("Truncated diff to prevent overwhelming AI", {
         prId,
-        totalFiles: changes.changeEntries.length,
+        totalFiles: includedEntries.length,
         included: MAX_FILES_FOR_AI,
       });
     }
@@ -384,14 +380,18 @@ export async function fetchPRDiff(
     logger.info("PR diff fetched successfully with real content", {
       prId,
       filesChanged: diffChanges.length,
-      totalChanges: changes.changeEntries.length,
+      totalChanges: changeEntries.length,
+      filteredChanges,
+      truncatedChanges,
       linesAdded: diffChanges.reduce((sum, c) => sum + c.linesAdded, 0),
       linesDeleted: diffChanges.reduce((sum, c) => sum + c.linesDeleted, 0),
     });
 
     return {
       changes: diffChanges,
-      totalChanges: changes.changeEntries.length,
+      totalChanges: changeEntries.length,
+      filteredChanges,
+      truncatedChanges,
       sourceCommitId,
       targetCommitId,
     };

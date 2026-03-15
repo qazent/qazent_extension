@@ -615,18 +615,29 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       // Extract organization name from URL for fetchPRDiff
       const orgName = extractOrgName(req.orgUrl!);
 
-      // Fetch PR diff from utils
-      const codeDiff = await fetchPRDiff(
-        payload.projectName,
-        payload.repositoryId,
-        payload.prId,
-        adoClient.createConnection(token, req.orgUrl!),
-        orgName,
-        token
-      );
+      const connection = adoClient.createConnection(token, req.orgUrl!);
 
-      // Create minimal PR metadata for AI generation
-      const prMetadata: PRMetadata = {
+      // Fetch PR diff and metadata together so the AI receives real PR context.
+      const [codeDiff, metadataResult] = await Promise.all([
+        fetchPRDiff(
+          payload.projectName,
+          payload.repositoryId,
+          payload.prId,
+          connection,
+          orgName,
+          token
+        ),
+        adoClient.fetchPRMetadata(payload.prId, connection).catch((error) => {
+          logger.warn('Failed to fetch PR metadata, using request fallback', {
+            prId: payload.prId,
+            error: String(error),
+            requestId: req.requestId
+          });
+          return null;
+        })
+      ]);
+
+      const prMetadata: PRMetadata = metadataResult ?? {
         prId: payload.prId,
         title: 'Manual Test Generation',
         description: '',
