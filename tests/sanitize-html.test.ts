@@ -22,6 +22,14 @@ describe('sanitizeHTML', () => {
     expect(mockWarn).not.toHaveBeenCalled();
   });
 
+  it('preserves safe table attributes used by generated output', () => {
+    const input =
+      '<table border="1" cellspacing="0" cellpadding="5"><tr><th>Step</th><th>Expected</th></tr><tr><td>1</td><td>OK</td></tr></table>';
+
+    expect(sanitizeHTML(input)).toBe(input);
+    expect(mockWarn).not.toHaveBeenCalled();
+  });
+
   it('removes disallowed tags and dangerous attributes', () => {
     const input = [
       '<h2 onclick="alert(1)">Purpose</h2>',

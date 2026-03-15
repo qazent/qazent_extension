@@ -34,6 +34,7 @@ const SANITIZE_OPTIONS: IOptions = {
   allowedAttributes: {
     a: ['href', 'target', 'rel'],
     ol: ['start', 'type'],
+    table: ['border', 'cellpadding', 'cellspacing'],
     td: ['colspan', 'rowspan'],
     th: ['colspan', 'rowspan', 'scope'],
   },

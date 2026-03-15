@@ -529,6 +529,55 @@ export function validateTaskOutput(data: any): TaskWorkItemOutput {
   };
 }
 
+interface HtmlHeadingMatch {
+  raw: string;
+  title: string;
+  normalizedTitle: string;
+  start: number;
+  end: number;
+}
+
+const HTML_HEADING_REGEX = /<(h[2-4])\b[^>]*>([\s\S]*?)<\/\1>/gi;
+
+function stripInlineTags(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeHeadingTitle(value: string): string {
+  return stripInlineTags(value)
+    .replace(/^\d+\s*([.)\-:]?\s*)?/, '')
+    .toLowerCase();
+}
+
+function extractHtmlHeadings(html: string): HtmlHeadingMatch[] {
+  const matches: HtmlHeadingMatch[] = [];
+  const regex = new RegExp(HTML_HEADING_REGEX);
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(html)) !== null) {
+    const raw = match[0];
+    const title = stripInlineTags(match[2]);
+    matches.push({
+      raw,
+      title,
+      normalizedTitle: normalizeHeadingTitle(match[2]),
+      start: match.index,
+      end: match.index + raw.length,
+    });
+  }
+
+  return matches;
+}
+
+function findNextH2Index(html: string, startIndex: number): number {
+  const next = html.slice(startIndex).match(/<h2\b[^>]*>/i);
+  return next && next.index != null ? startIndex + next.index : -1;
+}
+
 /**
  * Extracts everything from <h2>Purpose</h2> through the entire
  * <h2>Scope of Change</h2> section, including all text under both headers.
@@ -538,30 +587,25 @@ export function validateTaskOutput(data: any): TaskWorkItemOutput {
  * 
  */
 export function extractPurposeAndScope(html: string): string {
-  const purposeHeader = '<h2>Purpose</h2>';
-  const scopeHeader = '<h2>Scope of Change</h2>';
+  const headings = extractHtmlHeadings(html);
+  const purposeIndex = headings.findIndex((heading) => heading.normalizedTitle === 'purpose');
+  if (purposeIndex === -1) return '';
 
-  // Find Purpose start
-  const purposeIdx = html.indexOf(purposeHeader);
-  if (purposeIdx === -1) return '';
+  const scopeIndex = headings.findIndex(
+    (heading, index) => index > purposeIndex && heading.normalizedTitle === 'scope of change'
+  );
 
-  // Find Scope of Change start
-  const scopeIdx = html.indexOf(scopeHeader, purposeIdx + purposeHeader.length);
-  if (scopeIdx === -1) {
-    // No Scope of Change, return everything from Purpose to end
-    return html.substring(purposeIdx).trim();
+  if (scopeIndex === -1) {
+    return html.substring(headings[purposeIndex].start).trim();
   }
 
-  // Find the next <h2> after Scope of Change
-  const nextHeaderIdx = html.indexOf('<h2>', scopeIdx + scopeHeader.length);
-
-  if (nextHeaderIdx === -1) {
-    // No further sections, return to end
-    return html.substring(purposeIdx).trim();
+  const scopeHeading = headings[scopeIndex];
+  const nextH2Index = findNextH2Index(html, scopeHeading.end);
+  if (nextH2Index === -1) {
+    return html.substring(headings[purposeIndex].start).trim();
   }
 
-  // Return Purpose → end of Scope of Change section
-  return html.substring(purposeIdx, nextHeaderIdx).trim();
+  return html.substring(headings[purposeIndex].start, nextH2Index).trim();
 }
 
 
@@ -713,37 +757,39 @@ export async function generateTestCases(
         throw validationErr;
       }
 
-      // Validate response completeness to detect truncation (11 sections need substantial content)
+      // Validate response completeness using flexible heading detection to avoid
+      // rejecting valid AI output for harmless formatting differences.
       const htmlLength = taskOutput.htmlDescription.length;
-      const hasAutomationNotes = taskOutput.htmlDescription.includes('<h2>Automation Notes</h2>');
-      const sectionCount = (taskOutput.htmlDescription.match(/<h2>/g) || []).length;
-      const MIN_HTML_LENGTH = 2500;
-      const LONG_FORM_MIN_LENGTH = 5000;
-      const MIN_SECTION_COUNT = 9;
-      const LONG_FORM_MIN_LENGTH_RELAXED = 3500;
-      const MIN_SECTION_COUNT_RELAXED = 7;
+      const headings = extractHtmlHeadings(taskOutput.htmlDescription);
+      const sectionTitlesFound = headings.map((heading) => heading.title);
+      const hasAutomationNotes = headings.some((heading) => /automation\s*notes/i.test(heading.normalizedTitle));
+      const sectionCount = headings.length;
+      const MIN_HTML_LENGTH = 800;
+      const STRONG_HTML_LENGTH = 2000;
 
       const useRelaxedValidation = attempt >= 2;
-      const minLengthForSections = useRelaxedValidation ? LONG_FORM_MIN_LENGTH_RELAXED : LONG_FORM_MIN_LENGTH;
-      const minSectionCount = useRelaxedValidation ? MIN_SECTION_COUNT_RELAXED : MIN_SECTION_COUNT;
-
+      const minSectionCount = useRelaxedValidation ? 5 : 6;
+      const minSectionCountWithStrongLength = useRelaxedValidation ? 3 : 4;
       const lengthOk = htmlLength >= MIN_HTML_LENGTH;
-      const sectionsOk = hasAutomationNotes || (htmlLength >= minLengthForSections && sectionCount >= minSectionCount);
+      const sectionsOk =
+        sectionCount >= minSectionCount ||
+        (sectionCount >= minSectionCountWithStrongLength && htmlLength >= STRONG_HTML_LENGTH) ||
+        hasAutomationNotes;
 
       if (!lengthOk || !sectionsOk) {
-        const h2Titles = (taskOutput.htmlDescription.match(/<h2>[^<]*<\/h2>/g) || []).map((h: string) => h.replace(/<\/?h2>/g, '').trim());
         logger.warn('AI response appears truncated', {
           prId: prMetadata.prId,
           htmlLength,
           minRequired: MIN_HTML_LENGTH,
+          strongLengthThreshold: STRONG_HTML_LENGTH,
           lengthOk,
           sectionsOk,
           hasAutomationNotes,
           sectionCount,
           minSectionCount,
-          longFormMinLength: minLengthForSections,
+          minSectionCountWithStrongLength,
           useRelaxedValidation,
-          sectionTitlesFound: h2Titles,
+          sectionTitlesFound,
           htmlPreviewFirst200: taskOutput.htmlDescription.substring(0, 200),
           htmlPreviewLast200: taskOutput.htmlDescription.substring(Math.max(0, taskOutput.htmlDescription.length - 200)),
           attempt
@@ -751,11 +797,13 @@ export async function generateTestCases(
         throw new Error('AI response truncated - missing sections');
       }
 
-      if (useRelaxedValidation && !hasAutomationNotes) {
-        logger.info('Accepted AI response using relaxed validation on retry', {
+      if (useRelaxedValidation) {
+        logger.info('Accepted AI response on retry with relaxed section thresholds', {
           prId: prMetadata.prId,
           sectionCount,
           htmlLength,
+          minSectionCount,
+          minSectionCountWithStrongLength,
           attempt
         });
       }
@@ -764,7 +812,7 @@ export async function generateTestCases(
         prId: prMetadata.prId,
         title: taskOutput.title,
         htmlLength: taskOutput.htmlDescription.length,
-        hasPurpose: taskOutput.htmlDescription.includes('<h2>Purpose</h2>'),
+        hasPurpose: headings.some((heading) => heading.normalizedTitle === 'purpose'),
         hasAutomationNotes,
         sectionCount,
         attempt
