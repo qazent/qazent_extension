@@ -58,16 +58,20 @@ export interface PRMetadata {
 export interface CodeDiff {
   changes: DiffChange[];
   totalChanges: number;
+  filteredChanges?: number;
+  truncatedChanges?: number;
   sourceCommitId?: string;  // Optional for fallback scenarios
   targetCommitId?: string;   // Optional for fallback scenarios
 }
+
+export type DiffChangeType = 'add' | 'edit' | 'delete';
 
 /**
  * Individual file change in diff
  */
 export interface DiffChange {
   filePath: string;
-  changeType: 'add' | 'edit' | 'delete';
+  changeType: DiffChangeType;
   linesAdded: number;
   linesDeleted: number;
   diffContent: string;

@@ -10,34 +10,31 @@ import { CodeDiff, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import { jsonrepair } from "jsonrepair";
-
-/** Target user prompt size to avoid MAX_TOKENS and truncation (tokens). */
-const TARGET_USER_PROMPT_TOKENS = 5000;
-/** Approximate chars per token for estimation. */
-const CHARS_PER_TOKEN_ESTIMATE = 4;
-/** Max PR description chars in prompt. */
-const MAX_DESCRIPTION_CHARS = 800;
-/** Max repository context chars in prompt. */
-const MAX_CONTEXT_CHARS = 2000;
-/** Max diff lines per file in prompt (first pass). */
-const MAX_DIFF_LINES_PER_FILE = 30;
-/** Stricter limits for second pass when over token budget. */
-const MAX_DESCRIPTION_CHARS_STRICT = 500;
-const MAX_CONTEXT_CHARS_STRICT = 1500;
-const MAX_DIFF_LINES_PER_FILE_STRICT = 8;
-/** When over budget, include full (truncated) diff only for first N files; rest bullet-only. */
-const MAX_FILES_WITH_DIFF_STRICT = 12;
+import {
+  CHARS_PER_TOKEN_ESTIMATE,
+  GEMINI_MODEL_NAME,
+  MAX_DIFF_LINES_PER_FILE,
+  MAX_DIFF_LINES_PER_FILE_STRICT,
+  MAX_FILES_WITH_DIFF,
+  MAX_FILES_WITH_DIFF_STRICT,
+  MAX_PR_DESCRIPTION_CHARS,
+  MAX_PR_DESCRIPTION_CHARS_STRICT,
+  MAX_REPOSITORY_CONTEXT_CHARS,
+  MAX_REPOSITORY_CONTEXT_CHARS_STRICT,
+  rankDiffChange,
+  TARGET_USER_PROMPT_TOKENS,
+} from './diff-config';
 
 export const COMPRESSION_SUMMARY =
-  'User prompt is capped by (1) including at most 25–30 changed files and up to 2000 characters of diff per file, (2) truncating PR description to the first 500–800 characters and repository context to 1500–2000 characters, (3) replacing per-file blocks with a one-line bullet per file (path, type, +lines/-lines), (4) keeping only the first portion of each file\'s diff (first hunks / ~15 lines), and (5) using a single short JSON output instruction. Optional token estimation triggers a second pass that further shortens description, context, and per-file diffs if the prompt still exceeds 5000 tokens. All critical PR and file-level context is retained for test case generation; only redundant or excessive detail is removed.';
+  `User prompt is capped by (1) summarizing every included file in a one-line bullet, (2) prioritizing detailed diff blocks for the highest-signal ${MAX_FILES_WITH_DIFF} files on the first pass, (3) truncating PR description to ${MAX_PR_DESCRIPTION_CHARS} chars and repository context to ${MAX_REPOSITORY_CONTEXT_CHARS} chars, (4) trimming per-file diffs to ${MAX_DIFF_LINES_PER_FILE} lines before a stricter second pass, and (5) dynamically reducing diff detail if the prompt still exceeds roughly ${TARGET_USER_PROMPT_TOKENS} tokens. All critical PR and file-level context is retained for test case generation; only lower-priority detail is compressed first.`;
 
 const SECTIONS_REMOVED = [
-  'Full PR description → summarized to first 500–800 chars',
+  `Full PR description → summarized to first ${MAX_PR_DESCRIPTION_CHARS_STRICT}-${MAX_PR_DESCRIPTION_CHARS} chars`,
   'Per-file "File:/Type:/Lines Added:/Lines Deleted:" blocks → replaced by one-line bullet list',
-  'Full diff content per file → truncated to first ~30 lines (or ~8 on second pass)',
-  'Repository-Specific Context → truncated to 1500–2000 chars',
+  `Full diff content per file → truncated to first ~${MAX_DIFF_LINES_PER_FILE} lines (or ~${MAX_DIFF_LINES_PER_FILE_STRICT} on stricter passes)`,
+  `Repository-Specific Context → truncated to ${MAX_REPOSITORY_CONTEXT_CHARS_STRICT}-${MAX_REPOSITORY_CONTEXT_CHARS} chars`,
   'Redundant JSON structure block → replaced by one-line instruction',
-  'Excess files → only first 25–30 files included; "(N more files not shown)" in summary if applicable',
+  `Detailed diff blocks → prioritized to the top ${MAX_FILES_WITH_DIFF} files first and reduced further only when needed`,
 ] as const;
 
 /** Response schema for Gemini structured output: guarantees valid JSON with title + htmlDescription */
@@ -201,10 +198,12 @@ function buildUserPrompt(
     maxFilesWithDiff?: number;
   }
 ): BuildUserPromptResult {
-  const maxDesc = options?.maxDescriptionChars ?? MAX_DESCRIPTION_CHARS;
-  const maxCtx = options?.maxContextChars ?? MAX_CONTEXT_CHARS;
+  const maxDesc = options?.maxDescriptionChars ?? MAX_PR_DESCRIPTION_CHARS;
+  const maxCtx = options?.maxContextChars ?? MAX_REPOSITORY_CONTEXT_CHARS;
   const maxLines = options?.maxDiffLinesPerFile ?? MAX_DIFF_LINES_PER_FILE;
-  const maxFilesWithDiff = options?.maxFilesWithDiff ?? codeDiff.changes.length;
+  const maxFilesWithDiff = options?.maxFilesWithDiff ?? Math.min(MAX_FILES_WITH_DIFF, codeDiff.changes.length);
+  const rankedChanges = [...codeDiff.changes].sort((left, right) => rankDiffChange(right) - rankDiffChange(left));
+  const changesWithDiff = rankedChanges.slice(0, maxFilesWithDiff);
 
   const description = prMetadata.description?.trim() || 'N/A';
   const descriptionTruncated =
@@ -223,27 +222,34 @@ Target Branch: ${prMetadata.targetBranch}
 Files changed: ${codeDiff.totalChanges}
 `;
 
+  if (typeof codeDiff.filteredChanges === 'number' && codeDiff.filteredChanges > 0) {
+    prompt += `Filtered low-signal files: ${codeDiff.filteredChanges}\n`;
+  }
+  if (typeof codeDiff.truncatedChanges === 'number' && codeDiff.truncatedChanges > 0) {
+    prompt += `Additional files omitted from AI analysis budget: ${codeDiff.truncatedChanges}\n`;
+  }
+  prompt += `Files analyzed in detail: ${codeDiff.changes.length}\n`;
+
   // Bullet list: one line per file
   for (const c of codeDiff.changes) {
     prompt += `- ${c.filePath} (${c.changeType}) +${c.linesAdded} -${c.linesDeleted}\n`;
   }
 
-  const moreFiles = codeDiff.totalChanges - codeDiff.changes.length;
-  if (moreFiles > 0) {
-    prompt += `(${moreFiles} more files not shown)\n`;
-  }
-
   prompt += `\nKey changes (diffs):\n`;
 
-  for (let i = 0; i < codeDiff.changes.length; i++) {
-    const change = codeDiff.changes[i];
-    const includeDiff = i < maxFilesWithDiff;
-    if (includeDiff && change.diffContent) {
-      const { text, omitted } = truncateToLines(change.diffContent, maxLines);
-      prompt += `\n--- ${change.filePath} ---\n${text}`;
-      if (omitted > 0) prompt += `\n... (diff truncated, ${omitted} lines omitted)`;
-      prompt += '\n';
+  for (const change of changesWithDiff) {
+    if (!change.diffContent) {
+      continue;
     }
+    const { text, omitted } = truncateToLines(change.diffContent, maxLines);
+    prompt += `\n--- ${change.filePath} ---\n${text}`;
+    if (omitted > 0) prompt += `\n... (diff truncated, ${omitted} lines omitted)`;
+    prompt += '\n';
+  }
+
+  const summarizedOnlyCount = Math.max(0, codeDiff.changes.length - changesWithDiff.length);
+  if (summarizedOnlyCount > 0) {
+    prompt += `\n(${summarizedOnlyCount} analyzed files are summarized above without full diff blocks to preserve prompt quality)\n`;
   }
 
   if (customContext && customContext.trim().length > 0) {
@@ -275,12 +281,37 @@ function buildUserPromptWithTokenCap(
     estimatedTokens: estimateTokens(result.prompt),
     target: TARGET_USER_PROMPT_TOKENS,
   });
-  result = buildUserPrompt(prMetadata, codeDiff, customContext, {
-    maxDescriptionChars: MAX_DESCRIPTION_CHARS_STRICT,
-    maxContextChars: MAX_CONTEXT_CHARS_STRICT,
+  let strictOptions = {
+    maxDescriptionChars: MAX_PR_DESCRIPTION_CHARS_STRICT,
+    maxContextChars: MAX_REPOSITORY_CONTEXT_CHARS_STRICT,
     maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE_STRICT,
     maxFilesWithDiff: Math.min(MAX_FILES_WITH_DIFF_STRICT, codeDiff.changes.length),
-  });
+  };
+  result = buildUserPrompt(prMetadata, codeDiff, customContext, strictOptions);
+
+  while (estimateTokens(result.prompt) > TARGET_USER_PROMPT_TOKENS) {
+    const nextFilesWithDiff = strictOptions.maxFilesWithDiff > 6
+      ? Math.max(6, strictOptions.maxFilesWithDiff - 4)
+      : strictOptions.maxFilesWithDiff;
+    const nextDiffLinesPerFile = strictOptions.maxDiffLinesPerFile > 8
+      ? Math.max(8, strictOptions.maxDiffLinesPerFile - 4)
+      : strictOptions.maxDiffLinesPerFile;
+
+    if (
+      nextFilesWithDiff === strictOptions.maxFilesWithDiff &&
+      nextDiffLinesPerFile === strictOptions.maxDiffLinesPerFile
+    ) {
+      break;
+    }
+
+    strictOptions = {
+      ...strictOptions,
+      maxFilesWithDiff: nextFilesWithDiff,
+      maxDiffLinesPerFile: nextDiffLinesPerFile,
+    };
+    result = buildUserPrompt(prMetadata, codeDiff, customContext, strictOptions);
+  }
+
   return result;
 }
 
@@ -654,7 +685,7 @@ export async function generateTestCases(
 
       // Generate content using new SDK API
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview', // TODO: LATEST, please migrate quickly to the next-gen API and model versions as they become available
+        model: GEMINI_MODEL_NAME,
         contents: [
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],

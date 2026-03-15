@@ -11,24 +11,28 @@ jest.mock('../../src/backend/utils/logger', () => ({
   error: jest.fn(),
 }));
 
-jest.mock('../../src/backend/ado-client', () => ({
-  generateUnifiedDiff: jest.fn().mockReturnValue({
-    diffContent: '@@ -1,2 +1,2 @@\n-old\n+new',
-    linesAdded: 4,
-    linesDeleted: 2,
-  }),
-  DIFF_MAX_CHARS_PER_FILE: 8000,
-  fetchPRDiffFallback: jest.fn().mockResolvedValue({
-    changes: [{ filePath: 'fallback.ts', changeType: 'edit', linesAdded: 1, linesDeleted: 1, diffContent: 'fallback' }],
-    totalChanges: 1,
-    sourceCommitId: 'fallback-source',
-    targetCommitId: 'fallback-target',
-  }),
-}));
+jest.mock('../../src/backend/ado-client', () => {
+  const actual = jest.requireActual('../../src/backend/ado-client');
+  return {
+    ...actual,
+    generateUnifiedDiff: jest.fn().mockReturnValue({
+      diffContent: '@@ -1,2 +1,2 @@\n-old\n+new',
+      linesAdded: 4,
+      linesDeleted: 2,
+    }),
+    fetchPRDiffFallback: jest.fn().mockResolvedValue({
+      changes: [{ filePath: 'fallback.ts', changeType: 'edit', linesAdded: 1, linesDeleted: 1, diffContent: 'fallback' }],
+      totalChanges: 1,
+      sourceCommitId: 'fallback-source',
+      targetCommitId: 'fallback-target',
+    }),
+  };
+});
 
 import fetch from 'node-fetch';
 import { fetchFileContentFromRest, fetchPRDiff } from '../../src/backend/fetchPRdiff';
-import { fetchPRDiffFallback, generateUnifiedDiff } from '../../src/backend/ado-client';
+import { fetchAllIterationChangeEntries, fetchPRDiffFallback, generateUnifiedDiff } from '../../src/backend/ado-client';
+import { ITERATION_CHANGES_PAGE_SIZE } from '../../src/backend/diff-config';
 
 function createFetchResponse({
   ok = true,
@@ -200,9 +204,10 @@ describe('fetchPRdiff backend path', () => {
       '/src/edited.ts',
       'old line\nold extra',
       'new line\nnew extra',
-      8000
     );
     expect(result.totalChanges).toBe(4);
+    expect(result.filteredChanges).toBe(1);
+    expect(result.truncatedChanges).toBe(0);
     expect(result.sourceCommitId).toBe('source-123');
     expect(result.targetCommitId).toBe('target-456');
     expect(result.changes).toEqual([
@@ -218,16 +223,100 @@ describe('fetchPRdiff backend path', () => {
         changeType: 'add',
         linesAdded: 2,
         linesDeleted: 0,
-        diffContent: expect.stringContaining('+++ b//src/added.ts'),
+        diffContent: expect.stringContaining('+++ b/src/added.ts'),
       },
       {
         filePath: '/src/deleted.ts',
         changeType: 'delete',
         linesAdded: 0,
         linesDeleted: 2,
-        diffContent: expect.stringContaining('--- a//src/deleted.ts'),
+        diffContent: expect.stringContaining('--- a/src/deleted.ts'),
       },
     ]);
+  });
+
+  it('treats an empty added file as a valid diff instead of a fetch failure', async () => {
+    mockFetch.mockResolvedValueOnce(createFetchResponse({ text: '' }) as never);
+
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({
+        getPullRequest: jest.fn().mockResolvedValue({
+          lastMergeSourceCommit: { commitId: 'source-123' },
+          lastMergeTargetCommit: { commitId: 'target-456' },
+        }),
+        getPullRequestIterations: jest.fn().mockResolvedValue([{ id: 1 }]),
+        getPullRequestIterationChanges: jest.fn().mockResolvedValue({
+          changeEntries: [{ item: { path: '/src/empty.ts' }, changeType: 'add' }],
+        }),
+      }),
+    };
+
+    const result = await fetchPRDiff(
+      'MyProject',
+      'repo-1',
+      101,
+      connection as never,
+      'myorg',
+      'oauth-token'
+    );
+
+    expect(result.changes).toEqual([
+      {
+        filePath: '/src/empty.ts',
+        changeType: 'add',
+        linesAdded: 0,
+        linesDeleted: 0,
+        diffContent: expect.stringContaining('+++ b/src/empty.ts'),
+      },
+    ]);
+    expect(result.changes[0].diffContent).not.toContain('Content fetch failed');
+  });
+
+  it('prefers semantically meaningful regions over import-heavy headers for added files', async () => {
+    const importBlock = Array.from({ length: 35 }, (_, index) => `import dep${index} from 'pkg-${index}';`).join('\n');
+    const addedFileContent = [
+      importBlock,
+      '',
+      'const helper = () => "ready";',
+      '',
+      'export async function submitOrder(order: OrderInput) {',
+      '  const validatedOrder = validateOrder(order);',
+      '  await saveOrder(validatedOrder);',
+      '  return { ok: true, id: validatedOrder.id };',
+      '}',
+      '',
+      'export const orderRoutes = router.post("/orders", submitOrder);',
+    ].join('\n');
+
+    mockFetch.mockResolvedValueOnce(createFetchResponse({ text: addedFileContent }) as never);
+
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({
+        getPullRequest: jest.fn().mockResolvedValue({
+          lastMergeSourceCommit: { commitId: 'source-123' },
+          lastMergeTargetCommit: { commitId: 'target-456' },
+        }),
+        getPullRequestIterations: jest.fn().mockResolvedValue([{ id: 1 }]),
+        getPullRequestIterationChanges: jest.fn().mockResolvedValue({
+          changeEntries: [{ item: { path: '/src/orders.ts' }, changeType: 'add' }],
+        }),
+      }),
+    };
+
+    const result = await fetchPRDiff(
+      'MyProject',
+      'repo-1',
+      102,
+      connection as never,
+      'myorg',
+      'oauth-token'
+    );
+
+    expect(result.changes[0].linesAdded).toBe(45);
+    expect(result.changes[0].diffContent).toContain('export async function submitOrder');
+    expect(result.changes[0].diffContent).toContain('router.post("/orders", submitOrder)');
+    expect(result.changes[0].diffContent).toContain('... (');
+    expect(result.changes[0].diffContent).not.toContain("import dep0 from 'pkg-0';");
   });
 
   it('uses a fallback diff entry when content fetch fails for a changed file', async () => {
@@ -260,10 +349,53 @@ describe('fetchPRdiff backend path', () => {
         filePath: '/src/added.ts',
         changeType: 'add',
         linesAdded: 10,
-        linesDeleted: 3,
+        linesDeleted: 0,
         diffContent:
           'File: /src/added.ts\nChange type: add\n[Content fetch failed - possibly binary file, too large, or access restricted]',
       },
     ]);
+  });
+
+  it('fetches all paged iteration changes through the helper', async () => {
+    const firstPageEntries = Array.from({ length: ITERATION_CHANGES_PAGE_SIZE }, (_, index) => ({
+      item: { path: `/src/file-${index}.ts` },
+      changeType: 'edit',
+    }));
+    const secondPageEntries = [
+      { item: { path: '/src/final.ts' }, changeType: 'add' },
+    ];
+    const gitApi = {
+      getPullRequestIterationChanges: jest.fn()
+        .mockResolvedValueOnce({ changeEntries: firstPageEntries })
+        .mockResolvedValueOnce({ changeEntries: secondPageEntries }),
+    };
+
+    const entries = await fetchAllIterationChangeEntries(
+      gitApi as never,
+      'repo-1',
+      42,
+      7,
+      'MyProject'
+    );
+
+    expect(entries).toHaveLength(ITERATION_CHANGES_PAGE_SIZE + 1);
+    expect(gitApi.getPullRequestIterationChanges).toHaveBeenNthCalledWith(
+      1,
+      'repo-1',
+      42,
+      7,
+      'MyProject',
+      ITERATION_CHANGES_PAGE_SIZE,
+      0
+    );
+    expect(gitApi.getPullRequestIterationChanges).toHaveBeenNthCalledWith(
+      2,
+      'repo-1',
+      42,
+      7,
+      'MyProject',
+      ITERATION_CHANGES_PAGE_SIZE,
+      ITERATION_CHANGES_PAGE_SIZE
+    );
   });
 });
