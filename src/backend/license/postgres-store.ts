@@ -118,6 +118,19 @@ export class PostgresLicenseStore implements LicenseStore {
     return res.rows.map((r) => this.rowToRecord(r));
   }
 
+  async bindOrganization(id: string, organization: string): Promise<LicenseRecord> {
+    await this.ensureTables();
+    const res = await this.pool.query(
+      `UPDATE ${LICENSES_TABLE}
+       SET organization = $2, updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id, organization]
+    );
+    if (res.rows.length === 0) throw new Error(`License not found: ${id}`);
+    return this.rowToRecord(res.rows[0]);
+  }
+
   async upsert(record: LicenseRecord): Promise<LicenseRecord> {
     await this.ensureTables();
     const now = new Date();

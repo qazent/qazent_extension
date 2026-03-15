@@ -52,6 +52,7 @@ export interface LicenseStore {
   findByOrg(organization: string): Promise<LicenseRecord | null>;
   findByLicenseHash(hash: string): Promise<LicenseRecord | null>;
   findByLemonOrderId(orderId: number): Promise<LicenseRecord[]>;
+  bindOrganization(id: string, organization: string): Promise<LicenseRecord>;
   upsert(record: LicenseRecord): Promise<LicenseRecord>;
   update(id: string, patch: Partial<LicenseRecord>): Promise<LicenseRecord>;
 

@@ -7,6 +7,8 @@ process.env.LICENSE_HASH_SALT = 'test-salt';
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import * as licenseService from '../../src/backend/license/service';
 import * as lemonApi from '../../src/backend/license/lemon-api';
+import { createLicenseRecord, getDefaultLicenseStore } from '../../src/backend/license/model';
+import { hashLicenseKey } from '../../src/backend/license/utils';
 
 jest.mock('../../src/backend/license/lemon-api', () => ({
   validateLicenseKey: jest.fn(),
@@ -157,5 +159,196 @@ describe('activateLicense', () => {
 
     expect(result.status).toBe('invalid');
     expect(result.message).toContain('another');
+  });
+
+  it('binds a blank stored organization on first activation for inactive Lemon licenses', async () => {
+    const licenseKey = 'inactive-placeholder-key';
+    const store = getDefaultLicenseStore();
+
+    await store.upsert(
+      createLicenseRecord({
+        licenseKeyHash: hashLicenseKey(licenseKey),
+        organization: '',
+        status: 'active',
+        plan: 'default',
+      })
+    );
+
+    mockValidateLicenseKey.mockResolvedValue({
+      valid: true,
+      error: null,
+      license_key: {
+        id: 2,
+        status: 'inactive',
+        key: licenseKey,
+        activation_limit: 3,
+        activation_usage: 0,
+        expires_at: null,
+      },
+      meta: {
+        order_id: 200,
+        customer_id: 2,
+        product_id: 2,
+        product_name: 'PR Assistant',
+        variant_id: 2,
+        variant_name: 'Pro',
+        customer_email: 'inactive@example.com',
+      },
+    });
+
+    const result = await licenseService.activateLicense({
+      licenseKey,
+      organization: 'blank-org',
+      userId: 'user-inactive',
+    });
+
+    const record = await store.findByLicenseHash(hashLicenseKey(licenseKey));
+    expect(result.status).toBe('active');
+    expect(record?.organization).toBe('blank-org');
+  });
+
+  it('treats a whitespace-only stored organization as unassigned', async () => {
+    const licenseKey = 'whitespace-placeholder-key';
+    const store = getDefaultLicenseStore();
+
+    await store.upsert(
+      createLicenseRecord({
+        licenseKeyHash: hashLicenseKey(licenseKey),
+        organization: '   ',
+        status: 'active',
+        plan: 'default',
+      })
+    );
+
+    mockValidateLicenseKey.mockResolvedValue({
+      valid: true,
+      error: null,
+      license_key: {
+        id: 3,
+        status: 'active',
+        key: licenseKey,
+        activation_limit: 2,
+        activation_usage: 0,
+        expires_at: null,
+      },
+      meta: {
+        order_id: 300,
+        customer_id: 3,
+        product_id: 3,
+        product_name: 'PR Assistant',
+        variant_id: 3,
+        variant_name: 'Pro',
+        customer_email: 'whitespace@example.com',
+      },
+    });
+
+    const result = await licenseService.activateLicense({
+      licenseKey,
+      organization: 'trimmed-org',
+      userId: 'user-whitespace',
+    });
+
+    const record = await store.findByLicenseHash(hashLicenseKey(licenseKey));
+    expect(result.status).toBe('active');
+    expect(record?.organization).toBe('trimmed-org');
+  });
+
+  it('does not bind a blank organization when Lemon Squeezy reports disabled', async () => {
+    const licenseKey = 'disabled-placeholder-key';
+    const store = getDefaultLicenseStore();
+
+    await store.upsert(
+      createLicenseRecord({
+        licenseKeyHash: hashLicenseKey(licenseKey),
+        organization: '',
+        status: 'active',
+        plan: 'default',
+      })
+    );
+
+    mockValidateLicenseKey.mockResolvedValue({
+      valid: true,
+      error: null,
+      license_key: {
+        id: 4,
+        status: 'disabled',
+        key: licenseKey,
+        activation_limit: 1,
+        activation_usage: 0,
+        expires_at: null,
+      },
+      meta: {
+        order_id: 400,
+        customer_id: 4,
+        product_id: 4,
+        product_name: 'PR Assistant',
+        variant_id: 4,
+        variant_name: 'Pro',
+        customer_email: 'disabled@example.com',
+      },
+    });
+
+    const result = await licenseService.activateLicense({
+      licenseKey,
+      organization: 'should-not-bind',
+      userId: 'user-disabled',
+    });
+
+    const record = await store.findByLicenseHash(hashLicenseKey(licenseKey));
+    expect(result.status).toBe('invalid');
+    expect(record?.organization).toBe('');
+  });
+
+  it('rejects a different organization after the first bind', async () => {
+    const licenseKey = 'bind-then-reject-key';
+    const store = getDefaultLicenseStore();
+
+    await store.upsert(
+      createLicenseRecord({
+        licenseKeyHash: hashLicenseKey(licenseKey),
+        organization: '',
+        status: 'active',
+        plan: 'default',
+      })
+    );
+
+    mockValidateLicenseKey.mockResolvedValue({
+      valid: true,
+      error: null,
+      license_key: {
+        id: 5,
+        status: 'active',
+        key: licenseKey,
+        activation_limit: 5,
+        activation_usage: 0,
+        expires_at: null,
+      },
+      meta: {
+        order_id: 500,
+        customer_id: 5,
+        product_id: 5,
+        product_name: 'PR Assistant',
+        variant_id: 5,
+        variant_name: 'Pro',
+        customer_email: 'bound@example.com',
+      },
+    });
+
+    await licenseService.activateLicense({
+      licenseKey,
+      organization: 'first-bound-org',
+      userId: 'user-first-bind',
+    });
+
+    const result = await licenseService.activateLicense({
+      licenseKey,
+      organization: 'second-bound-org',
+      userId: 'user-second-bind',
+    });
+
+    const record = await store.findByLicenseHash(hashLicenseKey(licenseKey));
+    expect(result.status).toBe('invalid');
+    expect(result.message).toContain('another');
+    expect(record?.organization).toBe('first-bound-org');
   });
 });

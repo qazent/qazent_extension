@@ -38,6 +38,22 @@ export class InMemoryLicenseStore implements LicenseStore {
     return out;
   }
 
+  async bindOrganization(id: string, organization: string): Promise<LicenseRecord> {
+    const current = this.records.get(id);
+    if (!current) throw new Error(`License not found: ${id}`);
+    const updated: LicenseRecord = {
+      ...current,
+      organization,
+      updatedAt: new Date(),
+    };
+    if (current.organization !== organization) {
+      this.byOrg.delete(current.organization);
+    }
+    this.records.set(id, updated);
+    this.byOrg.set(updated.organization, id);
+    return updated;
+  }
+
   async upsert(record: LicenseRecord): Promise<LicenseRecord> {
     const existing = this.records.get(record.id);
     if (existing) {

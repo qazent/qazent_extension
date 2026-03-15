@@ -121,8 +121,12 @@ export async function activateLicense(
     };
   }
 
-  const existingByHash = await store.findByLicenseHash(keyHash);
-  if (existingByHash && existingByHash.organization !== request.organization) {
+  let existingByHash = await store.findByLicenseHash(keyHash);
+  const storedOrganization = existingByHash?.organization?.trim() ?? '';
+
+  if (existingByHash && storedOrganization === '') {
+    existingByHash = await store.bindOrganization(existingByHash.id, request.organization);
+  } else if (existingByHash && storedOrganization !== request.organization) {
     return {
       status: 'invalid',
       planName: null,
