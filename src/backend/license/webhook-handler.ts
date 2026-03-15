@@ -135,7 +135,7 @@ async function handleLicenseKeyEvent(
   const key = attrs.key as string | undefined;
   const status = attrs.status as string | undefined;
   const activationLimit = attrs.activation_limit as number | null | undefined;
-  const expiresAt = parseDate(attrs.expires_at);
+  const incomingExpiresAt = parseDate(attrs.expires_at);
   if (!key) return;
   const keyHash = hashLicenseKey(key);
   const existing = await store.findByLicenseHash(keyHash);
@@ -150,14 +150,14 @@ async function handleLicenseKeyEvent(
     id: existing?.id,
     licenseKeyHash: keyHash,
     lemonLicenseId: typeof attrs.id === 'number' ? attrs.id : null,
-    lemonOrderId: null,
-    lemonCustomerId: null,
+    lemonOrderId: existing?.lemonOrderId ?? null,
+    lemonCustomerId: existing?.lemonCustomerId ?? null,
     organization: existing?.organization ?? '',
     status: ourStatus,
     plan: 'default',
     seatsUsed: existing?.seatsUsed ?? 0,
     seatsLimit: activationLimit ?? null,
-    expiresAt,
+    expiresAt: incomingExpiresAt ?? existing?.expiresAt ?? null,
   });
   await store.upsert(record);
   logger.info('License key event processed', { event: 'license_key', lemonId, status: ourStatus });
@@ -224,18 +224,22 @@ async function handleSubscriptionActive(
 ): Promise<void> {
   const renewsAt = parseDate(attrs.renews_at);
   const endsAt = parseDate(attrs.ends_at);
+  const trialEndsAt = parseDate(attrs.trial_ends_at);
   const productName = attrs.product_name as string | undefined;
   const variantName = attrs.variant_name as string | undefined;
   const plan = planFromVariant(variantName);
   const orderId = attrs.order_id;
   const records = await findRecordsByOrderId(store, orderId);
-  const expiresAt = endsAt ?? renewsAt;
+  const expiresAt = endsAt ?? renewsAt ?? trialEndsAt;
   for (const r of records) {
-    await store.update(r.id, {
+    const patch: Partial<LicenseRecord> = {
       status: 'active',
       plan,
-      expiresAt,
-    });
+    };
+    if (expiresAt) {
+      patch.expiresAt = expiresAt;
+    }
+    await store.update(r.id, patch);
   }
   if (records.length === 0) {
     logger.debug('Subscription active: no local license record for order', { orderId, productName });
