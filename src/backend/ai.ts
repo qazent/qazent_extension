@@ -20,7 +20,7 @@ const MAX_DESCRIPTION_CHARS = 800;
 /** Max repository context chars in prompt. */
 const MAX_CONTEXT_CHARS = 2000;
 /** Max diff lines per file in prompt (first pass). */
-const MAX_DIFF_LINES_PER_FILE = 15;
+const MAX_DIFF_LINES_PER_FILE = 30;
 /** Stricter limits for second pass when over token budget. */
 const MAX_DESCRIPTION_CHARS_STRICT = 500;
 const MAX_CONTEXT_CHARS_STRICT = 1500;
@@ -34,7 +34,7 @@ export const COMPRESSION_SUMMARY =
 const SECTIONS_REMOVED = [
   'Full PR description → summarized to first 500–800 chars',
   'Per-file "File:/Type:/Lines Added:/Lines Deleted:" blocks → replaced by one-line bullet list',
-  'Full diff content per file → truncated to first ~15 lines (or ~8 on second pass)',
+  'Full diff content per file → truncated to first ~30 lines (or ~8 on second pass)',
   'Repository-Specific Context → truncated to 1500–2000 chars',
   'Redundant JSON structure block → replaced by one-line instruction',
   'Excess files → only first 25–30 files included; "(N more files not shown)" in summary if applicable',

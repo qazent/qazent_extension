@@ -113,32 +113,44 @@ export const LicensePanel: React.FC = () => {
           <div style={{ marginBottom: 16, color: '#d83b01' }}>{error}</div>
         ) : null}
 
-        {!loading && status && (
-          <>
-            <div style={{ marginBottom: 16 }}>
-              <span
-                style={{
-                  display: 'inline-block',
-                  padding: '4px 12px',
-                  borderRadius: 4,
-                  fontWeight: 600,
-                  ...statusBadgeStyle(status.status),
-                }}
-              >
-                {STATUS_LABELS[status.status] ?? status.status}
+            {!loading && status && (
+        <>
+          <div style={{ marginBottom: 16 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '4px 12px',
+                borderRadius: 4,
+                fontWeight: 600,
+                ...statusBadgeStyle(status.status),
+              }}
+            >
+              {STATUS_LABELS[status.status] ?? status.status}
+            </span>
+
+            {status.planName && (
+              <span style={{ marginLeft: 8 }}>{status.planName}</span>
+            )}
+
+            {status.expiresAt && (
+              <span style={{ marginLeft: 8, color: '#605e5c' }}>
+                Expires: {new Date(status.expiresAt).toLocaleDateString()}
               </span>
-              {status.planName && (
-                <span style={{ marginLeft: 8 }}>{status.planName}</span>
-              )}
-              {status.expiresAt && (
-                <span style={{ marginLeft: 8, color: '#605e5c' }}>
-                  Expires: {new Date(status.expiresAt).toLocaleDateString()}
-                </span>
-              )}
-            </div>
-            <p style={{ margin: '0 0 24px', color: '#605e5c' }}>{status.message}</p>
-          </>
-        )}
+            )}
+          </div>
+
+          {status.status === 'active' && status.planName && (
+            <p style={{ margin: '0 0 8px', color: '#323130', fontWeight: 500 }}>
+              Your current license is a {status.planName} license.
+            </p>
+          )}
+
+          <p style={{ margin: '0 0 24px', color: '#605e5c' }}>
+            {status.message}
+          </p>
+        </>
+      )}
+
 
         <h3 style={{ marginBottom: 8 }}>Enter License Key</h3>
         <Field label="License key" style={{ marginBottom: 12 }}>
