@@ -33,12 +33,12 @@ function effectiveStatus(record: LicenseRecord): LicenseStatus {
   return record.status;
 }
 
-function statusMessage(status: LicenseStatus, planName: string | null, expiresAt: Date | null): string {
+function statusMessage(status: LicenseStatus | null, expiresAt: Date | null): string {
   switch (status) {
     case 'active':
       return expiresAt
-        ? `Your ${planName || 'license'} is active until ${expiresAt.toISOString().slice(0, 10)}.`
-        : `Your ${planName || 'license'} is active.`;
+        ? `Your license is active until ${expiresAt.toISOString().slice(0, 10)}.`
+        : `Your license is active.`;
     case 'expired':
       return 'This license has expired. Please renew to continue using the extension.';
     case 'suspended':
@@ -62,7 +62,7 @@ export async function getLicenseStatus(
       status: 'none',
       planName: null,
       expiresAt: null,
-      message: statusMessage('none', null, null),
+      message: statusMessage('none', null),
     };
   }
   const status = effectiveStatus(record);
@@ -70,7 +70,7 @@ export async function getLicenseStatus(
     status,
     planName: record.plan || null,
     expiresAt: record.expiresAt ? record.expiresAt.toISOString() : null,
-    message: statusMessage(status, record.plan, record.expiresAt),
+    message: statusMessage(status, record.expiresAt),
   };
 }
 
