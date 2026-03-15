@@ -1,6 +1,6 @@
 # QAZent PR Assistant – License Terms
 
-These License Terms (“Terms”) govern your use of the QAZent PR Assistant extension (“Extension”) published by QAZent AB (“Publisher”). By installing, accessing, or using the Extension, you agree to these Terms.
+These License Terms (“Terms”) govern your use of the QAZent PR Assistant extension (“Extension”) published by QAZent (“Publisher”). By installing, accessing, or using the Extension, you agree to these Terms.
 
 ## 1. Grant of License
 The Publisher grants you a non-exclusive, non-transferable, revocable license to use the Extension within your Azure DevOps organization. This license is provided under a Bring-Your-Own-License (BYOL) model. Your organization must maintain a valid paid subscription or license agreement with the Publisher to continue using the Extension beyond any applicable trial period.
