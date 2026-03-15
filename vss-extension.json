@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-pro",
   "name": "PR Assistant",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
 
@@ -100,7 +100,7 @@
       "type": "ms.vss-web.tab",
       "targets": ["ms.vss-code-web.pr-tabs"],
       "properties": {
-        "name": "Generate Testcase",
+        "name": "Generate Test Cases",
         "order": 100,
         "uri": "dist/hub.html",
         "backendUrl": "https://api.qazent.com"
