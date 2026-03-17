@@ -751,3 +751,5 @@ export async function createFallbackWorkItem(
       }
     }
         
+export { DIFF_MAX_CHARS_PER_FILE };
+
