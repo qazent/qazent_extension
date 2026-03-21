@@ -102,6 +102,18 @@ export const LicensePanel: React.FC = () => {
     }
   };
 
+  const formattedExpiryDate = status?.expiresAt
+    ? new Date(status.expiresAt).toLocaleDateString()
+    : null;
+  const showStatusMessage = Boolean(
+    status?.message
+    && !(
+      formattedExpiryDate
+      && status.message.includes(formattedExpiryDate)
+      && /active until|expires/i.test(status.message)
+    )
+  );
+
   return (
     <FluentProvider theme={webLightTheme}>
       <div style={{ padding: '24px', maxWidth: '560px' }}>
@@ -134,20 +146,32 @@ export const LicensePanel: React.FC = () => {
 
             {status.expiresAt && (
               <span style={{ marginLeft: 8, color: '#605e5c' }}>
-                Expires: {new Date(status.expiresAt).toLocaleDateString()}
+                Expires: {formattedExpiryDate}
               </span>
             )}
           </div>
 
-          {status.status === 'active' && status.planName && (
-            <p style={{ margin: '0 0 8px', color: '#323130', fontWeight: 500 }}>
-              Your current license is a {status.planName} license.
-            </p>
-          )}
+          {(status.status === 'active' && status.planName) || showStatusMessage ? (
+            <div style={{ marginBottom: 24 }}>
+              {status.status === 'active' && status.planName && (
+                <p
+                  style={{
+                    margin: showStatusMessage ? '0 0 8px' : 0,
+                    color: '#323130',
+                    fontWeight: 500,
+                  }}
+                >
+                  Your current license is a {status.planName} license.
+                </p>
+              )}
 
-          <p style={{ margin: '0 0 24px', color: '#605e5c' }}>
-            {status.message}
-          </p>
+              {showStatusMessage && (
+                <p style={{ margin: 0, color: '#605e5c' }}>
+                  {status.message}
+                </p>
+              )}
+            </div>
+          ) : null}
         </>
       )}
 
@@ -178,8 +202,11 @@ export const LicensePanel: React.FC = () => {
             {activating ? 'Activating...' : 'Activate'}
           </Button>
           <Button appearance="secondary" onClick={loadStatus} disabled={loading}>
-            Refresh status
+            Check License Status...
           </Button>
+        </div>
+        <div style={{ marginTop: 24, color: '#605e5c', fontSize: '0.875em' }}>
+          Don't have a license key? Contact <a href="https://qazent.com/support" target="_blank" rel="noopener noreferrer">QAZent Support</a>.
         </div>
       </div>
     </FluentProvider>
