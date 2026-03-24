@@ -8,7 +8,7 @@ import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
 import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
-import { ArrowUploadRegular, DeleteFilled } from '@fluentui/react-icons';
+import { ArrowUploadRegular, DeleteRegular } from '@fluentui/react-icons';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
@@ -571,32 +571,44 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         </Field>
       </div>
 
-      <div style={{ marginBottom: "20px" }}>
-        <Field
-          label="Custom Context"
-          hint="This context will be provided to the AI for all prompts in the selected repository. Keep to 3–4 paragraphs (max 3,000 characters)."
-        >
-          <Textarea
-            spellCheck={false}
-            rows={12}
-            value={contextText}
-            onChange={(_e, data) => setContextText((data.value ?? "").slice(0, MAX_CONTEXT_LENGTH))}
-            disabled={isLoading}
-            placeholder="Enter custom context for the AI assistant..."
-            style={{ width: "100%" }}
-          />
-          <div
-            style={{
-              marginTop: "4px",
-              fontSize: "12px",
-              color: contextText.length >= MAX_CONTEXT_LENGTH ? "#a4262c" : "#605e5c",
-            }}
-          >
-            {contextText.length.toLocaleString()} / {MAX_CONTEXT_LENGTH.toLocaleString()} characters
-          </div>
-        </Field>
-      </div>
+ <div style={{ marginBottom: "20px" }}>
+  <Field
+    label="Custom Context"
+    hint="This context will be provided to the AI for all prompts in the selected repository. Keep to 3–4 paragraphs (max 3,000 characters)."
+  >
+    <div style={{ marginBottom: "8px", color: "#605e5c" }}>
+      <Field
+        label="Security Hint"
+        hint="This information is stored securely in Azure DevOps Data Storage and is only accessible to users with access to this project. Do not include sensitive information such as secrets, credentials, or personally identifiable information."
+        style={{ marginBottom: 8 }}
+      />
+    </div>
 
+    <Textarea
+      spellCheck={false}
+      rows={20}
+      value={contextText}
+      onChange={(_e, data) =>
+        setContextText((data.value ?? "").slice(0, MAX_CONTEXT_LENGTH))
+      }
+      disabled={isLoading}
+      placeholder="Enter custom context for the AI assistant..."
+      style={{ width: "100%" }}
+    />
+
+    <div
+      style={{
+        marginTop: "4px",
+        fontSize: "12px",
+        color:
+          contextText.length >= MAX_CONTEXT_LENGTH ? "#a4262c" : "#605e5c",
+      }}
+    >
+      {contextText.length.toLocaleString()} /{" "}
+      {MAX_CONTEXT_LENGTH.toLocaleString()} characters
+    </div>
+  </Field>
+</div>
       <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
         <Button
           appearance="primary"
@@ -604,6 +616,8 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           onClick={handleSave}
         >
           {isSaving ? "Saving..." : "Save Context"}
+
+          <div style={{ marginRight: "8px" }}></div>
           <ArrowUploadRegular /> 
         </Button>
 
@@ -613,7 +627,8 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         onClick={handleClear}
       >
         Clear
-        <DeleteFilled />
+        <div style={{ marginRight: "8px" }}></div>
+        <DeleteRegular />
       </Button>
       </div>
     </div>
