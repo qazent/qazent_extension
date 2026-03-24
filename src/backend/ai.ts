@@ -178,6 +178,56 @@ export interface BuildUserPromptResult {
   sectionsRemoved: readonly string[];
 }
 
+
+/**
+ *  what buildUserPrompt and buildUserPromptWithTokenCap do:
+ *
+ * 1) Start with full-fidelity prompt
+ *    - Take PR metadata (title, description, author, branches).
+ *    - Take the full code diff (all changed files).
+ *    - Rank all file changes by "signal" (using rankDiffChange).
+ *    - Select the top N files to include with full diff blocks.
+ *    - Truncate:
+ *        • PR description to a max character budget.
+ *        • Repository-specific context to a max character budget.
+ *        • Per-file diffs to a max number of lines (fetchPRdiff.ts).
+ *    - Build a structured prompt:
+ *        • PR header (title, description, author, source vs target branches) this is done through ado-client.ts
+ *        • Summary of files changed (one bullet per file).
+ *        • Detailed diff sections for the top-ranked files (see diff-config.ts and fetchPRdiff.ts).
+ *        • Optional repository-specific context. (SettingsHub.tsx)
+ *        • A strict JSON-only response contract for the model.(sanitze-html.ts and validateTaskOutput in this file, system-prompt.txt) )
+ *
+ * 2) Enforce a token budget (buildUserPromptWithTokenCap)
+ *    - Estimate the token count of the initial prompt.
+ *    - If it is already under TARGET_USER_PROMPT_TOKENS, return as-is.
+ *    - Otherwise:
+ *        • Rebuild the prompt with stricter limits:
+ *            - Shorter PR description.
+ *            - Shorter repository context.
+ *            - Fewer diff lines per file.
+ *            - Fewer files with full diff blocks.
+ *        • Re-estimate tokens.
+ *        • While still over budget:
+ *            - Gradually reduce:
+ *                · maxFilesWithDiff (number of files with full diffs),
+ *                · maxDiffLinesPerFile (lines per diff block),
+ *              but never below a small minimum.
+ *            - Rebuild the prompt with the tighter limits.
+ *    - Stop when:
+ *        • The prompt fits within the token target, or
+ *        • Further tightening would not change the limits.
+ *
+ * Result:
+ * - A prompt that preserves the highest-signal information about the PR,
+ *   while staying within a strict token budget for the model.
+ * 
+ * Highsignal information is preserved by: diff-config.ts 
+ * ranking function, prioritizing files with more changes and source code extensions, 
+ * and by only truncating lower-signal detail (e.g. diff lines) 
+ * after exhausting higher-level compression (e.g. summarizing files as bullets, 
+ * truncating description/context).
+ */
 /** Result of generateTestCases; includes optional compression report for observability. */
 export interface GenerateTestCasesResult extends TaskWorkItemOutput {
   compressionReport?: { compressionSummary: string; sectionsRemoved: string[] };
