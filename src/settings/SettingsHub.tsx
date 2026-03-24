@@ -8,6 +8,7 @@ import { getClient, IExtensionDataManager } from 'azure-devops-extension-api';
 import { GitRestClient, GitRepository } from 'azure-devops-extension-api/Git';
 import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'azure-devops-extension-api';
 import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
+import { ArrowUploadRegular, DeleteFilled } from '@fluentui/react-icons';
 import { Combobox, Option } from '@fluentui/react-combobox';
 import { AIContextDocument } from '../types/extension-types';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
@@ -603,228 +604,18 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
           onClick={handleSave}
         >
           {isSaving ? "Saving..." : "Save Context"}
+          <ArrowUploadRegular /> 
         </Button>
 
         <Button
-          appearance="primary"
-          disabled={isSaving || isLoading}
-          onClick={handleClear}
-        >
-          Clear
-        </Button>
-      </div>
-
-      {/* --- WEBHOOK AUTO-GENERATION DISABLED ---
-         This infrastructure requires token storage for async webhook processing.
-         SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
-         The webhook flow has no frontend wiring to push tokens to the backend.
-         Only the button-driven flow (PRAssistantHub → "Generate Tests") is active.
-         To re-enable, implement: (1) frontend token push, (2) deferred webhook queue.
-         See architecture notes in this file for details.
-
-      <div
-        style={{
-          borderTop: "1px solid #edebe9",
-          marginTop: "32px",
-          paddingTop: "24px",
-        }}
+        appearance="secondary"
+        disabled={isSaving || isLoading}
+        onClick={handleClear}
       >
-        <h2 style={{ fontSize: "20px", fontWeight: 600, marginBottom: "16px" }}>
-          Automatic Test Generation
-        </h2>
-
-        <div style={{ marginBottom: "20px", backgroundColor: "#f3f9fd", border: "1px solid #0078d4", padding: "12px", borderRadius: "4px" }}>
-          <div style={{ fontSize: "14px", color: "#0078d4", marginBottom: "4px" }}>
-            <strong>Webhook Endpoint:</strong>
-          </div>
-          <div style={{ fontFamily: "monospace", fontSize: "13px", color: "#323130", wordBreak: "break-all" }}>
-            {configService.WEBHOOK_ENDPOINT}
-          </div>
-          <div style={{ fontSize: "12px", color: "#605e5c", marginTop: "8px" }}>
-            This endpoint is fixed and cannot be changed. All webhooks send events to this address.
-          </div>
-        </div>
-
-        {webhookStatusMessage && (
-          <div
-            style={{
-              backgroundColor:
-                webhookStatusMessage.type === 'success'
-                  ? '#dff6dd'
-                  : webhookStatusMessage.type === 'error'
-                  ? '#fde7e9'
-                  : '#f3f9fd',
-              border:
-                webhookStatusMessage.type === 'success'
-                  ? '1px solid #107c10'
-                  : webhookStatusMessage.type === 'error'
-                  ? '1px solid #e81123'
-                  : '1px solid #0078d4',
-              color:
-                webhookStatusMessage.type === 'success'
-                  ? '#107c10'
-                  : webhookStatusMessage.type === 'error'
-                  ? '#e81123'
-                  : '#0078d4',
-              padding: '12px',
-              borderRadius: '4px',
-              marginBottom: '16px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span>{webhookStatusMessage.text}</span>
-            <Button
-              appearance="transparent"
-              onClick={() => setWebhookStatusMessage(null)}
-              style={{ minWidth: 'auto', padding: '4px' }}
-            >
-              ✕
-            </Button>
-          </div>
-        )}
-
-        <div
-          style={{
-            background: '#f3f2f1',
-            border: '1px solid #edebe9',
-            padding: '16px',
-            borderRadius: '4px',
-            marginBottom: '20px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            <Button
-              appearance="primary"
-              onClick={handleEnableAutoGeneration}
-              disabled={webhookLoading || isAutoGenEnabled}
-            >
-              Enable Auto-Generation
-            </Button>
-            {isAutoGenEnabled && (
-              <span style={{ fontWeight: 'bold', color: '#107c10' }}>
-                ✅ Enabled
-              </span>
-            )}
-          </div>
-          <p style={{ margin: 0, fontSize: '14px', color: '#605e5c' }}>
-            Creates webhooks for pull request created and updated events. Webhooks will trigger for all repositories in this project.
-          </p>
-        </div>
-
-        <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>
-            Active Webhooks ({webhooks.length})
-          </h3>
-
-          {webhookLoading ? (
-            <div style={{ padding: '20px', textAlign: 'center' }}>
-              <Spinner label="Loading webhooks..." />
-            </div>
-          ) : webhooks.length === 0 ? (
-            <div
-              style={{
-                backgroundColor: '#f3f9fd',
-                border: '1px solid #0078d4',
-                color: '#0078d4',
-                padding: '12px',
-                borderRadius: '4px',
-              }}
-            >
-              No webhooks configured yet. Click "Enable Auto-Generation" above to get started.
-            </div>
-          ) : (
-            <div>
-              {webhooks.map((webhook) => (
-                <div
-                  key={webhook.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #edebe9',
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <strong style={{ fontSize: '14px' }}>
-                      {webhook.eventType
-                        .replace('git.pullrequest.', 'Pull Request ')
-                        .split('.')
-                        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                        .join(' ')}
-                    </strong>
-                    <span style={{ fontSize: '12px', color: '#605e5c' }}>
-                      {new Date(webhook.createdDate).toLocaleDateString()} {new Date(webhook.createdDate).toLocaleTimeString()}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#605e5c' }}>
-                      {webhook.publisherInputs.repository || 'All repositories'}
-                    </span>
-                  </div>
-                  <Button
-                    appearance="subtle"
-                    onClick={() => handleDeleteWebhook(webhook.id)}
-                    disabled={webhookLoading}
-                    title="Delete webhook"
-                    style={{ color: '#e81123' }}
-                  >
-                    🗑️ Delete
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginTop: '24px' }}>
-          <Button
-            appearance="secondary"
-            onClick={() => setShowManualSetup(!showManualSetup)}
-          >
-            {showManualSetup ? 'Hide Manual Setup Instructions' : 'Show Manual Setup Instructions'} ℹ️
-          </Button>
-
-          {showManualSetup && (
-            <div
-              style={{
-                background: '#fff4ce',
-                border: '1px solid #f7d575',
-                padding: '16px',
-                borderRadius: '4px',
-                marginTop: '12px',
-                fontSize: '14px',
-                lineHeight: '1.5',
-              }}
-            >
-              <h4 style={{ fontWeight: 600, marginTop: 0, marginBottom: '8px' }}>
-                Manual Setup Instructions
-              </h4>
-              <p style={{ marginBottom: '12px' }}>
-                If you don't have permission to create webhooks automatically, or if you prefer to set them up manually, follow these steps:
-              </p>
-              <ol style={{ marginLeft: '20px', marginBottom: '12px' }}>
-                <li>Go to <strong>Project Settings → Service Hooks</strong></li>
-                <li>Click <strong>Create subscription</strong></li>
-                <li>Select <strong>Web Hooks</strong> as the service type</li>
-                <li>Choose <strong>Pull request created</strong> as the trigger event</li>
-                <li>Set repository filter to <strong>All repositories</strong> (or choose specific repository)</li>
-                <li>
-                  Enter URL: <code style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: '3px', fontFamily: 'monospace' }}>
-                    {configService.WEBHOOK_ENDPOINT}
-                  </code>
-                </li>
-                <li>Click <strong>Finish</strong></li>
-                <li>Repeat steps 2-7 for <strong>Pull request updated</strong> event</li>
-              </ol>
-              <p style={{ margin: 0 }}>
-                <strong>Required permissions:</strong> Project Administrator or Service Hook Administrator
-              </p>
-            </div>
-          )}
-        </div>
+        Clear
+        <DeleteFilled />
+      </Button>
       </div>
-      */}
     </div>
 
     {/* RIGHT COLUMN – GUIDELINES */}
