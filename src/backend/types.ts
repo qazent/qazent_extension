@@ -103,6 +103,82 @@ export interface TaskWorkItemOutput {
 }
 
 /**
+ * Request payload for protected PR queue enqueue endpoint.
+ */
+export interface QueuePRRequest {
+  prId: number;
+  repo: string;
+  filesChanged: string[];
+}
+
+/**
+ * Redis-backed PR processing job payload.
+ */
+export interface QueuedPRJob {
+  jobId: string;
+  prId: number;
+  repo: string;
+  filesChanged: string[];
+  timestamp: number;
+  attempt: number;
+  organizationUrl: string;
+  requestedBy: {
+    id: string;
+    displayName: string;
+  };
+}
+
+export interface QueuedJobAuth {
+  accessToken: string;
+  organizationUrl: string;
+  tokenSource: 'sdk';
+  storedAt: number;
+  expiresAt?: number;
+  requestedBy: {
+    id: string;
+    displayName: string;
+  };
+}
+
+export interface StoredJobResult {
+  jobId: string;
+  prId: number;
+  title: string;
+  htmlDescription: string;
+  commentContent: string;
+  createdAt: number;
+}
+
+export interface StoredJobError {
+  jobId: string;
+  prId: number;
+  attempt: number;
+  failedAt: number;
+  message: string;
+  name: string;
+  stack?: string;
+}
+
+export interface WorkerLockState {
+  ownerId: string;
+  acquiredAt: number;
+  heartbeatAt: number;
+}
+
+export interface WorkerLogContext {
+  jobId: string;
+  stage: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+export interface QueueJobEnqueueResponse {
+  status: 'queued';
+  jobId: string;
+}
+
+/**
  * Job queue item
  */
 export interface QueueJob {

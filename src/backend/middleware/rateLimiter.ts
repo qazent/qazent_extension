@@ -2,13 +2,13 @@
  * Rate Limiting Middleware
  *
  * Prevents DoS attacks and API quota exhaustion by limiting requests per IP address.
- * Uses in-memory store for simplicity (suitable for single-instance deployments).
- *
- * For multi-instance production deployments, consider using Redis store.
+ * Uses Redis so limits are enforced consistently across horizontally scaled instances.
  */
 
 import * as http from 'http';
 import * as logger from '.././utils/logger';
+import { getRedisClient } from '../queue/redisClient';
+import { MissingEnvironmentVariableError } from '../utils/validateEnv';
 
 /**
  * Rate limit configuration
@@ -22,17 +22,6 @@ interface RateLimitConfig {
 /**
  * Request tracking entry
  */
-interface RequestTracker {
-  count: number;
-  resetTime: number;
-}
-
-/**
- * In-memory store for request counts per IP
- * Key format: "ip:endpoint"
- */
-const requestStore = new Map<string, RequestTracker>();
-
 /**
  * Standard rate limit error response
  */
@@ -47,24 +36,20 @@ interface RateLimitErrorResponse {
   };
 }
 
-/**
- * Clean up expired entries every 10 minutes to prevent memory leaks
- */
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
+const RATE_LIMIT_SCRIPT = `
+local current = redis.call("INCR", KEYS[1])
+if current == 1 then
+  redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+local ttl = redis.call("PTTL", KEYS[1])
+return { current, ttl }
+`;
 
-  for (const [key, tracker] of requestStore.entries()) {
-    if (tracker.resetTime < now) {
-      requestStore.delete(key);
-      cleaned++;
-    }
-  }
-
-  if (cleaned > 0) {
-    logger.debug('Cleaned expired rate limit entries', { count: cleaned });
-  }
-}, 10 * 60 * 1000);
+interface RateLimitResult {
+  count: number;
+  retryAfterSeconds: number;
+  resetAtIso: string;
+}
 
 /**
  * Get client IP address from request
@@ -81,71 +66,116 @@ function getClientIp(req: http.IncomingMessage): string {
   return req.socket.remoteAddress || 'unknown';
 }
 
+function getRouteKey(req: http.IncomingMessage): string {
+  return req.url?.split('?')[0] || 'unknown';
+}
+
+function buildRateLimitKey(ip: string, route: string): string {
+  return `rate:${ip}:${route}`;
+}
+
+function getRequestId(req: http.IncomingMessage): string | undefined {
+  return (req as { requestId?: string }).requestId;
+}
+
+function parseRateLimitEvalResult(result: unknown, windowMs: number): RateLimitResult {
+  if (!Array.isArray(result) || result.length < 2) {
+    throw new Error('Unexpected Redis rate limit response');
+  }
+
+  const count = Number(result[0]);
+  const ttlMs = Number(result[1]);
+
+  if (!Number.isFinite(count) || !Number.isFinite(ttlMs)) {
+    throw new Error('Invalid Redis rate limit payload');
+  }
+
+  const effectiveTtlMs = ttlMs > 0 ? ttlMs : windowMs;
+  return {
+    count,
+    retryAfterSeconds: Math.max(1, Math.ceil(effectiveTtlMs / 1000)),
+    resetAtIso: new Date(Date.now() + effectiveTtlMs).toISOString()
+  };
+}
+
 /**
  * Create rate limiter middleware for specific endpoint
  */
 export function createRateLimiter(config: RateLimitConfig) {
   return (req: http.IncomingMessage, res: http.ServerResponse, next: () => void): void => {
-    const ip = getClientIp(req);
-    const endpoint = req.url || 'unknown';
-    const key = `${ip}:${endpoint}`;
-    const now = Date.now();
+    void (async () => {
+      const ip = getClientIp(req);
+      const route = getRouteKey(req);
+      const rateLimitKey = buildRateLimitKey(ip, route);
 
-    // Get or create tracker for this IP+endpoint
-    let tracker = requestStore.get(key);
+      try {
+        const redis = getRedisClient();
+        const evalResult = await redis.eval(
+          RATE_LIMIT_SCRIPT,
+          [rateLimitKey],
+          [config.windowMs.toString()]
+        );
+        const rateLimit = parseRateLimitEvalResult(evalResult, config.windowMs);
+        const remaining = Math.max(0, config.maxRequests - rateLimit.count);
 
-    // Reset if window expired
-    if (!tracker || tracker.resetTime < now) {
-      tracker = {
-        count: 0,
-        resetTime: now + config.windowMs
-      };
-      requestStore.set(key, tracker);
-    }
+        res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
+        res.setHeader('X-RateLimit-Remaining', remaining.toString());
+        res.setHeader('X-RateLimit-Reset', rateLimit.resetAtIso);
 
-    // Increment request count
-    tracker.count++;
+        if (rateLimit.count > config.maxRequests) {
+          logger.warn('Rate limit exceeded', {
+            ip,
+            route,
+            key: rateLimitKey,
+            count: rateLimit.count,
+            limit: config.maxRequests,
+            retryAfter: rateLimit.retryAfterSeconds
+          });
 
-    // Check if limit exceeded
-    if (tracker.count > config.maxRequests) {
-      const retryAfter = Math.ceil((tracker.resetTime - now) / 1000);
+          const errorResponse: RateLimitErrorResponse = {
+            error: {
+              code: 'RATE_LIMITED',
+              message: `${config.message} Please try again in ${rateLimit.retryAfterSeconds} seconds.`,
+              statusCode: 429,
+              retryAfter: rateLimit.retryAfterSeconds,
+              requestId: getRequestId(req),
+              timestamp: new Date().toISOString()
+            }
+          };
 
-      logger.warn('Rate limit exceeded', {
-        ip,
-        endpoint,
-        count: tracker.count,
-        limit: config.maxRequests,
-        retryAfter
-      });
-
-      const errorResponse: RateLimitErrorResponse = {
-        error: {
-          code: 'RATE_LIMITED',
-          message: `${config.message} Please try again in ${retryAfter} seconds.`,
-          statusCode: 429,
-          retryAfter,
-          requestId: (req as any).requestId,
-          timestamp: new Date().toISOString()
+          res.setHeader('Retry-After', rateLimit.retryAfterSeconds.toString());
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse));
+          return;
         }
-      };
 
-      res.setHeader('Retry-After', retryAfter.toString());
-      res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
-      res.setHeader('X-RateLimit-Remaining', '0');
-      res.setHeader('X-RateLimit-Reset', new Date(tracker.resetTime).toISOString());
-      res.writeHead(429, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(errorResponse));
-      return;
-    }
+        next();
+      } catch (error) {
+        const requestId = getRequestId(req);
 
-    // Add rate limit headers
-    const remaining = config.maxRequests - tracker.count;
-    res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
-    res.setHeader('X-RateLimit-Remaining', remaining.toString());
-    res.setHeader('X-RateLimit-Reset', new Date(tracker.resetTime).toISOString());
+        logger.error('Rate limiter Redis failure', {
+          ip,
+          route,
+          requestId,
+          error: error instanceof Error ? error.message : String(error)
+        });
 
-    // Continue to next handler
-    next();
+        const message = error instanceof MissingEnvironmentVariableError
+          ? 'Rate limiting is not configured for this deployment.'
+          : 'Rate limiting is temporarily unavailable.';
+
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: {
+            code: 'RATE_LIMIT_UNAVAILABLE',
+            message,
+            statusCode: 503,
+            requestId,
+            timestamp: new Date().toISOString()
+          }
+        }));
+      }
+    })();
   };
 }
 
@@ -198,6 +228,16 @@ export const rateLimitExtractPurposeScope = createRateLimiter({
   windowMs: 10 * 60 * 1000,
   maxRequests: 20,
   message: 'Too many extract-purpose-scope requests.'
+});
+
+/**
+ * Rate limiter for /api/queue/pr
+ * Limit: 20 requests per 10 minutes per IP
+ */
+export const rateLimitQueuePr = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many PR queue requests.'
 });
 
 /**
@@ -257,15 +297,8 @@ export function getRateLimitStats(): {
   totalKeys: number;
   activeIps: Set<string>;
 } {
-  const activeIps = new Set<string>();
-
-  for (const key of requestStore.keys()) {
-    const ip = key.split(':')[0];
-    activeIps.add(ip);
-  }
-
   return {
-    totalKeys: requestStore.size,
-    activeIps
+    totalKeys: 0,
+    activeIps: new Set<string>()
   };
 }
