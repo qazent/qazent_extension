@@ -271,12 +271,25 @@ export function resetWorkerStateForTests(): void {
 }
 
 export async function startWorker(): Promise<void> {
+  logger.info('Worker startup initiated', {
+    pid: process.pid,
+    nodeEnv: process.env.NODE_ENV ?? 'undefined',
+    idleSleepMs: WORKER_IDLE_SLEEP_MS,
+    timestamp: new Date().toISOString()
+  });
+
   validateServerEnvironment(['GEMINI_API_KEY']);
   validateQueueEnvironment();
   ai.loadSystemPrompt();
 
   process.on('SIGINT', () => requestShutdown('SIGINT'));
   process.on('SIGTERM', () => requestShutdown('SIGTERM'));
+
+  logger.info('Worker started and ready to poll Upstash Redis', {
+    pid: process.pid,
+    queueMode: 'redis-only',
+    timestamp: new Date().toISOString()
+  });
 
   const recoveryInterval = setInterval(() => {
     void recoverOrphanedProcessingJobs().catch((error) => {
