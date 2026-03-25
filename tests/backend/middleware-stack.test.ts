@@ -5,6 +5,7 @@
 import { EventEmitter } from 'events';
 import * as http from 'http';
 import * as https from 'https';
+import { createRedisTestClient, RedisTestClient } from '../utils/redis-test-client';
 
 jest.mock('https', () => {
   const actual = jest.requireActual('https') as typeof import('https');
@@ -19,6 +20,12 @@ jest.mock('../../src/backend/utils/logger', () => ({
   debug: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
+}));
+
+let redis: RedisTestClient;
+
+jest.mock('../../src/backend/queue/redisClient', () => ({
+  getRedisClient: jest.fn(() => redis)
 }));
 
 type AuthenticatedRequestModule = typeof import('../../src/backend/middleware/authenticate');
@@ -86,6 +93,23 @@ function mockAzureDevOpsResponse(statusCode: number, payload: unknown) {
   }) as typeof https.request);
 }
 
+async function invokeMiddleware(
+  middleware: (req: http.IncomingMessage, res: http.ServerResponse, next: () => void) => void,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  next: jest.Mock
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const wrappedNext = () => {
+      next();
+      resolve();
+    };
+
+    middleware(req, res, wrappedNext);
+    setImmediate(() => resolve());
+  });
+}
+
 describe('authentication, token validation, and rate limiting', () => {
   let authenticateModule: AuthenticatedRequestModule;
   let rateLimiterModule: RateLimiterModule;
@@ -106,6 +130,7 @@ describe('authentication, token validation, and rate limiting', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    redis = createRedisTestClient();
   });
 
   it('validates OAuth-style tokens and reuses the cache on the second check', async () => {
@@ -247,7 +272,7 @@ describe('authentication, token validation, and rate limiting', () => {
     httpsSpy.mockReset();
   });
 
-  it('blocks requests when a rate limit is exceeded and sets retry headers', () => {
+  it('blocks requests when a rate limit is exceeded and sets retry headers', async () => {
     const limiter = rateLimiterModule.createRateLimiter({
       windowMs: 60_000,
       maxRequests: 2,
@@ -265,9 +290,9 @@ describe('authentication, token validation, and rate limiting', () => {
     const third = createMockResponse();
     const next = jest.fn();
 
-    limiter(req, first.res, next);
-    limiter(req, second.res, next);
-    limiter(req, third.res, next);
+    await invokeMiddleware(limiter, req, first.res, next);
+    await invokeMiddleware(limiter, req, second.res, next);
+    await invokeMiddleware(limiter, req, third.res, next);
 
     expect(next).toHaveBeenCalledTimes(2);
     expect(first.getHeader('x-ratelimit-remaining')).toBe('1');

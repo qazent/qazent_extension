@@ -5,6 +5,9 @@
 import { EventEmitter, once } from 'events';
 import * as http from 'http';
 import * as https from 'https';
+import { createRedisTestClient, RedisTestClient } from '../utils/redis-test-client';
+
+let redis: RedisTestClient;
 
 jest.mock('http', () => {
   const actual = jest.requireActual('http') as typeof import('http');
@@ -33,6 +36,10 @@ jest.mock('../../src/backend/utils/logger', () => ({
   debug: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
+}));
+
+jest.mock('../../src/backend/queue/redisClient', () => ({
+  getRedisClient: jest.fn(() => redis)
 }));
 
 jest.mock('../../src/backend/ai', () => ({
@@ -67,6 +74,21 @@ jest.mock('../../src/backend/fetchPRdiff', () => ({
 
 jest.mock('../../src/backend/ado-client', () => ({
   createConnection: jest.fn().mockReturnValue({ kind: 'mock-connection' }),
+  fetchPRMetadata: jest.fn().mockResolvedValue({
+    prId: 123,
+    title: 'Generated test cases',
+    description: '',
+    repositoryId: 'repo-123',
+    repositoryName: 'Repo',
+    projectName: 'MyProject',
+    projectId: 'project-789',
+    sourceBranch: 'feature/test',
+    targetBranch: 'main',
+    author: 'Test User',
+    authorEmail: 'user@example.com',
+    createDate: new Date('2026-03-26T00:00:00.000Z'),
+    branchName: 'feature/test',
+  }),
   createTaskWorkItem: jest.fn().mockResolvedValue(77),
   postPRComment: jest.fn().mockResolvedValue(undefined),
 }));
@@ -153,6 +175,7 @@ describe('backend server request path', () => {
   let httpsRequestSpy: jest.Mock;
 
   beforeAll(async () => {
+    redis = createRedisTestClient();
     process.env.GEMINI_API_KEY = 'test-gemini-key';
     process.env.NODE_ENV = 'test';
     process.env.PORT = '0';
@@ -194,6 +217,7 @@ describe('backend server request path', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    redis.reset();
     mockAzureDevOpsIdentity();
   });
 
