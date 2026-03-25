@@ -5,7 +5,8 @@
  */
 
 import * as http from 'http';
-import { ErrorResponse, PRMetadata } from './types';
+import { v4 as uuidv4 } from 'uuid';
+import { ErrorResponse, PRMetadata, QueueJobEnqueueResponse, QueuePRRequest, QueuedJobAuth, QueuedPRJob } from './types';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- WebhookPayload and WebhookResponse only used by webhook handler
 // import { WebhookPayload, WebhookResponse } from './types';
 import * as logger from './utils/logger';
@@ -21,15 +22,25 @@ import {
   rateLimitPostPRComment,
   // rateLimitPostPRLabel, // --- POST PR LABEL VAULTED ---
   rateLimitExtractPurposeScope,
+  rateLimitQueuePr,
   rateLimitHealth,
   rateLimitLicenseStatus,
   rateLimitLicenseActivate,
   rateLimitLemonSqueezyWebhook
 } from './middleware/rateLimiter';
 import * as licenseRoutes from './license/routes';
+import * as licenseService from './license/service';
+import type { LicenseStatusResponse } from './license/types';
+import { ATTEMPT_DEFAULT } from './queue/constants';
+import { enqueuePRJob } from './queue/enqueue';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
 // import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
+import {
+  MissingEnvironmentVariableError,
+  validateQueueEnvironment,
+  validateServerEnvironment
+} from './utils/validateEnv';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- isOAuthToken only used by webhook handler in server.ts
 // import { isOAuthToken } from './utils/tokenValidator';
 
@@ -203,34 +214,65 @@ function extractOrgName(orgUrl: string): string {
   }
   throw new Error(`Invalid Azure DevOps URL format: ${orgUrl}`);
 }
+
+function buildQueueValidationError(details: string): ErrorResponse {
+  return {
+    error: 'Invalid queue payload',
+    details
+  };
+}
+
+function validateQueuePRPayload(payload: Partial<QueuePRRequest>): QueuePRRequest {
+  const { prId, repo, filesChanged } = payload;
+
+  if (!Number.isInteger(prId) || prId === undefined || prId <= 0) {
+    throw new Error('Field "prId" must be a positive integer.');
+  }
+
+  if (typeof repo !== 'string') {
+    throw new Error('Field "repo" must be a string.');
+  }
+
+  const normalizedRepo = repo.trim();
+  if (normalizedRepo.length === 0 || normalizedRepo.length > 200) {
+    throw new Error('Field "repo" must be between 1 and 200 characters.');
+  }
+
+  if (!Array.isArray(filesChanged) || filesChanged.length === 0) {
+    throw new Error('Field "filesChanged" must be a non-empty array of file paths.');
+  }
+
+  const normalizedFiles = filesChanged.map((filePath) => {
+    if (typeof filePath !== 'string') {
+      throw new Error('Each "filesChanged" entry must be a string.');
+    }
+
+    const normalizedFilePath = filePath.trim();
+    if (normalizedFilePath.length === 0) {
+      throw new Error('Each "filesChanged" entry must be a non-empty string.');
+    }
+
+    return normalizedFilePath;
+  });
+
+  return {
+    prId,
+    repo: normalizedRepo,
+    filesChanged: normalizedFiles
+  };
+}
+
+async function requireActiveLicense(req: AuthenticatedRequest): Promise<LicenseStatusResponse> {
+  if (!req.orgUrl || !req.user) {
+    throw new Error('Missing authenticated request context');
+  }
+
+  const organization = extractOrgName(req.orgUrl);
+  return licenseService.getLicenseStatus(organization, req.user.id);
+}
   
 
 
-
-/**
- * Validate required environment variables
- *
- * Security note: For production, migrate GEMINI_API_KEY to Azure Key Vault
- * API keys should never be stored in App Service configuration
- */
-function validateEnvironment(): void {
-  const required = ['GEMINI_API_KEY'];
-  const missing: string[] = [];
-
-  for (const envVar of required) {
-    if (!process.env[envVar]) {
-      missing.push(envVar);
-    }
-  }
-
-  if (missing.length > 0) {
-    logger.error('Missing required environment variables', { missing });
-    console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
-    console.error('On Azure: Set these in Application Settings -> Configuration -> Application settings');
-    console.error('Current working directory:', process.cwd());
-    process.exit(1);
-  }
-}
 
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
@@ -1053,6 +1095,160 @@ async function handleExtractPurposeScope(req: AuthenticatedRequest, res: http.Se
 }
 
 /**
+ * Handle PR queue enqueue POST request
+ * Security: User identity verified by authentication middleware
+ */
+async function handleQueuePR(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      validateQueueEnvironment();
+      const payload = validateQueuePRPayload(JSON.parse(body) as Partial<QueuePRRequest>);
+
+      if (!req.orgUrl || !req.user) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing authenticated request context'
+        };
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const licenseStatus = await requireActiveLicense(req);
+      if (licenseStatus.status !== 'active') {
+        const errorResponse: ErrorResponse = {
+          error: 'License required',
+          details: licenseStatus.message
+        };
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const filesChanged = payload.filesChanged;
+      const jobId = uuidv4();
+      const authHeader = req.headers['authorization'];
+      const accessToken = typeof authHeader === 'string' ? authHeader.split(' ')[1] : undefined;
+
+      if (!accessToken) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing validated access token'
+        };
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const job: QueuedPRJob = {
+        jobId,
+        prId: payload.prId,
+        repo: payload.repo,
+        filesChanged,
+        timestamp: Date.now(),
+        attempt: ATTEMPT_DEFAULT,
+        organizationUrl: req.orgUrl,
+        requestedBy: {
+          id: req.user.id,
+          displayName: req.user.displayName
+        }
+      };
+      const jobAuth: QueuedJobAuth = {
+        accessToken,
+        organizationUrl: req.orgUrl,
+        tokenSource: 'sdk',
+        storedAt: Date.now(),
+        requestedBy: {
+          id: req.user.id,
+          displayName: req.user.displayName
+        }
+      };
+
+      logger.info('Queue PR request received', {
+        jobId,
+        prId: job.prId,
+        repo: job.repo,
+        filesChangedCount: filesChanged.length,
+        userId: req.user.id,
+        userDisplayName: req.user.displayName,
+        requestId: req.requestId
+      });
+
+      await enqueuePRJob(job, jobAuth);
+
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      const response: QueueJobEnqueueResponse = { status: 'queued', jobId };
+      res.end(JSON.stringify(response));
+    } catch (error) {
+      if (error instanceof MissingEnvironmentVariableError) {
+        logger.error('Queue service is not configured', {
+          error: error.message,
+          missing: error.variableNames,
+          requestId: req.requestId,
+          userId: req.user?.id
+        });
+
+        const errorResponse: ErrorResponse = {
+          error: 'Queue service unavailable',
+          details: 'Queue processing is not configured for this deployment.'
+        };
+
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (error instanceof SyntaxError) {
+        const errorResponse = buildQueueValidationError('Request body must be valid JSON.');
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (
+        error instanceof Error &&
+        (error.message.startsWith('Field "') || error.message.startsWith('Each "'))
+      ) {
+        const errorResponse = buildQueueValidationError(error.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      logger.error('Failed to enqueue PR job', {
+        error: error instanceof Error ? error.message : String(error),
+        requestId: req.requestId,
+        userId: req.user?.id
+      });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Failed to enqueue PR job',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
+/**
  * Apply CORS headers
  * Security: Hardened to only allow exact origin matches, no wildcard matching
  */
@@ -1207,7 +1403,7 @@ function applyMiddleware(
  */
 function startServer(): void {
   // Validate environment
-  validateEnvironment();
+  validateServerEnvironment(['GEMINI_API_KEY']);
 
   // Azure DevOps connections created per-request using user's OAuth token
   // No global connection initialization needed
@@ -1351,6 +1547,22 @@ function startServer(): void {
       }
 
       await applyMiddleware(rateLimitExtractPurposeScope, handleExtractPurposeScope)(req, res);
+      return;
+    }
+
+    // Queue PR endpoint (PROTECTED - authentication + rate limiting)
+    if (normalizedUrl === '/api/queue/pr' && method === 'POST') {
+      logger.info("POST /api/queue/pr hit");
+
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type', details: 'Expected application/json' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitQueuePr, handleQueuePR)(req, res);
       return;
     }
 
