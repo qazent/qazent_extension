@@ -21,6 +21,11 @@ import { getRedisClient } from './redisClient';
 
 async function writeJobAtomically(job: QueuedPRJob, auth: QueuedJobAuth): Promise<void> {
   const redis = getRedisClient();
+  logger.info('Sending queue write to Upstash Redis', {
+    jobId: job.jobId,
+    prId: job.prId,
+    queueKey: JOB_QUEUE_KEY
+  });
 
   const pipeline = redis.pipeline();
   pipeline.set(jobPayloadKey(job.jobId), JSON.stringify(job), { ex: JOB_TTL_TRANSIENT });
@@ -30,6 +35,12 @@ async function writeJobAtomically(job: QueuedPRJob, auth: QueuedJobAuth): Promis
   pipeline.set(jobAttemptsKey(job.jobId), ATTEMPT_DEFAULT.toString(), { ex: JOB_TTL_TRANSIENT });
   pipeline.lpush(JOB_QUEUE_KEY, job.jobId);
   await pipeline.exec();
+
+  logger.info('Completed queue write to Upstash Redis', {
+    jobId: job.jobId,
+    prId: job.prId,
+    queueKey: JOB_QUEUE_KEY
+  });
 }
 
 export async function enqueuePRJob(job: QueuedPRJob, auth: QueuedJobAuth): Promise<void> {

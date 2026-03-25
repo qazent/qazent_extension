@@ -88,7 +88,16 @@ export async function removeProcessingEntry(jobId: string): Promise<void> {
 
 export async function dequeueJobId(): Promise<string | null> {
   const redis = getRedisClient();
+  logger.info('Polling Upstash Redis for queued jobs', {
+    queueKey: JOB_QUEUE_KEY,
+    processingQueueKey: PROCESSING_QUEUE_KEY
+  });
   const result = await redis.eval(DEQUEUE_TO_PROCESSING_SCRIPT, [JOB_QUEUE_KEY, PROCESSING_QUEUE_KEY], []) as string | null;
+  logger.info('Received dequeue response from Upstash Redis', {
+    queueKey: JOB_QUEUE_KEY,
+    processingQueueKey: PROCESSING_QUEUE_KEY,
+    jobId: result
+  });
   return typeof result === 'string' && result.length > 0 ? result : null;
 }
 

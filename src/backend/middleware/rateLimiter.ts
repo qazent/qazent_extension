@@ -110,6 +110,13 @@ export function createRateLimiter(config: RateLimitConfig) {
 
       try {
         const redis = getRedisClient();
+        logger.info('Sending rate limit request to Upstash Redis', {
+          ip,
+          route,
+          key: rateLimitKey,
+          windowMs: config.windowMs,
+          maxRequests: config.maxRequests
+        });
         const evalResult = await redis.eval(
           RATE_LIMIT_SCRIPT,
           [rateLimitKey],
@@ -117,6 +124,15 @@ export function createRateLimiter(config: RateLimitConfig) {
         );
         const rateLimit = parseRateLimitEvalResult(evalResult, config.windowMs);
         const remaining = Math.max(0, config.maxRequests - rateLimit.count);
+
+        logger.info('Received rate limit response from Upstash Redis', {
+          ip,
+          route,
+          key: rateLimitKey,
+          count: rateLimit.count,
+          remaining,
+          retryAfterSeconds: rateLimit.retryAfterSeconds
+        });
 
         res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
         res.setHeader('X-RateLimit-Remaining', remaining.toString());
