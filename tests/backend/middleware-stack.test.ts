@@ -334,4 +334,29 @@ describe('authentication, token validation, and rate limiting', () => {
       })
     );
   });
+
+  it('does not rate limit loopback connections', async () => {
+    const limiter = rateLimiterModule.createRateLimiter({
+      windowMs: 60_000,
+      maxRequests: 1,
+      message: 'Too many requests.',
+    });
+
+    const req = {
+      headers: {},
+      url: '/generate-tests',
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as http.IncomingMessage;
+
+    const first = createMockResponse();
+    const second = createMockResponse();
+    const next = jest.fn();
+
+    await invokeMiddleware(limiter, req, first.res, next);
+    await invokeMiddleware(limiter, req, second.res, next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+    expect(first.getStatusCode()).toBe(200);
+    expect(second.getStatusCode()).toBe(200);
+  });
 });

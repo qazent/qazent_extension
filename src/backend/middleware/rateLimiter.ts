@@ -8,6 +8,7 @@
 import * as http from 'http';
 import * as logger from '.././utils/logger';
 import { getRedisClient } from '../queue/redisClient';
+import { getClientIp, isLoopbackAddress } from '../utils/requestMetadata';
 import { MissingEnvironmentVariableError } from '../utils/validateEnv';
 
 /**
@@ -51,21 +52,6 @@ interface RateLimitResult {
   resetAtIso: string;
 }
 
-/**
- * Get client IP address from request
- */
-function getClientIp(req: http.IncomingMessage): string {
-  // Check X-Forwarded-For header first (for proxies/load balancers)
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    const ips = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
-    return ips.split(',')[0].trim();
-  }
-
-  // Fall back to socket address
-  return req.socket.remoteAddress || 'unknown';
-}
-
 function getRouteKey(req: http.IncomingMessage): string {
   return req.url?.split('?')[0] || 'unknown';
 }
@@ -105,6 +91,10 @@ export function createRateLimiter(config: RateLimitConfig) {
   return (req: http.IncomingMessage, res: http.ServerResponse, next: () => void): void => {
     void (async () => {
       const ip = getClientIp(req);
+      if (isLoopbackAddress(ip)) {
+        next();
+        return;
+      }
       const route = getRouteKey(req);
       const rateLimitKey = buildRateLimitKey(ip, route);
 

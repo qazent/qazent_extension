@@ -33,6 +33,7 @@ import * as licenseService from './license/service';
 import type { LicenseStatusResponse } from './license/types';
 import { ATTEMPT_DEFAULT } from './queue/constants';
 import { enqueuePRJob } from './queue/enqueue';
+import { getClientIp, getRequestNetworkContext } from './utils/requestMetadata';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
 // import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
@@ -1346,38 +1347,37 @@ function logAuthenticatedRequest(
   res: http.ServerResponse,
   startTime: number
 ): void {
-  const duration = Date.now() - startTime;
-
-  // Capture status code by hooking into writeHead
-  const originalWriteHead = res.writeHead.bind(res);
-  let statusCode = 200;
-
-  res.writeHead = function(code: number, ...args: any[]): http.ServerResponse {
-    statusCode = code;
-    return originalWriteHead(code, ...args);
-  };
-
   // Log on response finish
   res.on('finish', () => {
+    const durationMs = Date.now() - startTime;
+    const statusCode = res.statusCode;
+    const requestPath = req.url?.split('?')[0] || 'unknown';
+    const network = getRequestNetworkContext(req);
     const logData = {
-      timestamp: new Date().toISOString(),
-      level: statusCode >= 400 ? 'WARN' : 'INFO',
-      type: 'API_REQUEST',
+      event: 'api_request_completed',
+      requestId: req.requestId,
       userId: req.user?.id || 'anonymous',
       userDisplayName: req.user?.displayName || 'Anonymous',
       method: req.method,
-      path: req.url,
+      path: requestPath,
       statusCode,
-      duration,
-      ip: req.socket.remoteAddress,
+      durationMs,
+      forwardedIp: network.forwardedIp,
+      forwardedIpHeader: network.forwardedIpHeader,
+      forwardedFor: network.forwardedFor,
+      remoteAddress: network.remoteAddress,
+      networkPeer: network.forwardedIp ? 'forwarded' : 'direct',
+      ipVisibility: network.forwardedIp ? 'proxy_forwarded' : 'connection_only',
+      origin: network.origin,
+      host: network.host,
       userAgent: req.headers['user-agent'],
-      requestId: req.requestId
+      clientIp: getClientIp(req),
     };
 
     if (statusCode >= 400) {
-      logger.warn('Request completed with error', logData);
+      logger.warn(`HTTP ${req.method || 'UNKNOWN'} ${requestPath} failed (${statusCode})`, logData);
     } else {
-      logger.info('Request completed successfully', logData);
+      logger.info(`HTTP ${req.method || 'UNKNOWN'} ${requestPath} completed (${statusCode})`, logData);
     }
   });
 }

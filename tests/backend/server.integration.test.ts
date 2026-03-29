@@ -6,6 +6,7 @@ import { EventEmitter, once } from 'events';
 import * as http from 'http';
 import * as https from 'https';
 import { createRedisTestClient, RedisTestClient } from '../utils/redis-test-client';
+import * as logger from '../../src/backend/utils/logger';
 
 let redis: RedisTestClient;
 
@@ -352,6 +353,49 @@ describe('backend server request path', () => {
       expect.any(String)
     );
     expect(httpsRequestSpy).toHaveBeenCalled();
+  });
+
+  it('logs connection metadata without claiming a public client IP', async () => {
+    const response = await requestJson(port, '/generate-tests', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${createJwtLikeToken()}`,
+        'x-ado-org-url': 'https://dev.azure.com/myorg',
+        origin: 'https://dev.azure.com/myorg',
+      },
+      body: JSON.stringify({
+        prId: 126,
+        projectName: 'MyProject',
+        repositoryId: 'repo-123',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+
+    const completionLog = (logger.info as jest.Mock).mock.calls.find(
+      ([message]) => message === 'HTTP POST /generate-tests completed (200)'
+    );
+
+    expect(completionLog).toBeDefined();
+    expect(completionLog?.[1]).toEqual(
+      expect.objectContaining({
+        event: 'api_request_completed',
+        method: 'POST',
+        path: '/generate-tests',
+        statusCode: 200,
+        networkPeer: 'direct',
+        ipVisibility: 'connection_only',
+        remoteAddress: expect.any(String),
+        forwardedIp: undefined,
+        forwardedFor: undefined,
+        origin: 'https://dev.azure.com/myorg',
+        requestId: expect.stringMatching(/^req_/),
+        durationMs: expect.any(Number),
+      })
+    );
+
+    expect(completionLog?.[1]).not.toHaveProperty('clientIp');
   });
 
   it('rejects generate-tests bodies that omit required fields', async () => {
