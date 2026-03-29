@@ -1258,13 +1258,13 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
     typeof origin === "string" ? origin : null;
 
   if (!normalizedOrigin) {
-    logger.info("CORS: No origin header, treating as server-to-server request");
+    logger.debug("CORS: No origin header, treating as server-to-server request");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Credentials", "false");
     return;
   }
 
-  logger.info("CORS: Incoming origin", { origin: normalizedOrigin });
+  logger.debug("CORS: Incoming origin", { origin: normalizedOrigin });
 
 
 
@@ -1273,6 +1273,7 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
     "https://dev.azure.com/*",
     "https://*.azurewebsites.net",
     "https://*.gallery.vsassets.io",
+    "https://*.visualstudio.com",
     "https://*.gallerycdn.vsassets.io",
     "https://qazent.azurewebsites.net",
     "https://qazent.gallerycdn.vsassets.io"
@@ -1323,7 +1324,7 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin!);
     res.setHeader("Access-Control-Allow-Credentials", "true");
-    logger.info("CORS: Allowed origin", { origin });
+    logger.debug("CORS: Allowed origin", { origin });
   } else {
     res.setHeader("Access-Control-Allow-Credentials", "false");
     logger.warn("CORS: Blocked origin", {
@@ -1448,17 +1449,17 @@ function startServer(): void {
 
     // Normalize URL (fixes //generate-tests)
     const normalizedUrl = url?.replace(/^\/+/, '/');
-    logger.info("Normalized URL", { normalizedUrl });
+    logger.debug("Normalized URL", { normalizedUrl });
 
 
     // Handle preflight requests
     if (method === 'OPTIONS') {
-      logger.info("OPTIONS preflight received", { url, origin });
+      logger.debug("OPTIONS preflight received", { url, origin });
 
       res.writeHead(204);
       res.end();
 
-      logger.info("OPTIONS response sent (204)");
+      logger.debug("OPTIONS response sent (204)");
       return;
     }
 
@@ -1472,10 +1473,10 @@ function startServer(): void {
 
     // Generate tests endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/generate-tests' && method === 'POST') {
-      logger.info("POST /generate-tests hit");
+      logger.debug("POST /generate-tests hit");
 
       const contentType = req.headers['content-type'];
-      logger.info("POST content-type", { contentType });
+      logger.debug("POST content-type", { contentType });
 
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
@@ -1489,7 +1490,7 @@ function startServer(): void {
         return;
       }
 
-      logger.info("Applying authentication and rate limiting...");
+      logger.debug("Applying authentication and rate limiting...");
       await applyMiddleware(rateLimitGenerateTests, handleGenerateTests)(req, res);
       return;
     }
@@ -1499,7 +1500,7 @@ function startServer(): void {
       logger.info("POST /create-work-item hit");
 
       const contentType = req.headers['content-type'];
-      logger.info("POST content-type", { contentType });
+      logger.debug("POST content-type", { contentType });
 
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
@@ -1544,7 +1545,7 @@ function startServer(): void {
 
     // Extract purpose-scope endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/api/extract-purpose-scope' && method === 'POST') {
-      logger.info("POST /api/extract-purpose-scope hit");
+        logger.debug("POST /api/extract-purpose-scope hit");
 
       const contentType = req.headers['content-type'];
       if (!contentType || !contentType.includes('application/json')) {
@@ -1560,7 +1561,7 @@ function startServer(): void {
 
     // Queue PR endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/api/queue/pr' && method === 'POST') {
-      logger.info("POST /api/queue/pr hit");
+      logger.debug("POST /api/queue/pr hit");
 
       const contentType = req.headers['content-type'];
       if (!contentType || !contentType.includes('application/json')) {
