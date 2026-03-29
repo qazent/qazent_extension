@@ -622,7 +622,7 @@ export async function createFallbackWorkItem(
       {
         op: Operation.Add,
         path: '/fields/System.Tags',
-        value: `AI-Generated-Fallback; PR-${prMetadata.prId}`
+        value: `AI-Generated-Fallback`
       },
       {
         op: Operation.Add,
