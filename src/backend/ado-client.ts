@@ -524,7 +524,7 @@ export async function createTaskWorkItem(
       {
         op: Operation.Add,
         path: '/fields/System.Tags',
-        value: `AI-Generated; PR-${prMetadata.prId}`
+        value: `AI-Generated`
       },
       // Link work item to PR using artifact URI
       {
