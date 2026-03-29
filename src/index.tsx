@@ -4,9 +4,8 @@ import { createRoot } from "react-dom/client";
 import { PRAssistantHub } from "./hub/PRAssistantHub";
 
 async function start() {
-  SDK.init();
-  SDK.getAccessToken()          // Good: initializes the extension environment
-  await SDK.ready();   // Good: waits for ADO shell to finish loading
+  await SDK.init();
+  await SDK.ready();
 
   const root = createRoot(document.getElementById("root")!);
   root.render(<PRAssistantHub />);

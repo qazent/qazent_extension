@@ -21,21 +21,20 @@ import {
 } from './diff-config';
 
 /**
- * Create a new Azure DevOps connection using user's OAuth JWT token and organization URL
- * @param token User's OAuth JWT token from SDK.getAccessToken()
+ * Create a new Azure DevOps connection using the user's access token and organization URL
+ * @param token User access token from SDK.getAccessToken()
  * @param orgUrl Organization URL (e.g., https://dev.azure.com/myorg)
  * @returns Azure DevOps WebApi connection
  */
 export function createConnection(token: string, orgUrl: string): azdev.WebApi {
-  // Use BearerHandler for OAuth JWT tokens from the extension
+  // Use BearerHandler for Azure DevOps access tokens from the extension.
   const authHandler = azdev.getBearerHandler(token);
   const connection = new azdev.WebApi(orgUrl, authHandler);
   logger.debug('Created Azure DevOps connection', {
     orgUrl,
     authMethod: 'Bearer',
+    tokenPresent: Boolean(token),
     tokenLength: token?.length,
-    tokenContainsDots: token?.includes('.'),
-    tokenPrefix: token?.substring(0, 6) + '...'
   });
   return connection;
 }

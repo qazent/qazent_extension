@@ -83,9 +83,6 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   React.useEffect(() => {
   const init = async () => {
     try {
-      await SDK.init();
-      await SDK.ready();
-
       // 1. Get extension context (cast to extended type)
       const extContext = SDK.getExtensionContext() as unknown as IExtensionContextWithContributions;
 

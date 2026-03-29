@@ -1,5 +1,5 @@
 /**
- * Azure DevOps OAuth Token Validator
+ * Azure DevOps access token validator
  *
  * Validates Azure DevOps access tokens obtained from SDK.getAccessToken()
  * by making a test API call to Azure DevOps connectionData endpoint.
@@ -162,7 +162,7 @@ async function callAzureDevOpsApi(token: string, orgUrl: string): Promise<UserId
 }
 
 /**
- * Validate Azure DevOps OAuth token
+ * Validate Azure DevOps access token
  *
  * @param token - Azure DevOps access token from SDK.getAccessToken()
  * @param orgUrl - Expected organization URL (e.g., https://dev.azure.com/myorg)
@@ -173,18 +173,11 @@ export async function validateAzureDevOpsToken(
   token: string,
   orgUrl: string
 ): Promise<UserIdentity> {
-  // Validate token format — reject non-JWT tokens (PATs, pipeline tokens) early
-  if (!isOAuthToken(token)) {
-    logger.warn('Token format validation failed', {
-      tokenLength: token.length,
-      dotCount: token.split('.').length - 1,
-      orgUrl,
-      reason: 'non-JWT token rejected'
-    });
-    throw new Error(
-      `Token format invalid: expected OAuth JWT (length >= 500, contains dots). ` +
-      `Received token with length ${token.length}. This may be a PAT or pipeline token.`
-    );
+  // Treat Azure DevOps tokens as opaque per Microsoft guidance.
+  // Do not infer semantics from token shape; validate by calling Azure DevOps.
+  if (!token || token.trim() === '') {
+    logger.warn('Token validation failed - empty token', { orgUrl });
+    throw new Error('Invalid or expired token');
   }
 
   // Check cache first
@@ -229,30 +222,4 @@ export function getCacheStats(): { size: number; entries: number } {
   };
 }
 
-/**
- * Check if a token looks like an OAuth JWT
- *
- * Azure DevOps OAuth tokens from SDK.getAccessToken() are JWTs (~1000+ chars
- * with header.payload.signature structure). PATs are ~52 chars with no dots.
- * Pipeline tokens are ~84 chars.
- *
- * This is a format heuristic, not cryptographic validation.
- *
- * @param token - Token string to check
- * @returns true if token appears to be a JWT (contains >= 2 dots AND length >= 500)
- */
-export function isOAuthToken(token: string): boolean {
-  if (!token) {
-    logger.debug('isOAuthToken: token is empty/null');
-    return false;
-  }
-  const dotCount = token.split('.').length - 1;
-  const isJWT = dotCount >= 2 && token.length >= 500;
-  logger.debug('isOAuthToken check', {
-    tokenLength: token.length,
-    dotCount,
-    isJWT
-  });
-  return isJWT;
-}
 

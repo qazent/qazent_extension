@@ -36,6 +36,10 @@ function createJwtLikeToken(): string {
   return `${'a'.repeat(220)}.${'b'.repeat(220)}.${'c'.repeat(220)}`;
 }
 
+function createOpaqueToken(): string {
+  return 'opaque-access-token-value';
+}
+
 function createMockResponse() {
   let statusCode = 200;
   let body = '';
@@ -160,10 +164,32 @@ describe('authentication, token validation, and rate limiting', () => {
     httpsSpy.mockReset();
   });
 
-  it('rejects non-JWT tokens before calling Azure DevOps', async () => {
+  it('accepts opaque access tokens and validates them via Azure DevOps', async () => {
+    const httpsSpy = https.request as jest.Mock;
+    mockAzureDevOpsResponse(200, {
+      authenticatedUser: {
+        id: 'user-opaque',
+        providerDisplayName: 'Opaque User',
+        descriptor: 'opaque@example.com',
+      },
+    });
+
     await expect(
-      tokenValidatorModule.validateAzureDevOpsToken('short-token', 'https://dev.azure.com/myorg')
-    ).rejects.toThrow(/expected OAuth JWT/i);
+      tokenValidatorModule.validateAzureDevOpsToken(createOpaqueToken(), 'https://dev.azure.com/myorg')
+    ).resolves.toEqual({
+      id: 'user-opaque',
+      displayName: 'Opaque User',
+      email: 'opaque@example.com',
+      organization: 'https://dev.azure.com/myorg',
+    });
+
+    expect(httpsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects empty tokens before calling Azure DevOps', async () => {
+    await expect(
+      tokenValidatorModule.validateAzureDevOpsToken('', 'https://dev.azure.com/myorg')
+    ).rejects.toThrow('Invalid or expired token');
   });
 
   it('maps Azure DevOps 401 responses to invalid or expired token errors', async () => {

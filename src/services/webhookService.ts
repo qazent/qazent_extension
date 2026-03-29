@@ -7,7 +7,7 @@
  */
 
 import * as SDK from "azure-devops-extension-sdk";
-import { CommonServiceIds, IProjectPageService } from "azure-devops-extension-api";
+import { CommonServiceIds, ILocationService, IProjectPageService } from "azure-devops-extension-api";
 import { WEBHOOK_ENDPOINT, validateSubscriptionParams } from './configService';
 
 // Error classes for structured error handling
@@ -75,6 +75,23 @@ function getBackoffDelay(attemptNumber: number): number {
   return Math.min(exponentialDelay, RETRY_CONFIG.maxBackoffMs);
 }
 
+async function getOrganizationUrl(): Promise<string> {
+  const locationService = await SDK.getService<ILocationService>(
+    CommonServiceIds.LocationService
+  );
+
+  if (!locationService?.getServiceLocation) {
+    throw new ValidationError("Unable to determine Azure DevOps organization URL");
+  }
+
+  const orgUrl = await locationService.getServiceLocation(undefined, undefined);
+  if (!orgUrl) {
+    throw new ValidationError("Unable to determine Azure DevOps organization URL");
+  }
+
+  return orgUrl.replace(/\/+$/, "");
+}
+
 /**
  * Create a webhook subscription for pull request events
  * Implements Microsoft's programmatic service hook subscription creation.
@@ -133,9 +150,8 @@ async function createSubscriptionAttempt(
   eventType: 'git.pullrequest.created' | 'git.pullrequest.updated'
 ): Promise<WebhookSubscription> {
   try {
-    // Get organization URL and project info
-    const host = SDK.getHost();
-    const orgUrl = host.name; // e.g., https://dev.azure.com/myorg
+    // Resolve the base organization URL from the host location service.
+    const orgUrl = await getOrganizationUrl();
 
     const projectService = await SDK.getService<IProjectPageService>(
       CommonServiceIds.ProjectPageService
@@ -240,9 +256,7 @@ async function createSubscriptionAttempt(
  */
 export async function listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
   try {
-    // Get organization URL
-    const host = SDK.getHost();
-    const orgUrl = host.name;
+    const orgUrl = await getOrganizationUrl();
 
     // Get auth token
     const token = await SDK.getAccessToken();
@@ -319,9 +333,7 @@ export async function deleteWebhookSubscription(
   }
 
   try {
-    // Get organization URL
-    const host = SDK.getHost();
-    const orgUrl = host.name;
+    const orgUrl = await getOrganizationUrl();
 
     // Get auth token
     const token = await SDK.getAccessToken();
