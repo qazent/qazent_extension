@@ -1,7 +1,7 @@
 /**
  * Authentication Middleware
  *
- * Validates Azure DevOps OAuth tokens on every protected endpoint.
+ * Validates Azure DevOps access tokens on every protected endpoint.
  * Extracts and attaches user identity to request object.
  *
  * Security model:
@@ -9,7 +9,7 @@
  * - Token sent in Authorization: Bearer <token> header
  * - Backend validates token against Azure DevOps API
  * - User identity verified before processing request
- * - Backend uses the same OAuth token for all Azure DevOps API operations
+ * - Backend uses the same access token for all Azure DevOps API operations
  */
 
 import * as http from 'http';
@@ -111,9 +111,8 @@ export async function authenticate(
 
   logger.debug('Token extracted from Authorization header', {
     requestId,
-    tokenLength: token.length,
-    tokenContainsDots: token.includes('.'),
-    tokenDotCount: token.split('.').length - 1
+    tokenPresent: true,
+    tokenLength: token.length
   });
 
   // Extract and validate X-Ado-Org-Url header

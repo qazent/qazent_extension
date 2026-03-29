@@ -42,13 +42,13 @@ export async function fetchFileContentFromRest(
   logger.debug("Fetching file content via REST", {
     organization, projectName, repositoryId, filePath, commitId, url,
     authMethod: 'Bearer',
-    tokenLength: token?.length,
-    tokenContainsDots: token?.includes('.')
+    tokenPresent: Boolean(token),
+    tokenLength: token?.length
   });
 
   const response = await fetch(url, {
     headers: {
-      // Use Bearer auth with OAuth JWT token from the extension
+      // Pass the Azure DevOps access token through as an opaque bearer token.
       Authorization: `Bearer ${token}`,
     },
   });
@@ -60,8 +60,8 @@ export async function fetchFileContentFromRest(
       statusText: response.statusText,
       filePath,
       organization,
+      tokenPresent: Boolean(token),
       tokenLength: token?.length,
-      tokenContainsDots: token?.includes('.'),
       responseBody: text.substring(0, 200)
     });
     throw new Error(
@@ -103,8 +103,8 @@ export async function fetchPRDiff(
   try {
     logger.info("Fetching PR diff", {
       projectName, repositoryId, prId, organization,
-      tokenLength: token?.length,
-      tokenContainsDots: token?.includes('.')
+      tokenPresent: Boolean(token),
+      tokenLength: token?.length
     });
 
     const gitApi: GitApi = await connection.getGitApi();

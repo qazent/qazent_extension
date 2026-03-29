@@ -648,8 +648,8 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
       logger.debug('Token extracted for generate-tests', {
+        tokenPresent: Boolean(token),
         tokenLength: token?.length,
-        tokenContainsDots: token?.includes('.'),
         orgUrl: req.orgUrl,
         tokenSource: 'authorization-header'
       });
@@ -794,8 +794,8 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
       logger.debug('Token extracted for create-work-item', {
+        tokenPresent: Boolean(token),
         tokenLength: token?.length,
-        tokenContainsDots: token?.includes('.'),
         orgUrl: req.orgUrl,
         tokenSource: 'authorization-header'
       });
@@ -902,8 +902,8 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
       logger.debug('Token extracted for post-pr-comment', {
+        tokenPresent: Boolean(token),
         tokenLength: token?.length,
-        tokenContainsDots: token?.includes('.'),
         orgUrl: req.orgUrl,
         tokenSource: 'authorization-header'
       });
@@ -1271,6 +1271,7 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   const basePatterns = [
     "https://dev.azure.com/*",
     "https://*.azurewebsites.net",
+    "https://*.gallery.vsassets.io",
     "https://*.gallerycdn.vsassets.io",
     "https://qazent.azurewebsites.net",
     "https://qazent.gallerycdn.vsassets.io"
@@ -1295,12 +1296,22 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
 
     if (pattern.endsWith("/*")) {
       const base = pattern.replace("/*", "");
-      return origin.startsWith(base);
+      return origin === base || origin.startsWith(`${base}/`);
     }
 
     if (pattern.includes("*.")) {
-      const domain = pattern.replace("*.", "");
-      return origin.endsWith(domain);
+      try {
+        const originUrl = new URL(origin);
+        const patternUrl = new URL(pattern.replace("*.", "wildcard."));
+        const domain = patternUrl.hostname.replace(/^wildcard\./, "");
+
+        return (
+          originUrl.protocol === patternUrl.protocol &&
+          (originUrl.hostname === domain || originUrl.hostname.endsWith(`.${domain}`))
+        );
+      } catch {
+        return false;
+      }
     }
 
     return origin === pattern;
@@ -1313,12 +1324,9 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
     res.setHeader("Access-Control-Allow-Credentials", "true");
     logger.info("CORS: Allowed origin", { origin });
   } else {
-    const fallback = "https://dev.azure.com";
-    res.setHeader("Access-Control-Allow-Origin", fallback);
     res.setHeader("Access-Control-Allow-Credentials", "false");
-    logger.warn("CORS: Blocked origin, using fallback", {
+    logger.warn("CORS: Blocked origin", {
       origin,
-      fallback,
       allowedPatterns
     });
   }

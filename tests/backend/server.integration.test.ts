@@ -246,7 +246,20 @@ describe('backend server request path', () => {
     expect(response.headers.get('access-control-allow-credentials')).toBe('true');
   });
 
-  it('falls back CORS headers for blocked origins', async () => {
+  it('allows Azure DevOps extension asset origins during preflight', async () => {
+    const response = await fetch(`http://127.0.0.1:${port}/license/status`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://qazent.gallery.vsassets.io',
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://qazent.gallery.vsassets.io');
+    expect(response.headers.get('access-control-allow-credentials')).toBe('true');
+  });
+
+  it('does not emit an access-control-allow-origin header for blocked origins', async () => {
     const response = await fetch(`http://127.0.0.1:${port}/health`, {
       headers: {
         origin: 'https://malicious.example.com',
@@ -254,7 +267,7 @@ describe('backend server request path', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBe('https://dev.azure.com');
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
     expect(response.headers.get('access-control-allow-credentials')).toBe('false');
   });
 
