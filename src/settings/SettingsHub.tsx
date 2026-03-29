@@ -578,7 +578,6 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
   >
     <div style={{ marginBottom: "8px", color: "#605e5c" }}>
       <Field
-        label="Security Hint"
         hint="This information is stored securely in Azure DevOps Data Storage and is only accessible to users with access to this project. Do not include sensitive information such as secrets, credentials, or personally identifiable information."
         style={{ marginBottom: 8 }}
       />
