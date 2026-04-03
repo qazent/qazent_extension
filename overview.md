@@ -13,6 +13,9 @@ Transform your pull request workflow with AI‑powered test case generation that
 
 ## How It Works
 
+**Quick Video**
+![Showcase gif](public/QAZent_Showcase1.gif)
+
 1. **Open a Pull Request**  
    Navigate to any pull request in Azure Repos to activate the PR Assistant tab.
    ![Code Diff](public/hero-preview.png)
