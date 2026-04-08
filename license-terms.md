@@ -1,44 +1,161 @@
-# QAZent PR Assistant – License Terms
+# **QAZent – End User License Agreement (EULA)**  
+**Last Updated: 2026-04-07**
 
-These License Terms (“Terms”) govern your use of the QAZent PR Assistant extension (“Extension”) published by QAZent (“Publisher”). By installing, accessing, or using the Extension, you agree to these Terms.
+This End User License Agreement (“Agreement”) is a legal contract between you (“User”, “You”) and **QAZent** (“Company”, “We”, “Us”, “Our”) governing your use of the **QAZent PR Assistant** extension (“Software”) available through the Azure DevOps Marketplace.
 
-## 1. Grant of License
-The Publisher grants you a non-exclusive, non-transferable, revocable license to use the Extension within your Azure DevOps organization. This license is provided under a Bring-Your-Own-License (BYOL) model. Your organization must maintain a valid paid subscription or license agreement with the Publisher to continue using the Extension beyond any applicable trial period.
-
-## 2. Trial Period
-If a trial period is offered, you may use the Extension without charge for the duration specified in the Marketplace listing. After the trial expires, continued use requires a paid license.
-
-## 3. Ownership
-All intellectual property rights in the Extension remain the property of the Publisher. No rights are granted except those explicitly stated in these Terms.
-
-## 4. Restrictions
-You may not:
-- Reverse engineer, decompile, or modify the Extension.
-- Rent, lease, sublicense, or distribute the Extension.
-- Circumvent licensing, authentication, or usage controls.
-- Use the Extension in violation of applicable laws or Azure DevOps policies.
-
-## 5. Data Handling
-The Extension processes metadata from your Azure DevOps environment to provide functionality. The Publisher does not store or retain your code unless explicitly stated in the product documentation. All processing follows the Publisher’s Privacy Policy.
-
-## 6. Support
-Paid customers are entitled to support as described in the Publisher’s support policy. Support is provided on a best-effort basis during business hours.
-
-## 7. Updates
-The Publisher may update the Extension at any time. Updates may include new features, improvements, or bug fixes. Continued use after an update constitutes acceptance of the updated Terms.
-
-## 8. Termination
-The Publisher may terminate your license if you violate these Terms. Upon termination, you must stop using the Extension and uninstall it from your Azure DevOps organization.
-
-## 9. Disclaimer of Warranty
-The Extension is provided “as is” without warranties of any kind. The Publisher does not guarantee uninterrupted or error-free operation.
-
-## 10. Limitation of Liability
-To the maximum extent permitted by law, the Publisher is not liable for indirect, incidental, or consequential damages arising from the use of the Extension.
-
-## 11. Governing Law
-These Terms are governed by the laws of Sweden. Any disputes shall be resolved in Swedish courts.
+By installing, accessing, or using the Software, you agree to be bound by the terms of this Agreement. If you do not agree, do not install or use the Software.
 
 ---
 
-For questions or support, visit **https://www.qazent.com/support** or email **oskar@qazent.com**.
+# **1. License Grant**
+QAZent grants you a **non‑exclusive, non‑transferable, revocable, limited license** to install and use the Software within your Azure DevOps organization for internal business purposes only.
+
+You may not:
+- Sell, sublicense, rent, lease, or distribute the Software  
+- Reverse engineer, decompile, or attempt to extract source code  
+- Modify or create derivative works of the Software  
+- Use the Software to build competing products or services  
+
+---
+
+# **2. Ownership**
+The Software is licensed, not sold.  
+All rights, title, and interest in the Software—including all intellectual property rights—remain exclusively with QAZent.
+
+---
+
+# **3. User Responsibilities**
+You are responsible for:
+- Ensuring your Azure DevOps permissions and configuration are correct  
+- Maintaining the security of your Azure DevOps environment  
+- Ensuring that your use of the Software complies with your organization’s policies  
+
+You agree not to use the Software for any unlawful, harmful, or abusive purpose.
+
+---
+
+# **4. AI‑Generated Content**
+The Software uses AI models (including third‑party models such as Google Gemini) to generate test cases and related content.
+
+You acknowledge and agree that:
+- AI‑generated output may contain inaccuracies or omissions  
+- You are solely responsible for reviewing, validating, and approving all generated content  
+- QAZent is not liable for decisions made based on AI‑generated output  
+
+AI‑generated content is provided **“as‑is”** and should not be treated as authoritative or error‑free.
+
+---
+
+# **5. Data Handling & Privacy**
+The Software processes information from your Azure DevOps environment, including:
+- Pull request metadata  
+- Code diffs  
+- Linked work items  
+- Optional custom context provided by you  
+
+We do **not** store your code or proprietary data outside the processing required to deliver the service.  
+We do **not** sell or share your data with third parties except as required to operate the AI model integrations.
+
+Your use of the Software is also subject to:
+- The Azure DevOps Marketplace Terms  
+- Microsoft’s privacy and data handling policies  
+- Any third‑party AI model provider policies  
+
+---
+
+# **6. Third‑Party Services**
+The Software may integrate with third‑party AI services.  
+QAZent is not responsible for:
+- Availability of third‑party services  
+- Output generated by third‑party models  
+- Changes to third‑party APIs or pricing  
+
+Your use of such services is governed by their respective terms.
+
+---
+
+# **7. Updates & Changes**
+QAZent may update, modify, or discontinue the Software at any time, including:
+- Feature changes  
+- API changes  
+- Security updates  
+- Deprecation of functionality  
+
+We are not obligated to provide support, maintenance, or future updates.
+
+---
+
+# **8. Fees & Licensing**
+If the Software or certain features require payment:
+- Fees will be clearly stated in the Azure DevOps Marketplace  
+- Continued use may require an active subscription  
+- Failure to pay may result in suspension or termination of access  
+
+All fees are non‑refundable unless required by law.
+
+---
+
+# **9. Termination**
+This Agreement remains in effect until terminated.
+
+QAZent may terminate your license immediately if:
+- You violate any term of this Agreement  
+- You misuse the Software  
+- Required fees are not paid  
+
+Upon termination, you must stop using the Software and uninstall it from your Azure DevOps organization.
+
+---
+
+# **10. Disclaimer of Warranties**
+THE SOFTWARE IS PROVIDED **“AS IS”** AND **“AS AVAILABLE”** WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED.
+
+QAZent disclaims all warranties, including:
+- Fitness for a particular purpose  
+- Merchantability  
+- Non‑infringement  
+- Accuracy or reliability of AI‑generated content  
+
+You assume all risks associated with using the Software.
+
+---
+
+# **11. Limitation of Liability**
+To the maximum extent permitted by law:
+
+QAZent is **not liable** for:
+- Loss of data  
+- Business interruption  
+- Loss of profits  
+- Inaccurate AI‑generated content  
+- Security breaches caused by user misconfiguration  
+- Any indirect, incidental, or consequential damages  
+
+QAZent’s total liability under this Agreement will not exceed the amount paid by you for the Software in the preceding 12 months (or **$0** if you are using the free version).
+
+---
+
+# **12. Indemnification**
+You agree to indemnify and hold QAZent harmless from any claims, damages, or losses arising from:
+- Your misuse of the Software  
+- Your violation of this Agreement  
+- Your failure to validate AI‑generated content  
+
+---
+
+# **13. Governing Law**
+This Agreement is governed by the laws of **Sweden and the European Union**, without regard to conflict‑of‑law principles.
+
+Any disputes will be resolved exclusively in the courts of **[Insert Location]**.
+
+---
+
+# **14. Changes to This Agreement**
+QAZent may update this Agreement at any time.  
+Continued use of the Software after changes take effect constitutes acceptance of the updated terms.
+
+---
+
+# **15. Contact**
+For questions about this Agreement or the Software, contact:  
+**oskar@qazent.com**

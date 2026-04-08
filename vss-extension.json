@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-pro",
   "name": "PR Assistant",
-  "version": "2.0.27",
+  "version": "3.0.0",
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
 
@@ -12,7 +12,7 @@
 
   "galleryFlags": [
     "Paid",
-    "Preview"
+    "Public"
   ],
 
   "galleryProperties": {
@@ -33,7 +33,8 @@
   "content": {
     "details": { "path": "overview.md" },
     "pricing": { "path": "pricing.md" },
-    "license": { "path": "license-terms.md" }
+    "license": { "path": "license-terms.md" },
+    "privacy": { "path": "privacy-policy.md" }
   },
 
   "licensing": {
@@ -44,6 +45,34 @@
     ]
   },
 
+
+  "assets": [
+  {
+    "path": "privacy-policy.md",
+    "addressable": true,
+    "contentType": "text/markdown",
+    "type": "Microsoft.VisualStudio.Services.Content.Privacy"
+  },
+  {
+  "path": "license-terms.md",
+    "addressable": true,
+    "contentType": "text/markdown",
+    "type": "Microsoft.VisualStudio.Services.Content.License"
+  },
+  {
+    "path": "pricing.md",
+    "addressable": true,
+    "contentType": "text/markdown",
+    "type": "Microsoft.VisualStudio.Services.Content.Pricing"
+  },
+  {
+    "path": "overview.md",
+    "addressable": true,
+    "contentType": "text/markdown",
+    "type": "Microsoft.VisualStudio.Services.Content.Details"
+  }
+],
+
   "icons": {
     "default": "128x128.png"
   },
@@ -53,7 +82,10 @@
     "theme": "dark"
   },
 
-  "categories": ["Azure Repos", "Azure Boards"],
+  "categories": [
+    "Azure Repos",
+    "Azure Boards"
+  ],
 
   "badge": {
     "url": "https://img.shields.io/badge/status-stable-brightgreen",
@@ -61,16 +93,19 @@
   },
 
   "links": {
-  "home": {
-    "uri": "https://www.qazent.com"
+    "learn": {
+      "uri": "https://www.qazent.com"
+    },
+    "support": {
+      "uri": "https://www.qazent.com/support"
+    },
+    "pricing": {
+      "uri": "https://www.qazent.com/#pricing"
+    },
+    "privacy" : {
+      "uri": "https://www.qazent.com/privacy"
+    }
   },
-  "support": {
-    "uri": "https://www.qazent.com/support"
-  },
-  "contact": {
-    "uri": "mailto:oskar@qazent.com"
-  }
-},
 
   "contributions": [
     {
@@ -113,7 +148,8 @@
     { "path": "overview.md", "addressable": true },
     { "path": "pricing.md", "addressable": true },
     { "path": "license-terms.md", "addressable": true },
-    { "path": "public", "addressable": true }  
+    { "path": "public", "addressable": true },
+    { "path": "privacy-policy.md", "addressable": true }
   ],
 
   "scopes": [

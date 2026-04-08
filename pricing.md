@@ -1,12 +1,12 @@
 # QAZent PR Assistant – Pricing
 
-QAZent PR Assistant is offered under a simple, flat-rate Bring-Your-Own-License (BYOL) model. Billing and licensing are handled directly by QAZent AB.
+QAZent PR Assistant is offered under a simple, flat-rate Bring-Your-Own-License (BYOL) model from **QAZent.com**. Billing and licensing are handled directly by Lemon Squeezy (owned by Stripe). Please see https://qazent.com/support for more info regarding licensing, billing and activation. 
 
 ## 14-Day Free Trial
 All new organizations receive a **14-day free trial** with full functionality. No credit card is required during the trial period.
 
 ## Subscription Pricing
-QAZent PR Assistant is available at a single, transparent price:
+QAZent's PR Assistant is available at a single, transparent price:
 
 ### **€24.99 per month (flat rate)**
 - Unlimited users within your Azure DevOps organization

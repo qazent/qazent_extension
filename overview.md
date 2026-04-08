@@ -1,11 +1,12 @@
-# PR Assistant – AI‑Powered Automatic Test Case Generation
+# PR Assistant – AI‑Powered Automatic Test Case Generation Based on Real Code Changes
 
-Transform your pull request workflow with AI‑powered test case generation that ensures comprehensive testing coverage. PR Assistant analyzes your code changes and generates structured, thorough test cases, helping development and QA teams maintain high quality standards.
+Transform your pull request workflow with AI‑powered test case generation that ensures comprehensive testing coverage. PR Assistant analyzes your code changes and generates structured, thorough test cases, helping development and QA teams maintain high quality standards. Level up your confirmation and shift-left testing! 
 
 ## Key Features
 
 - **AI‑Powered Test Case Generation** – Leverages Google Gemini to analyze code changes and generate comprehensive test cases automatically  
 - **Instant Work Item Creation** – Convert pull requests into Azure DevOps Test Case work items instantly  
+- **A AI that truly knows your project** – Repository‑ and project‑level custom context ensures the AI generates test cases with the same understanding a human tester would have.
 - **Structured Test Documentation** – Produces complete test cases with preconditions, test steps, and expected results  
 - **Enhanced Test Coverage** – Ensures thorough testing by identifying edge cases and scenarios you might miss  
 
@@ -44,8 +45,7 @@ Transform your pull request workflow with AI‑powered test case generation that
    ![Custom Context Overview](public/step-3.png) 
 
 4. **Create Work Items**  
-   Convert generated test cases into Azure DevOps Test Case work items by only opening a PR!.
-
+   Convert generated test cases into Azure DevOps Test Case work items directly from your pull request.
    ![Work Item Created](public/work-item-created.png)
    ![alt text](public/linking-pr.png)
 ---
