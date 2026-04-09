@@ -26,22 +26,18 @@ jobs:
     displayName: 'Run TypeScript linting'
 
   - script: |
-      npm run build:extension
-    displayName: 'Build extension with Webpack'
+      npm run build
+    displayName: 'Build extension package contents'
 
   - script: |
-      npm version patch --no-git-tag-version
-    displayName: 'Bump version in package.json'
-
-  - script: |
-      tfx extension create --manifest-globs vss-extension.json --rev-version
-    displayName: 'Package extension with version bump'
+      npm run package:extension
+    displayName: 'Package extension from dist root'
 
     
 
   - task: PublishPipelineArtifact@1
     inputs:
-      targetPath: '$(System.DefaultWorkingDirectory)/*.vsix'
+      targetPath: '$(System.DefaultWorkingDirectory)/output/*.vsix'
       artifact: 'extension-package'
       publishLocation: 'pipeline'
     displayName: 'Publish .vsix artifact'

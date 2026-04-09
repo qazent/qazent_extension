@@ -1,8 +1,9 @@
 {
   "manifestVersion": 1,
-  "id": "pr-assistant-extension-pro",
+  "id": "pr-assistant-extension-qazent",
   "name": "PR Assistant",
-  "version": "3.0.0",
+  "version": "3.1.1",
+  "public": true,
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
 
@@ -12,10 +13,10 @@
 
   "galleryFlags": [
     "Paid",
-    "Public"
+    "Preview"
   ],
 
-  "galleryProperties": {
+  "galleryproperties": {
     "trialDays": "14"
   },
 
@@ -40,38 +41,36 @@
   "licensing": {
     "overrides": [
       { "id": "ai-context-settings-hub", "behavior": "AlwaysInclude" },
-      { "id": "license-hub", "behavior": "AlwaysInclude" },
       { "id": "pr-assistant-tab", "behavior": "AlwaysInclude" }
     ]
   },
 
-
   "assets": [
-  {
-    "path": "privacy-policy.md",
-    "addressable": true,
-    "contentType": "text/markdown",
-    "type": "Microsoft.VisualStudio.Services.Content.Privacy"
-  },
-  {
-  "path": "license-terms.md",
-    "addressable": true,
-    "contentType": "text/markdown",
-    "type": "Microsoft.VisualStudio.Services.Content.License"
-  },
-  {
-    "path": "pricing.md",
-    "addressable": true,
-    "contentType": "text/markdown",
-    "type": "Microsoft.VisualStudio.Services.Content.Pricing"
-  },
-  {
-    "path": "overview.md",
-    "addressable": true,
-    "contentType": "text/markdown",
-    "type": "Microsoft.VisualStudio.Services.Content.Details"
-  }
-],
+    {
+      "path": "privacy-policy.md",
+      "addressable": true,
+      "contentType": "text/markdown",
+      "type": "Microsoft.VisualStudio.Services.Content.Privacy"
+    },
+    {
+      "path": "license-terms.md",
+      "addressable": true,
+      "contentType": "text/markdown",
+      "type": "Microsoft.VisualStudio.Services.Content.License"
+    },
+    {
+      "path": "pricing.md",
+      "addressable": true,
+      "contentType": "text/markdown",
+      "type": "Microsoft.VisualStudio.Services.Content.Pricing"
+    },
+    {
+      "path": "overview.md",
+      "addressable": true,
+      "contentType": "text/markdown",
+      "type": "Microsoft.VisualStudio.Services.Content.Details"
+    }
+  ],
 
   "icons": {
     "default": "128x128.png"
@@ -87,11 +86,6 @@
     "Azure Boards"
   ],
 
-  "badge": {
-    "url": "https://img.shields.io/badge/status-stable-brightgreen",
-    "description": "Indicates that the extension is stable and ready for production use."
-  },
-
   "links": {
     "learn": {
       "uri": "https://www.qazent.com"
@@ -99,10 +93,10 @@
     "support": {
       "uri": "https://www.qazent.com/support"
     },
-    "pricing": {
-      "uri": "https://www.qazent.com/#pricing"
+    "license": {
+      "uri": "https://www.qazent.com/license"
     },
-    "privacy" : {
+    "privacypolicy": {
       "uri": "https://www.qazent.com/privacy"
     }
   },
@@ -115,19 +109,7 @@
       "properties": {
         "name": "QAZent - AI Context Settings",
         "order": 100,
-        "uri": "dist/settings.html",
-        "backendUrl": "https://api.qazent.com"
-      }
-    },
-    {
-      "id": "license-hub",
-      "type": "ms.vss-web.hub",
-      "targets": ["ms.vss-web.project-admin-hub-group"],
-      "properties": {
-        "name": "QAZent - License",
-        "order": 101,
-        "uri": "dist/license.html",
-        "backendUrl": "https://api.qazent.com"
+        "uri": "settings.html"
       }
     },
     {
@@ -137,19 +119,17 @@
       "properties": {
         "name": "Generate Test Cases",
         "order": 100,
-        "uri": "dist/hub.html",
-        "backendUrl": "https://api.qazent.com"
+        "uri": "hub.html"
       }
     }
   ],
 
   "files": [
-    { "path": "dist", "addressable": true },
-    { "path": "overview.md", "addressable": true },
-    { "path": "pricing.md", "addressable": true },
-    { "path": "license-terms.md", "addressable": true },
     { "path": "public", "addressable": true },
-    { "path": "privacy-policy.md", "addressable": true }
+    { "path": "hub.html", "addressable": true },
+    { "path": "settings.html", "addressable": true },
+    { "path": "hub.js", "addressable": true },
+    { "path": "settings.js", "addressable": true }
   ],
 
   "scopes": [

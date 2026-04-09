@@ -1,4 +1,5 @@
 const path = require('path');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 
@@ -8,8 +9,7 @@ module.exports = (env, argv) => {
   return {
     entry: {
       hub: './src/index.tsx',
-      settings: './src/settings/index.tsx',
-      license: './src/license/index.tsx'
+      settings: './src/settings/index.tsx'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -32,6 +32,11 @@ module.exports = (env, argv) => {
       ]
     },
     plugins: [
+      new webpack.DefinePlugin({
+        'process.env.ENABLE_LICENSE_ENFORCEMENT': JSON.stringify(
+          process.env.ENABLE_LICENSE_ENFORCEMENT || ''
+        ),
+      }),
       new HtmlWebpackPlugin({
         template: './src/hub/hub.html',
         filename: 'hub.html',
@@ -42,12 +47,6 @@ module.exports = (env, argv) => {
         template: './src/settings/settings.html',
         filename: 'settings.html',
         chunks: ['settings'],
-        inject: 'body'
-      }),
-      new HtmlWebpackPlugin({
-        template: './src/license/license.html',
-        filename: 'license.html',
-        chunks: ['license'],
         inject: 'body'
       })
     ]

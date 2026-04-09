@@ -12,6 +12,7 @@ import { FluentProvider, webLightTheme, Checkbox } from '@fluentui/react-compone
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
 import { AIActivityFeed } from './AIActivityFeed';
+import { ENABLE_LICENSE_ENFORCEMENT } from '../config/featureFlags';
 import { PRData, AIContextDocument } from '../types/extension-types';
 import * as backendClient from '../services/backendClient';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
@@ -40,12 +41,23 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   'https://api.qazent.com');  // Default backend URL, should be overridden by config
 
   type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
-  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>('loading');
-  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
+  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>(
+    ENABLE_LICENSE_ENFORCEMENT ? 'loading' : 'success'
+  );
+  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>(
+    ENABLE_LICENSE_ENFORCEMENT ? 'loading' : 'active'
+  );
   const [licenseError, setLicenseError] = React.useState(false);
   const licenseAbortRef = React.useRef<AbortController | null>(null);
 
   const runCheckLicense = React.useCallback((baseUrl: string) => {
+    if (!ENABLE_LICENSE_ENFORCEMENT) {
+      setLicenseStatus('active');
+      setLicenseCheckState('success');
+      setLicenseError(false);
+      return;
+    }
+
     setLicenseCheckState('loading');
     setLicenseError(false);
     licenseAbortRef.current?.abort();
@@ -65,7 +77,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       });
   }, []);
 
-  const isLicenseChecking = licenseCheckState === 'loading';
+  const isLicenseChecking = ENABLE_LICENSE_ENFORCEMENT && licenseCheckState === 'loading';
   const { elapsedSeconds, timedOut } = useElapsedTimer(isLicenseChecking, { timeoutSeconds: 90 });
 
   const [repositoryId, setRepositoryId] = React.useState<string>('');
@@ -100,8 +112,9 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       }
       const baseUrl = backend || 'https://api.qazent.com';
 
-      // 3b. License check (runs in parallel; UI shows LicenseCheckScreen with timer)
-      runCheckLicense(baseUrl);
+      if (ENABLE_LICENSE_ENFORCEMENT) {
+        runCheckLicense(baseUrl);
+      }
 
       // 4. Get project ID (GUID) for artifact URI construction
       const projectService = await SDK.getService<IProjectPageService>(CommonServiceIds.ProjectPageService);
@@ -127,6 +140,10 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
 
   // Timeout: at 90s abort the request and show error + Retry
   React.useEffect(() => {
+    if (!ENABLE_LICENSE_ENFORCEMENT) {
+      return;
+    }
+
     if (timedOut && licenseCheckState === 'loading') {
       licenseAbortRef.current?.abort();
       setLicenseCheckState('timeout');
@@ -455,20 +472,31 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
     gap: '24px'
   };
 
+  const showLicenseCheckScreen =
+    ENABLE_LICENSE_ENFORCEMENT &&
+    (licenseCheckState === 'loading' || licenseCheckState === 'timeout');
+  const showLicenseGate =
+    ENABLE_LICENSE_ENFORCEMENT &&
+    licenseCheckState === 'success' &&
+    licenseStatus !== 'active';
+  const showMainContent =
+    !ENABLE_LICENSE_ENFORCEMENT ||
+    (licenseCheckState === 'success' && licenseStatus === 'active');
+
   return (
   <FluentProvider theme={webLightTheme}>
     <div style={containerStyle}>
-      {(licenseCheckState === 'loading' || licenseCheckState === 'timeout') && (
+      {showLicenseCheckScreen && (
         <LicenseCheckScreen
           elapsedSeconds={elapsedSeconds}
           timedOut={licenseCheckState === 'timeout'}
           onRetry={() => runCheckLicense(backendUrl)}
         />
       )}
-      {licenseCheckState === 'success' && licenseStatus !== 'active' && (
+      {showLicenseGate && (
         <LicenseGateMessage showNetworkHint={licenseError} />
       )}
-      {licenseCheckState === 'success' && licenseStatus === 'active' && (
+      {showMainContent && (
         <>
       {/* Error message */}
       {error && (

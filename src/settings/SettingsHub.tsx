@@ -10,6 +10,7 @@ import { CommonServiceIds, IProjectPageService, IExtensionDataService } from 'az
 import { FluentProvider, webLightTheme, Field, Textarea, Button } from '@fluentui/react-components';
 import { ArrowUploadRegular, DeleteRegular } from '@fluentui/react-icons';
 import { Combobox, Option } from '@fluentui/react-combobox';
+import { ENABLE_LICENSE_ENFORCEMENT } from '../config/featureFlags';
 import { AIContextDocument } from '../types/extension-types';
 import type { IContribution, IExtensionContextWithContributions } from '../types/extension-types';
 import { getLicenseStatus } from '../license/api';
@@ -38,14 +39,26 @@ type LicenseGateStatus = LicenseStatusResponse['status'] | 'loading';
 const DEFAULT_BACKEND_URL = 'https://api.qazent.com';
 
 export const SettingsHub: React.FC = () => {
-  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>('loading');
-  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>('loading');
+  const [licenseCheckState, setLicenseCheckState] = React.useState<'loading' | 'success' | 'timeout'>(
+    ENABLE_LICENSE_ENFORCEMENT ? 'loading' : 'success'
+  );
+  const [licenseStatus, setLicenseStatus] = React.useState<LicenseGateStatus>(
+    ENABLE_LICENSE_ENFORCEMENT ? 'loading' : 'active'
+  );
   const [licenseError, setLicenseError] = React.useState(false);
   const licenseAbortRef = React.useRef<AbortController | null>(null);
   const baseUrlRef = React.useRef<string>(DEFAULT_BACKEND_URL);
 
   const runCheckLicense = React.useCallback((baseUrl: string) => {
     baseUrlRef.current = baseUrl;
+
+    if (!ENABLE_LICENSE_ENFORCEMENT) {
+      setLicenseStatus('active');
+      setLicenseCheckState('success');
+      setLicenseError(false);
+      return;
+    }
+
     setLicenseCheckState('loading');
     setLicenseError(false);
     licenseAbortRef.current?.abort();
@@ -65,7 +78,7 @@ export const SettingsHub: React.FC = () => {
       });
   }, []);
 
-  const isLicenseChecking = licenseCheckState === 'loading';
+  const isLicenseChecking = ENABLE_LICENSE_ENFORCEMENT && licenseCheckState === 'loading';
   const { elapsedSeconds, timedOut } = useElapsedTimer(isLicenseChecking, { timeoutSeconds: 90 });
 
   const [projectId, setProjectId] = React.useState<string>('');
@@ -157,8 +170,10 @@ React.useEffect(() => {
       const contribution = extContext.contributions?.find((c: IContribution) => c.id === contributionId);
       const baseUrl = contribution?.properties?.backendUrl || DEFAULT_BACKEND_URL;
 
-      // License check (runs in parallel; UI shows LicenseCheckScreen with timer)
-      runCheckLicense(baseUrl);
+      baseUrlRef.current = baseUrl;
+      if (ENABLE_LICENSE_ENFORCEMENT) {
+        runCheckLicense(baseUrl);
+      }
 
       const gitClient = getClient(GitRestClient);
       const repos = await gitClient.getRepositories(project.id);
@@ -181,6 +196,10 @@ React.useEffect(() => {
 
   // Timeout: at 90s abort the request and show error + Retry
   React.useEffect(() => {
+    if (!ENABLE_LICENSE_ENFORCEMENT) {
+      return;
+    }
+
     if (timedOut && licenseCheckState === 'loading') {
       licenseAbortRef.current?.abort();
       setLicenseCheckState('timeout');
@@ -409,6 +428,17 @@ const handleClear = () => {
   setLoadedDocument(null);
 };
 
+const showLicenseCheckScreen =
+  ENABLE_LICENSE_ENFORCEMENT &&
+  (licenseCheckState === 'loading' || licenseCheckState === 'timeout');
+const showLicenseGate =
+  ENABLE_LICENSE_ENFORCEMENT &&
+  licenseCheckState === 'success' &&
+  licenseStatus !== 'active';
+const showMainContent =
+  !ENABLE_LICENSE_ENFORCEMENT ||
+  (licenseCheckState === 'success' && licenseStatus === 'active');
+
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
 // SDK.getAccessToken() tokens expire in ~1hr and cannot be refreshed server-side.
@@ -507,17 +537,17 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
         alignItems: "flex-start",
       }}
     >
-    {(licenseCheckState === 'loading' || licenseCheckState === 'timeout') && (
+    {showLicenseCheckScreen && (
       <LicenseCheckScreen
         elapsedSeconds={elapsedSeconds}
         timedOut={licenseCheckState === 'timeout'}
         onRetry={() => runCheckLicense(baseUrlRef.current || DEFAULT_BACKEND_URL)}
       />
     )}
-    {licenseCheckState === 'success' && licenseStatus !== 'active' && (
+    {showLicenseGate && (
       <LicenseGateMessage showNetworkHint={licenseError} />
     )}
-    {licenseCheckState === 'success' && licenseStatus === 'active' && (
+    {showMainContent && (
     <>
     {/* LEFT COLUMN */}
     <div style={{ flex: 1, minWidth: 0 }}>

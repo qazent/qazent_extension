@@ -1,12 +1,12 @@
 # Stop on errors
 $ErrorActionPreference = "Stop"
 
-Write-Host '🔐 Loading .env variables...'
+Write-Host 'Loading .env variables...'
 
 $envPath = ".env"
 
 if (-Not (Test-Path $envPath)) {
-    Write-Host '❌ .env file not found in project root'
+    Write-Host 'ERROR: .env file not found in project root'
     exit 1
 }
 
@@ -24,38 +24,69 @@ Get-Content $envPath | ForEach-Object {
 }
 
 $publisher = "QAZent"
+$extensionId = "pr-assistant-extension-qazent"
+$vsixPrefix = "$publisher.$extensionId-"
+$marketplaceToken = $null
+$marketplaceTokenName = $null
 
-Write-Host '🔨 Building extension...'
-npm run build:extension
+if (-not (Test-Path "./output")) {
+    New-Item -ItemType Directory -Path "./output" | Out-Null
+}
 
-Write-Host '📦 Packaging extension (auto version bump via --rev-version)...'
+Write-Host 'Removing stale packaged VSIX files for this extension...'
+Get-ChildItem -Path ./output -Filter "$vsixPrefix*.vsix" -ErrorAction SilentlyContinue |
+    Remove-Item -Force
+
+Write-Host 'Building extension...'
+npm run build
+
+Write-Host 'Packaging extension from dist root...'
 npm run package:extension
 
-# Find newest VSIX file
-$vsix = Get-ChildItem -Path ./output -Filter "QAZent.pr-assistant-extension-*.vsix" |
-        Sort-Object Name |
+if ($LASTEXITCODE -ne 0) {
+    Write-Host 'ERROR: Packaging failed. Aborting publish.'
+    exit 1
+}
+
+# Find the newly built VSIX for the real extension only
+$vsix = Get-ChildItem -Path ./output -Filter "$vsixPrefix*.vsix" |
+        Sort-Object LastWriteTime |
         Select-Object -Last 1
 
 if (-not $vsix) {
-    Write-Host '❌ No VSIX file found after packaging.'
+    Write-Host "ERROR: No VSIX file found after packaging for $extensionId."
     exit 1
 }
 
-Write-Host '📁 Found VSIX: ' $vsix.Name
+Write-Host 'Found VSIX: ' $vsix.Name
 
-if (-not $env:ADO_PAT) {
-    Write-Host '❌ Missing ADO_PAT in .env'
+if (-not [string]::IsNullOrWhiteSpace($env:ADO_PAT)) {
+    $marketplaceToken = $env:ADO_PAT
+    $marketplaceTokenName = 'ADO_PAT'
+    Write-Host 'Using ADO_PAT for Marketplace publish.'
+}
+elseif (-not [string]::IsNullOrWhiteSpace($env:ADO_EXTENSION_PAT)) {
+    $marketplaceToken = $env:ADO_EXTENSION_PAT
+    $marketplaceTokenName = 'ADO_EXTENSION_PAT'
+    Write-Host 'Using ADO_EXTENSION_PAT for Marketplace publish.'
+}
+else {
+    Write-Host 'ERROR: No valid Marketplace PAT found. Set ADO_EXTENSION_PAT or ADO_PAT with Marketplace (publish) scope.'
     exit 1
 }
 
-Write-Host '🚀 Publishing extension...'
-
-Write-Host '🚀 Publishing extension...'
+Write-Host 'Publishing extension...'
 
 tfx extension publish `
     --publisher $publisher `
     --vsix $vsix.FullName `
     --auth-type pat `
-    -t $env:ADO_PAT
+    -t $marketplaceToken `
+    --trace-level debug 
+    
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Publish failed using $marketplaceTokenName."
+    exit 1
+}
 
-Write-Host '🎉 All done! Extension built, version bumped, packaged, and published.'
+Write-Host 'Done. Extension built, packaged, and published.'

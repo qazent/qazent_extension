@@ -55,6 +55,7 @@ console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
+const ENABLE_LICENSE_ENFORCEMENT = process.env.ENABLE_LICENSE_ENFORCEMENT === 'true';
 
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.
@@ -1120,15 +1121,17 @@ async function handleQueuePR(req: AuthenticatedRequest, res: http.ServerResponse
         return;
       }
 
-      const licenseStatus = await requireActiveLicense(req);
-      if (licenseStatus.status !== 'active') {
-        const errorResponse: ErrorResponse = {
-          error: 'License required',
-          details: licenseStatus.message
-        };
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(errorResponse));
-        return;
+      if (ENABLE_LICENSE_ENFORCEMENT) {
+        const licenseStatus = await requireActiveLicense(req);
+        if (licenseStatus.status !== 'active') {
+          const errorResponse: ErrorResponse = {
+            error: 'License required',
+            details: licenseStatus.message
+          };
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse));
+          return;
+        }
       }
 
       const filesChanged = payload.filesChanged;

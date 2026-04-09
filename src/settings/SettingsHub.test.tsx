@@ -245,12 +245,12 @@ describe('SettingsHub Component', () => {
     it('should save project default context', async () => {
       render(<SettingsHub />);
 
-      await waitFor(() => {
-        const textarea = screen.getByRole('textbox');
-        fireEvent.change(textarea, { target: { value: 'New project context' } });
-      });
+      const saveButton = await screen.findByRole('button', { name: /Save Context/i });
+      await waitFor(() => expect(saveButton).not.toBeDisabled());
 
-      const saveButton = screen.getByRole('button', { name: /Save Context/i });
+      const textarea = await screen.findByRole('textbox');
+      fireEvent.change(textarea, { target: { value: 'New project context' } });
+
       fireEvent.click(saveButton);
 
       await waitFor(() => {
@@ -266,12 +266,11 @@ describe('SettingsHub Component', () => {
     it('should show success message after saving', async () => {
       render(<SettingsHub />);
 
-      await waitFor(() => {
-        const textarea = screen.getByRole('textbox');
-        fireEvent.change(textarea, { target: { value: 'Context' } });
-      });
+      const saveButton = await screen.findByRole('button', { name: /Save Context/i });
+      await waitFor(() => expect(saveButton).not.toBeDisabled());
 
-      const saveButton = screen.getByRole('button', { name: /Save Context/i });
+      const textarea = await screen.findByRole('textbox');
+      fireEvent.change(textarea, { target: { value: 'Context' } });
       fireEvent.click(saveButton);
 
       await waitFor(() => {
