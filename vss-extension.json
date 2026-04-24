@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-qazent",
   "name": "PR Assistant",
-  "version": "3.1.1",
+  "version": "3.1.7",
   "public": true,
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
@@ -12,9 +12,7 @@
   ],
 
   "galleryFlags": [
-    "Paid",
-    "Preview"
-  ],
+    "Paid"  ],
 
   "galleryproperties": {
     "trialDays": "14"
@@ -36,7 +34,7 @@
     "pricing": { "path": "pricing.md" },
     "license": { "path": "license-terms.md" },
     "privacy": { "path": "privacy-policy.md" }
-  },
+    },
 
   "licensing": {
     "overrides": [
@@ -46,12 +44,6 @@
   },
 
   "assets": [
-    {
-      "path": "privacy-policy.md",
-      "addressable": true,
-      "contentType": "text/markdown",
-      "type": "Microsoft.VisualStudio.Services.Content.Privacy"
-    },
     {
       "path": "license-terms.md",
       "addressable": true,
@@ -69,6 +61,12 @@
       "addressable": true,
       "contentType": "text/markdown",
       "type": "Microsoft.VisualStudio.Services.Content.Details"
+    },
+    {
+      "path": "privacy-policy.md",
+      "addressable": true,
+      "contentType": "text/markdown",
+      "type": "Microsoft.VisualStudio.Services.Content.Privacy"
     }
   ],
 
@@ -96,7 +94,7 @@
     "license": {
       "uri": "https://www.qazent.com/license"
     },
-    "privacypolicy": {
+    "privacy-policy": {
       "uri": "https://www.qazent.com/privacy"
     }
   },
