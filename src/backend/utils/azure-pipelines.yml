@@ -23,7 +23,7 @@ variables:
   - name: nodeVersion
     value: "24.x"
   - name: npmCacheFolder
-    value: $(Pipeline.Workspace)/.npm
+    value: $(HOME)/.npm
   - ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
     - group: pr-assistant-production
   - ${{ if ne(variables['Build.SourceBranchName'], 'main') }}:
@@ -45,6 +45,14 @@ stages:
             inputs:
               versionSpec: $(nodeVersion)
             displayName: "Use Node.js $(nodeVersion)"
+
+          - task: Cache@2
+            inputs:
+              key: npm | "$(Agent.OS)" | package-lock.json
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(npmCacheFolder)
+            displayName: "Cache npm packages"
 
           - script: npm ci
             displayName: "Install dependencies (ci)"
