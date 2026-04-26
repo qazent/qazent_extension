@@ -2,6 +2,8 @@
 
 Transform your pull request workflow with AI‑powered test case generation that ensures comprehensive testing coverage. PR Assistant analyzes your code changes and generates structured, thorough test cases, helping development and QA teams maintain high quality standards. Level up your confirmation and shift-left testing!
 
+View https://qazent.com for more info!
+
 ## Key Features
 
 - **AI‑Powered Test Case Generation** – Leverages Google Gemini to analyze code changes and generate comprehensive test cases automatically
