@@ -57,6 +57,9 @@ try {
     $vsixUpdated = $vsixContent.Replace(
         "Microsoft.VisualStudio.Services.Links.Privacypolicy",
         "Microsoft.VisualStudio.Services.Links.PrivacyPolicy"
+    ).Replace(
+        "Microsoft.VisualStudio.Services.Content.Privacypolicy",
+        "Microsoft.VisualStudio.Services.Content.PrivacyPolicy"
     )
 
     if (-not ($vsixUpdated -ceq $vsixContent)) {
