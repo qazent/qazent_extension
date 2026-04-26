@@ -204,39 +204,3 @@ stages:
                     publishLocation: "pipeline"
                   displayName: "Publish VSIX artifact"
 
-                - task: PublishPipelineArtifact@1
-                  inputs:
-                    targetPath: "$(System.DefaultWorkingDirectory)/dist"
-                    artifact: "backend-dist"
-                    publishLocation: "pipeline"
-                  displayName: "Publish backend dist artifact"
-
-  # ─────────────────────────────────────────────────────
-  # Stage 3 — Deploy Backend (main only)
-  # ─────────────────────────────────────────────────────
-  - stage: DeployBackend
-    displayName: "Deploy Backend"
-    dependsOn: PublishExtension
-    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
-    jobs:
-      - deployment: DeployBackendService
-        displayName: "Deploy Backend Service"
-        pool:
-          vmImage: "ubuntu-latest"
-        environment: "production-backend"
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - task: DownloadPipelineArtifact@2
-                  inputs:
-                    artifact: "backend-dist"
-                    targetPath: "$(Pipeline.Workspace)/backend"
-                  displayName: "Download backend artifact"
-
-                # Replace with your actual deployment step
-                # (Azure App Service, Docker, SSH, etc.)
-                - script: |
-                    echo "Backend artifact ready at $(Pipeline.Workspace)/backend"
-                    ls -la "$(Pipeline.Workspace)/backend"
-                  displayName: "Deploy backend (placeholder)"
