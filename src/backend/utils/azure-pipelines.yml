@@ -46,14 +46,6 @@ stages:
               versionSpec: $(nodeVersion)
             displayName: "Use Node.js $(nodeVersion)"
 
-          - task: Cache@2
-            inputs:
-              key: npm | "$(Agent.OS)" | package-lock.json
-              restoreKeys: |
-                npm | "$(Agent.OS)"
-              path: $(npmCacheFolder)
-            displayName: "Cache npm packages"
-
           - script: npm ci
             displayName: "Install dependencies (ci)"
 
@@ -81,11 +73,38 @@ stages:
           - script: npm ci
             displayName: "Install dependencies (ci)"
 
-          - script: npx jest --config jest.config.ts --ci --coverage --reporters=default --reporters=jest-junit
+          - script: |
+              npx jest --config jest.config.ts --ci --coverage \
+                --reporters=default --reporters=jest-junit \
+                --json --outputFile=jest-results.json || true
             displayName: "Run Jest tests with coverage"
             env:
               JEST_JUNIT_OUTPUT_DIR: $(Build.ArtifactStagingDirectory)/test-results
               JEST_JUNIT_OUTPUT_NAME: junit.xml
+
+          - script: |
+              PASS_THRESHOLD=80
+              TOTAL=$(node -p "require('./jest-results.json').numTotalTests")
+              FAILED=$(node -p "require('./jest-results.json').numFailedTests")
+              PASSED=$((TOTAL - FAILED))
+
+              if [ "$TOTAL" -eq 0 ]; then
+                echo "##vso[task.logissue type=error]No tests found."
+                exit 1
+              fi
+
+              PASS_RATE=$((PASSED * 100 / TOTAL))
+              echo "Tests: $PASSED/$TOTAL passed ($PASS_RATE%) — threshold: $PASS_THRESHOLD%"
+
+              if [ "$PASS_RATE" -lt "$PASS_THRESHOLD" ]; then
+                echo "##vso[task.logissue type=error]Pass rate $PASS_RATE% is below the $PASS_THRESHOLD% threshold ($FAILED failed)."
+                exit 1
+              fi
+
+              if [ "$FAILED" -gt 0 ]; then
+                echo "##vso[task.logissue type=warning]$FAILED test(s) failed but pass rate is above threshold."
+              fi
+            displayName: "Enforce test pass-rate threshold (80%)"
 
           - task: PublishTestResults@2
             condition: succeededOrFailed()
