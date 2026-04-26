@@ -28,24 +28,19 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
             padding: '16px 28px',
             fontSize: '18px',
             fontWeight: 600,
-            borderRadius: '12px',
+            borderRadius: '0px',
             height: '56px',
-            background: 'linear-gradient(135deg, #0078D4 0%, #005A9E 100%)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            transition: 'all 0.2s ease',
-            color: isLoading ? '#E6E6E6' : '#FFFFFF'   //  Accessible, subtle dimming
+            background: '#0078d4',
+            transition: 'background 0.2s ease',
+            color: '#FFFFFF',
           }}
           onMouseEnter={(e) => {
-            if (isLoading) return; //  No hover animation while loading
-            (e.currentTarget as HTMLButtonElement).style.boxShadow =
-              '0 6px 18px rgba(0,0,0,0.25)';
-            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+            if (isLoading) return;
+            (e.currentTarget as HTMLButtonElement).style.background = '#106ebe';
           }}
           onMouseLeave={(e) => {
             if (isLoading) return;
-            (e.currentTarget as HTMLButtonElement).style.boxShadow =
-              '0 4px 12px rgba(0,0,0,0.15)';
-            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLButtonElement).style.background = '#0078d4';
           }}
         >
           {isLoading
