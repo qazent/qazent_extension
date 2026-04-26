@@ -16,7 +16,7 @@
   "scripts": {
     "dev": "ts-node server.ts",
     "build": "npm run build:extension && npm run build:backend",
-    "copy:extension-assets": "cpx \"*.md\" dist/ && cpx \"128x128.png\" dist/ && cpx \"vss-extension.json\" dist/ && cpx \"public/*.png\" dist/public/ && cpx \"public/*.gif\" dist/public/",
+    "copy:extension-assets": "cpx \"*.md\" dist/ && cpx \"wizard128x116.png\" dist/ && cpx \"vss-extension.json\" dist/ && cpx \"public/*.png\" dist/public/ && cpx \"public/*.gif\" dist/public/",
     "build:extension": "webpack --config webpack.config.js && npm run copy:extension-assets",
     "build:backend": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist/ && cpx system-prompt.txt dist/backend/",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
