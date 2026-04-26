@@ -55,7 +55,7 @@ console.log('[STARTUP] Port:', process.env.PORT || 'using default');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const startTime = Date.now();
-const ENABLE_LICENSE_ENFORCEMENT = process.env.ENABLE_LICENSE_ENFORCEMENT === 'true';
+const ENABLE_LICENSE_ENFORCEMENT = true;
 
 // --- WEBHOOK AUTO-GENERATION DISABLED ---
 // This infrastructure requires token storage for async webhook processing.

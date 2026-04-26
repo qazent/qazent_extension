@@ -41,7 +41,8 @@
   "licensing": {
     "overrides": [
       { "id": "ai-context-settings-hub", "behavior": "AlwaysInclude" },
-      { "id": "pr-assistant-tab", "behavior": "AlwaysInclude" }
+      { "id": "pr-assistant-tab", "behavior": "AlwaysInclude" },
+      { "id": "license-hub", "behavior": "AlwaysInclude" }
     ]
   },
 
@@ -96,6 +97,16 @@
         "order": 100,
         "uri": "hub.html"
       }
+    },
+    {
+      "id": "license-hub",
+      "type": "ms.vss-web.hub",
+      "targets": ["ms.vss-web.project-admin-hub-group"],
+      "properties": {
+        "name": "QAZent - License",
+        "order": 101,
+        "uri": "license.html"
+      }
     }
   ],
 
@@ -105,6 +116,8 @@
     { "path": "settings.html", "addressable": true },
     { "path": "hub.js", "addressable": true },
     { "path": "settings.js", "addressable": true },
+    { "path": "license.html", "addressable": true },
+    { "path": "license.js", "addressable": true },
     { "path": "overview.md", "addressable": true },
     { "path": "pricing.md", "addressable": true },
     { "path": "license-terms.md", "addressable": true },
