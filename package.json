@@ -1,6 +1,6 @@
 {
   "version": "3.1.8",
-    "id": "pr-assistant-extension-qazent",
+  "id": "pr-assistant-extension-qazent",
   "name": "azure-test-extension",
   "public": true,
   "publisher": "QAZent",
@@ -10,9 +10,9 @@
     "node": "24.x",
     "npm": ">=11.0.0"
   },
-    "galleryFlags": [
-    "Paid"  ],
-
+  "galleryFlags": [
+    "Paid"
+  ],
   "scripts": {
     "dev": "ts-node server.ts",
     "build": "npm run build:extension && npm run build:backend",
@@ -31,7 +31,7 @@
     "test:jest": "jest --config jest.config.ts",
     "test:context": "jest --config jest.config.ts --testPathPattern=customContext"
   },
-    "tags": [
+  "tags": [
     "__BYOLENFORCED",
     "pull-request",
     "testing",
@@ -83,6 +83,7 @@
     "jest-dom": "^4.0.0",
     "jest-environment-jsdom": "^30.2.0",
     "jest-environment-node": "^30.2.0",
+    "jest-junit": "^17.0.0",
     "react-testing-library": "^8.0.1",
     "ts-jest": "^29.4.6",
     "ts-loader": "^9.4.4",

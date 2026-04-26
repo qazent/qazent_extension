@@ -1,44 +1,242 @@
 trigger:
-- main
+  branches:
+    include:
+      - main
+      - develop
+      - release/*
+  paths:
+    exclude:
+      - "*.md"
+      - docs/**
 
-pool:
-  vmImage: 'ubuntu-latest'
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - "*.md"
+      - docs/**
 
-jobs:
-- job: BuildAndPackageExtension
-  displayName: "Build, Test, and Package Azure DevOps Extension"
+variables:
+  - name: nodeVersion
+    value: "24.x"
+  - name: npmCacheFolder
+    value: $(Pipeline.Workspace)/.npm
+  - ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+    - group: pr-assistant-production
+  - ${{ if ne(variables['Build.SourceBranchName'], 'main') }}:
+    - group: pr-assistant-development
 
-  steps:
-  - script: |
-      npm install
-    displayName: 'Install npm dependencies'
+stages:
+  # ─────────────────────────────────────────────────────
+  # Stage 1 — Validate: lint + tests (all branches)
+  # ─────────────────────────────────────────────────────
+  - stage: Validate
+    displayName: "Validate"
+    jobs:
+      - job: LintAndTypeCheck
+        displayName: "Lint & Type-check"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: "Use Node.js $(nodeVersion)"
 
-  - script: |
-      npm install -g tfx-cli
-    displayName: 'Install tfx-cli globally'
+          - task: Cache@2
+            inputs:
+              key: npm | "$(Agent.OS)" | package-lock.json
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(npmCacheFolder)
+            displayName: "Cache npm packages"
 
-  - script: |
-      npm run test:jest
-    displayName: 'Run Jest tests'
+          - script: npm ci
+            displayName: "Install dependencies (ci)"
 
-  - script: |
-      npm run lint
-    displayName: 'Run TypeScript linting'
+          - script: npm run lint
+            displayName: "TypeScript type-check"
 
-  - script: |
-      npm run build
-    displayName: 'Build extension package contents'
+      - job: UnitTests
+        displayName: "Unit & Integration Tests"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: "Use Node.js $(nodeVersion)"
 
-  - script: |
-      npm run package:extension
-    displayName: 'Package extension from dist root'
+          - task: Cache@2
+            inputs:
+              key: npm | "$(Agent.OS)" | package-lock.json
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(npmCacheFolder)
+            displayName: "Cache npm packages"
 
-    
+          - script: npm ci
+            displayName: "Install dependencies (ci)"
 
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(System.DefaultWorkingDirectory)/output/*.vsix'
-      artifact: 'extension-package'
-      publishLocation: 'pipeline'
-    displayName: 'Publish .vsix artifact'
+          - script: npx jest --config jest.config.ts --ci --coverage --reporters=default --reporters=jest-junit
+            displayName: "Run Jest tests with coverage"
+            env:
+              JEST_JUNIT_OUTPUT_DIR: $(Build.ArtifactStagingDirectory)/test-results
+              JEST_JUNIT_OUTPUT_NAME: junit.xml
 
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: "$(Build.ArtifactStagingDirectory)/test-results/junit.xml"
+              mergeTestResults: true
+              testRunTitle: "Jest Tests — $(Build.SourceBranchName)"
+            displayName: "Publish test results"
+
+          - task: PublishCodeCoverageResults@2
+            condition: succeededOrFailed()
+            inputs:
+              summaryFileLocation: "$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml"
+            displayName: "Publish code coverage"
+
+  # ─────────────────────────────────────────────────────
+  # Stage 2a — Build only (non-main branches)
+  #   Validates the project compiles and packages cleanly.
+  # ─────────────────────────────────────────────────────
+  - stage: Build
+    displayName: "Build & Package (dry run)"
+    dependsOn: Validate
+    condition: and(succeeded(), ne(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - job: BuildDryRun
+        displayName: "Build & Package"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: "Use Node.js $(nodeVersion)"
+
+          - task: Cache@2
+            inputs:
+              key: npm | "$(Agent.OS)" | package-lock.json
+              restoreKeys: |
+                npm | "$(Agent.OS)"
+              path: $(npmCacheFolder)
+            displayName: "Cache npm packages"
+
+          - script: npm ci
+            displayName: "Install dependencies (ci)"
+
+          - script: npm run build
+            displayName: "Build extension + backend"
+
+          - script: npm install -g tfx-cli
+            displayName: "Install tfx-cli"
+
+          - script: |
+              tfx extension create --root dist --manifest-globs vss-extension.json --output-path ./output
+            displayName: "Package VSIX (dry run)"
+
+          - task: PublishPipelineArtifact@1
+            inputs:
+              targetPath: "$(System.DefaultWorkingDirectory)/output"
+              artifact: "extension-vsix"
+              publishLocation: "pipeline"
+            displayName: "Publish VSIX artifact"
+
+  # ─────────────────────────────────────────────────────
+  # Stage 2b — Publish Extension (main only)
+  #   Bumps version, builds, packages, publishes to
+  #   the Azure DevOps Marketplace via ci-publish.sh
+  #   (mirrors the local publish-all.ps1 workflow).
+  # ─────────────────────────────────────────────────────
+  - stage: PublishExtension
+    displayName: "Build, Package & Publish"
+    dependsOn: Validate
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - deployment: PublishToMarketplace
+        displayName: "Publish to Azure DevOps Marketplace"
+        pool:
+          vmImage: "ubuntu-latest"
+        environment: "production-marketplace"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: NodeTool@0
+                  inputs:
+                    versionSpec: $(nodeVersion)
+                  displayName: "Use Node.js $(nodeVersion)"
+
+                - task: Cache@2
+                  inputs:
+                    key: npm | "$(Agent.OS)" | package-lock.json
+                    restoreKeys: |
+                      npm | "$(Agent.OS)"
+                    path: $(npmCacheFolder)
+                  displayName: "Cache npm packages"
+
+                - script: npm ci
+                  displayName: "Install dependencies (ci)"
+
+                - script: npm install -g tfx-cli
+                  displayName: "Install tfx-cli"
+
+                - script: |
+                    chmod +x scripts/ci-publish.sh
+                    bash scripts/ci-publish.sh
+                  displayName: "Run ci-publish.sh (bump → build → package → publish)"
+                  env:
+                    MARKETPLACE_PAT: $(MarketplacePAT)
+
+                - task: PublishPipelineArtifact@1
+                  inputs:
+                    targetPath: "$(System.DefaultWorkingDirectory)/output"
+                    artifact: "extension-vsix"
+                    publishLocation: "pipeline"
+                  displayName: "Publish VSIX artifact"
+
+                - task: PublishPipelineArtifact@1
+                  inputs:
+                    targetPath: "$(System.DefaultWorkingDirectory)/dist"
+                    artifact: "backend-dist"
+                    publishLocation: "pipeline"
+                  displayName: "Publish backend dist artifact"
+
+  # ─────────────────────────────────────────────────────
+  # Stage 3 — Deploy Backend (main only)
+  # ─────────────────────────────────────────────────────
+  - stage: DeployBackend
+    displayName: "Deploy Backend"
+    dependsOn: PublishExtension
+    condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'main'))
+    jobs:
+      - deployment: DeployBackendService
+        displayName: "Deploy Backend Service"
+        pool:
+          vmImage: "ubuntu-latest"
+        environment: "production-backend"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: DownloadPipelineArtifact@2
+                  inputs:
+                    artifact: "backend-dist"
+                    targetPath: "$(Pipeline.Workspace)/backend"
+                  displayName: "Download backend artifact"
+
+                # Replace with your actual deployment step
+                # (Azure App Service, Docker, SSH, etc.)
+                - script: |
+                    echo "Backend artifact ready at $(Pipeline.Workspace)/backend"
+                    ls -la "$(Pipeline.Workspace)/backend"
+                  displayName: "Deploy backend (placeholder)"

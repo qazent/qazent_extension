@@ -31,6 +31,8 @@ const config: Config.InitialOptions = {
 
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
 
+  coverageReporters: ['text', 'lcov', 'cobertura'],
+
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.test.{ts,tsx}',
