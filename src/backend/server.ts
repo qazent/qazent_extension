@@ -33,7 +33,7 @@ import * as licenseService from './license/service';
 import type { LicenseStatusResponse } from './license/types';
 import { ATTEMPT_DEFAULT } from './queue/constants';
 import { enqueuePRJob } from './queue/enqueue';
-import { getClientIp, getRequestNetworkContext } from './utils/requestMetadata';
+import { getRequestNetworkContext } from './utils/requestMetadata';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- crypto only used by encrypt/decrypt token functions
 // import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
@@ -1375,7 +1375,6 @@ function logAuthenticatedRequest(
       origin: network.origin,
       host: network.host,
       userAgent: req.headers['user-agent'],
-      clientIp: getClientIp(req),
     };
 
     if (statusCode >= 400) {
