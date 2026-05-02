@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-qazent",
   "name": "PR Assistant",
-  "version": "3.1.16",
+  "version": "3.1.18",
   "public": true,
   "publisher": "QAZent",
   "description": "AI-powered PR test case generation assistant",
