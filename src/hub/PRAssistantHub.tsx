@@ -674,7 +674,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }}
       >
         <div style={{ fontSize: '14px', fontWeight: 600, color: '#444', marginBottom: '10px' }}>
-          After generating
+          Output options
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Checkbox
@@ -684,7 +684,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
               setPostCommentOnPR(checked);
               if (checked) setOutputType(false);
             }}
-            label="Post Scope of Change and Purpose comment on PR with work item link and test case summary"
+            label="Create a work item and post a summary comment on the PR (default)"
             disabled={isGenerating}
           />
           {/* TODO: SET outputType flag in backend to control whether full test case details are posted in the PR comment or just a summary with link to work item, default to summary only and allow opting into full details if desired (can be noisy for large test cases) */}
@@ -692,7 +692,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
             <Checkbox
               checked={outputType}
               onChange={(_e, data) => setOutputType(!!data.checked)}
-              label="Post full output as PR comment instead of work item (includes full test case details)"
+              label="Skip work item — post full test case details as a PR comment only (cleaner output)"
               disabled={isGenerating || postCommentOnPR}
             />
           </div>
