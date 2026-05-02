@@ -88,6 +88,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [currentStep, setCurrentStep] = React.useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
+  const [outputType, setOutputType] = React.useState<boolean>(false);
   // --- POST PR LABEL VAULTED ---
   // const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
 
@@ -347,94 +348,131 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         throw new Error('Backend did not return commit IDs. Please refresh and try again.');
       }
 
-      // Step 5: Immediately call /create-work-item with ALL required fields
-      setCompletedSteps(prev => [...prev, 3]);
-      setCurrentStep(4);
-      const result = await backendClient.createWorkItem(
-        generatedTestCase as any,
-        prData.prId,
-        projectName,
-        repositoryId,
-        backendUrl,
-        projectId,
-        sourceCommitId,
-        targetCommitId
-      );
+      if (outputType) {
+        // outputType mode: skip work item creation, post full HTML directly as PR comment
+        let fullOutputCommentPosted = false;
+        setCompletedSteps(prev => [...prev, 3]);
+        setCurrentStep(5);
+        try {
+          const fullOutputResponse = await backendClient.postPRComment({
+            prId: prData.prId,
+            projectName,
+            repositoryId,
+            connection: backendUrl,
+            commentContent: generatedTestCase.htmlDescription
+          });
+          fullOutputCommentPosted = fullOutputResponse.success === true;
+        } catch (err) {
+          console.warn('Full output PR comment failed:', err);
+        }
+        setCompletedSteps(prev => [...prev, 5]);
 
+        // Show success message for outputType mode
+        setCurrentStep(null);
+        const detailParts: string[] = [];
+        if (fullOutputCommentPosted) {
+          detailParts.push('Full test case details posted as PR comment.');
+        } else {
+          detailParts.push('Failed to post full output as PR comment.');
+        }
+        setSuccessMessage({
+          text: "Test case posted as PR comment!",
+          url: '',
+          details: detailParts.join(' ')
+        });
+        setTimeout(() => setSuccessMessage(null), 60000);
 
-            // Step 6: Post main comment on PR (optional)
-            setCompletedSteps(prev => [...prev, 4]);
-            if (postCommentOnPR) {
-              setCurrentStep(5);
-              try {
-                const commentResponse = await backendClient.postPRComment({
-                  prId: prData.prId,
-                  projectName,
-                  repositoryId,
-                  workItemId: result.workItemId,
-                  connection: backendUrl
-                });
-                workItemCommentPosted = commentResponse.success === true;
-              } catch (err) {
-                console.warn('PR comment failed but work item was created:', err);
-              }
+      } else {
+        // Default mode: create work item, then optionally post comment
 
-              // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
-              try {
-                const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
-                if (scopeHtml && scopeHtml.length > 0) {
-                  const detailsCommentResponse = await backendClient.postPRComment({
-                    prId: prData.prId,
-                    projectName,
-                    repositoryId,
-                    workItemId: result.workItemId,
-                    connection: backendUrl,
-                    commentContent: scopeHtml
-                  });
-                  detailsCommentPosted = detailsCommentResponse.success === true;
-                }
-              } catch (err) {
-                console.warn('Failed to post Purpose and Scope of Change comment:', err);
-              }
-              setCompletedSteps(prev => [...prev, 5]);
+        // Step 5: Immediately call /create-work-item with ALL required fields
+        setCompletedSteps(prev => [...prev, 3]);
+        setCurrentStep(4);
+        const result = await backendClient.createWorkItem(
+          generatedTestCase as any,
+          prData.prId,
+          projectName,
+          repositoryId,
+          backendUrl,
+          projectId,
+          sourceCommitId,
+          targetCommitId
+        );
+
+        // Step 6: Post main comment on PR (optional)
+        setCompletedSteps(prev => [...prev, 4]);
+        if (postCommentOnPR) {
+          setCurrentStep(5);
+          try {
+            const commentResponse = await backendClient.postPRComment({
+              prId: prData.prId,
+              projectName,
+              repositoryId,
+              workItemId: result.workItemId,
+              connection: backendUrl
+            });
+            workItemCommentPosted = commentResponse.success === true;
+          } catch (err) {
+            console.warn('PR comment failed but work item was created:', err);
+          }
+
+          // Step 6b: Extract Purpose and Scope of Change and post as additional PR comment
+          try {
+            const scopeHtml = await backendClient.extractPurposeAndScope(generatedTestCase.htmlDescription, backendUrl);
+            if (scopeHtml && scopeHtml.length > 0) {
+              const detailsCommentResponse = await backendClient.postPRComment({
+                prId: prData.prId,
+                projectName,
+                repositoryId,
+                workItemId: result.workItemId,
+                connection: backendUrl,
+                commentContent: scopeHtml
+              });
+              detailsCommentPosted = detailsCommentResponse.success === true;
             }
+          } catch (err) {
+            console.warn('Failed to post Purpose and Scope of Change comment:', err);
+          }
+          setCompletedSteps(prev => [...prev, 5]);
+        }
 
-            // --- POST PR LABEL VAULTED ---
-            // Step 6c: Post PR label (optional)
-            // if (addLabelToPR) {
-            //   setCurrentStep(6);
-            //   try {
-            //     await backendClient.postPRLabel({
-            //       prId: prData.prId,
-            //       projectName,
-            //       repositoryId,
-            //       connection: backendUrl,
-            //       labelName: 'Test Case Generated'
-            //     });
-            //   } catch (err) {
-            //     console.warn('PR label failed but work item was created:', err);
-            //   }
-            //   setCompletedSteps(prev => [...prev, 6]);
-            // }
+        // --- POST PR LABEL VAULTED ---
+        // Step 6c: Post PR label (optional)
+        // if (addLabelToPR) {
+        //   setCurrentStep(6);
+        //   try {
+        //     await backendClient.postPRLabel({
+        //       prId: prData.prId,
+        //       projectName,
+        //       repositoryId,
+        //       connection: backendUrl,
+        //       labelName: 'Test Case Generated'
+        //     });
+        //   } catch (err) {
+        //     console.warn('PR label failed but work item was created:', err);
+        //   }
+        //   setCompletedSteps(prev => [...prev, 6]);
+        // }
 
-      // Step 7: Show success message
-      setCurrentStep(null);
-      const detailParts: string[] = [];
-      if (detailsCommentPosted) {
-        detailParts.push('A PR comment with the test case details was posted successfully.');
-      } else if (workItemCommentPosted) {
-        detailParts.push('A PR comment with the work item link was posted successfully.');
-      } else if (postCommentOnPR) {
-        detailParts.push('Work item created, but the PR comment was not posted successfully.');
+        // Step 7: Show success message
+        setCurrentStep(null);
+        const detailParts: string[] = [];
+        if (detailsCommentPosted) {
+          detailParts.push('A PR comment with the test case details was posted successfully.');
+        } else if (workItemCommentPosted) {
+          detailParts.push('A PR comment with the work item link was posted successfully.');
+        } else if (postCommentOnPR) {
+          detailParts.push('Work item created, but the PR comment was not posted successfully.');
+        }
+        // if (addLabelToPR) detailParts.push('A label has been added to this PR.');
+        if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
+        setSuccessMessage({
+          text: "Work item created successfully!",
+          url: result.workItemUrl,
+          details: detailParts.join(' ')
+        });
+        setTimeout(() => setSuccessMessage(null), 60000);
       }
-      // if (addLabelToPR) detailParts.push('A label has been added to this PR.');
-      if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
-      setSuccessMessage({
-        text: "Work item created successfully!",
-        url: result.workItemUrl,
-        details: detailParts.join(' ')
-      });
-      setTimeout(() => setSuccessMessage(null), 60000); // Clear success message after 60 seconds
 
 
     } catch (err) {
@@ -641,10 +679,23 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <Checkbox
             checked={postCommentOnPR}
-            onChange={(_e, data) => setPostCommentOnPR(!!data.checked)}
-            label="Post comment on PR with work item link and test case summary"
+            onChange={(_e, data) => {
+              const checked = !!data.checked;
+              setPostCommentOnPR(checked);
+              if (checked) setOutputType(false);
+            }}
+            label="Post Scope of Change and Purpose comment on PR with work item link and test case summary"
             disabled={isGenerating}
           />
+          {/* TODO: SET outputType flag in backend to control whether full test case details are posted in the PR comment or just a summary with link to work item, default to summary only and allow opting into full details if desired (can be noisy for large test cases) */}
+          <div style ={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px' }}>
+            <Checkbox
+              checked={outputType}
+              onChange={(_e, data) => setOutputType(!!data.checked)}
+              label="Post full output as PR comment instead of work item (includes full test case details)"
+              disabled={isGenerating || postCommentOnPR}
+            />
+          </div>
           {/* --- POST PR LABEL VAULTED --- */}
           {/* <Checkbox
             checked={addLabelToPR}

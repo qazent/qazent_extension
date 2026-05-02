@@ -270,7 +270,7 @@ export interface PostPRCommentParams {
   prId: number;
   projectName: string;
   repositoryId: string;
-  workItemId: number;
+  workItemId?: number;
   connection: string;
   commentContent?: string;
 }
