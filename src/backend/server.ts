@@ -882,10 +882,21 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       const payload = JSON.parse(body);
 
       // Validate request body
-      if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId || typeof payload.workItemId !== 'number') {
+      if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
         const errorResponse: ErrorResponse = {
           error: 'Missing required fields',
-          details: 'prId, projectName, repositoryId, workItemId are required'
+          details: 'prId, projectName, repositoryId are required'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      // workItemId is required unless commentContent is provided (outputType / full-output mode)
+      if (typeof payload.workItemId !== 'number' && !payload.commentContent) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing required fields',
+          details: 'workItemId is required when commentContent is not provided'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -895,7 +906,10 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       logger.info('Post PR comment request', {
         prId: payload.prId,
         projectName: payload.projectName,
-        workItemId: payload.workItemId,
+        workItemId: payload.workItemId ?? null,
+        hasCustomContent: !!payload.commentContent,
+        customContentLength: payload.commentContent?.length ?? 0,
+        outputMode: payload.commentContent ? 'full_output' : 'work_item_link',
         userId: req.user?.id,
         userDisplayName: req.user?.displayName,
         requestId: req.requestId
@@ -911,13 +925,12 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
-      // Call backend function to post comment.
       // If no custom commentContent is provided, the backend will post its default message.
       await adoClient.postPRComment({
         projectName: payload.projectName,
         repositoryId: payload.repositoryId,
         prId: payload.prId,
-        workItemId: payload.workItemId,
+        ...(typeof payload.workItemId === 'number' && { workItemId: payload.workItemId }),
         connection,
         commentContent:
           payload.commentContent && typeof payload.commentContent === 'string'

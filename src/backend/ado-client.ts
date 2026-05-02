@@ -703,7 +703,7 @@ export async function createFallbackWorkItem(
         projectName: string;
         repositoryId: string;
         prId: number;
-        workItemId: number;
+        workItemId?: number;
         connection: azdev.WebApi;
         commentContent?: string;
       }): Promise<void> {
