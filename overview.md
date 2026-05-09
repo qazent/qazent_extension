@@ -15,13 +15,13 @@ View https://qazent.com for more info!
 ## How It Works
 
 **Quick Video**
-![Showcase gif](public/QAZent_Showcase1.gif)
+![Showcase gif](public/qazent-gif.gif)
 
 1. **Open a Pull Request**
    Navigate to any pull request in Azure Repos to activate the PR Assistant tab.
    ![Code Diff](public/hero-preview.png)
 
-   ![One Button to Generate](public/generate-testcase.png)
+   ![One Button to Generate](public/pr-tab-may.png)
 
 2. **Generate Work Items with one click**
    The assistant instantly creates structured work items containing:
@@ -34,14 +34,15 @@ View https://qazent.com for more info!
    - Regression areas to verify
    - Data requirements
    - Automation notes — including suggestions on how to automate the test, recommended tools, and implementation hints
-
-   ![Generated Test Cases](public/generated-test-case.png)
+   ![Choose where you want your output](public/output-options.png)
+   ![Generated Test Work item](public/generated-test-case.png)
+   ![Generated PR Comment](public/generate-test-result.png)
 
 3. **Recommended: Add Custom Context**
    Provide additional project or domain context to help the AI better understand your codebase and generate more accurate, relevant test cases.
    ![alt text](public/custom-context-dropdown.png)
 
-   ![Custom Context Overview](public/step-3.png)
+   ![Custom Context Overview](public/custom-context-repo.png)
 
 4. **Create Work Items**
    Convert generated test cases into Azure DevOps Test Case work items directly from your pull request.
