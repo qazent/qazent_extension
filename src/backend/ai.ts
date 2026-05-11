@@ -733,9 +733,6 @@ export async function generateTestCases(
         sectionsRemoved: [...sectionsRemoved],
       });
 
-      // #region agent log
-      fetch('http://127.0.0.1:7719/ingest/f8e4d965-3d4c-43ea-ac14-404069782593',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'33f3e9'},body:JSON.stringify({sessionId:'33f3e9',runId:'pre-fix',hypothesisId:'H2',location:'ai.ts:before-generateContent',message:'payload before Gemini SDK call',data:{prId:prMetadata.prId,attempt,userPromptLen:userPrompt.length,sysPromptLen:sysPrompt.length,estimatedUserTokens,maxOutputTokens:MAX_OUTPUT_TOKENS,GEMINI_MODEL_NAME},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       // Generate content using new SDK API
       const response = await ai.models.generateContent({
@@ -931,9 +928,6 @@ export async function generateTestCases(
           }
         }
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7719/ingest/f8e4d965-3d4c-43ea-ac14-404069782593',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'33f3e9'},body:JSON.stringify({sessionId:'33f3e9',runId:'pre-fix',hypothesisId:'H1-H5',location:'ai.ts:catch-generateContent',message:'generateTestCases catch',data:{prId:prMetadata.prId,attempt,chainLength:errorChainDebug.length,errorChain:errorChainDebug},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       lastError = error instanceof Error ? error : new Error(String(error));
       const err = error instanceof Error ? error : new Error(String(error));
       const failureReason = err.message.includes('empty response') ? 'empty_response'

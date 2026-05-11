@@ -885,7 +885,7 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
         const errorResponse: ErrorResponse = {
           error: 'Missing required fields',
-          details: 'prId, projectName, repositoryId are required'
+          details: 'prId, projectName, repositoryId, workItemId are required'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
@@ -896,7 +896,7 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       if (typeof payload.workItemId !== 'number' && !payload.commentContent) {
         const errorResponse: ErrorResponse = {
           error: 'Missing required fields',
-          details: 'workItemId is required when commentContent is not provided'
+          details: 'prId, projectName, repositoryId, workItemId are required'
         };
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(errorResponse));
