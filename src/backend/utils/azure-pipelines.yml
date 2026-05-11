@@ -6,7 +6,6 @@ trigger:
       - release/*
   paths:
     exclude:
-      - "*.md"
       - docs/**
 
 pr:
