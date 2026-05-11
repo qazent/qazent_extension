@@ -6,7 +6,6 @@ trigger:
       - release/*
   paths:
     exclude:
-      - "*.md"
       - docs/**
 
 pr:
@@ -16,7 +15,6 @@ pr:
       - develop
   paths:
     exclude:
-      - "*.md"
       - docs/**
 
 variables:
