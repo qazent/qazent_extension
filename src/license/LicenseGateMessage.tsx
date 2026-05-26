@@ -29,6 +29,13 @@ export const LicenseGateMessage: React.FC<LicenseGateMessageProps> = ({
     <p style={{ margin: 0, fontSize: '15px', lineHeight: 1.55, color: '#323130' }}>
       Go to <strong>Project Settings → QAZent - License</strong> to enter your license key.
     </p>
+    <p style={{ margin: '12px 0 0', fontSize: '14px', lineHeight: 1.5, color: '#605e5c' }}>
+      For details on license delivery and activation, see{' '}
+      <a href="https://qazent.com/license" target="_blank" rel="noopener noreferrer">
+        qazent.com/license
+      </a>
+      .
+    </p>
     {showNetworkHint && (
       <p
         style={{

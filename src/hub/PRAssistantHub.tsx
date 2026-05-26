@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 
 import { CommonServiceIds, getClient, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 
-import { FluentProvider, webLightTheme, Checkbox } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Checkbox, Radio, RadioGroup } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -89,6 +89,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
   const [outputType, setOutputType] = React.useState<boolean>(false);
+  const [mode, setMode] = React.useState<'qa' | 'review'>('qa');
   // --- POST PR LABEL VAULTED ---
   // const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
 
@@ -330,7 +331,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         projectName,
         repositoryId,
         backendUrl,
-        customContext
+        customContext,
+        mode
       );
 
       // Extract test case and commit IDs from response
@@ -677,6 +679,18 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           Output options
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>Mode</div>
+            <RadioGroup
+              layout="horizontal"
+              value={mode}
+              onChange={(_e, data) => setMode(data.value as 'qa' | 'review')}
+              disabled={isGenerating}
+            >
+              <Radio value="qa" label="QA Mode" />
+              <Radio value="review" label="Code Review Mode" />
+            </RadioGroup>
+          </div>
           <Checkbox
             checked={postCommentOnPR}
             onChange={(_e, data) => {

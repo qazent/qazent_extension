@@ -636,10 +636,28 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         return;
       }
 
+      // Validate optional `mode` field. Default to 'qa' for backward compatibility with
+      // clients that don't yet send the new flag.
+      const rawMode = payload.mode;
+      let mode: 'qa' | 'review' = 'qa';
+      if (rawMode !== undefined && rawMode !== null && rawMode !== '') {
+        if (typeof rawMode !== 'string' || (rawMode !== 'qa' && rawMode !== 'review')) {
+          const errorResponse: ErrorResponse = {
+            error: 'Invalid mode',
+            details: `mode must be one of: 'qa', 'review' (got: ${JSON.stringify(rawMode)})`
+          };
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(errorResponse));
+          return;
+        }
+        mode = rawMode;
+      }
+
       logger.info('Generate tests request', {
         prId: payload.prId,
         projectName: payload.projectName,
         repositoryId: payload.repositoryId,
+        mode,
         hasCustomContext: !!customContext,
         contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext),
         userId: req.user?.id,
@@ -702,9 +720,10 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         prId: payload.prId,
         codeDiffFiles: codeDiff.changes.length,
         totalChanges: codeDiff.totalChanges,
-        customContextLength: customContext?.length ?? 0
+        customContextLength: customContext?.length ?? 0,
+        mode
       });
-      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext);
+      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext, mode);
       logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: result.title });
 
       // Return test case + commit IDs + optional compression report for observability
@@ -1432,9 +1451,10 @@ function startServer(): void {
   // Azure DevOps connections created per-request using user's OAuth token
   // No global connection initialization needed
 
-  // Load AI system prompt
+  // Load AI system prompts (QA + Review) so a missing file fails fast at startup.
   try {
-    ai.loadSystemPrompt();
+    ai.loadSystemPrompt('qa');
+    ai.loadSystemPrompt('review');
   } catch (error) {
     logger.error('Failed to load system prompt', { error: String(error) });
     console.error('FATAL: Failed to load system prompt');

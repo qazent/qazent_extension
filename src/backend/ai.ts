@@ -61,7 +61,18 @@ const AI_RESPONSE_SCHEMA = {
 /** let parsed: Partial<GeneratedTestCase>;
 */
 
-let systemPrompt: string | null = null;
+export type PromptMode = 'qa' | 'review';
+
+const PROMPT_FILES: Record<PromptMode, string> = {
+  qa: 'system-prompt.txt',
+  review: 'system-prompt-review.txt',
+};
+
+const systemPromptCache: Record<PromptMode, string | null> = {
+  qa: null,
+  review: null,
+};
+
 let genAI: GoogleGenAI | null = null;
 
 const PROMPT_SECTION_DIVIDER = '------------------------------------------------';
@@ -97,44 +108,50 @@ function stripPromptSection(prompt: string, heading: string): string {
 }
 
 /**
- * Load system prompt from file (cached).
+ * Load system prompt from file (cached, per-mode).
  * If useShortPrompt is true, returns a version with optional guidance blocks stripped
  * to leave more output budget for retries after MAX_TOKENS.
  */
-export function loadSystemPrompt(useShortPrompt = false): string {
-  if (systemPrompt === null) {
-    const promptPath = path.join(process.cwd(), 'system-prompt.txt');
-    console.log('[AI] Loading system prompt from:', promptPath);
+export function loadSystemPrompt(mode: PromptMode = 'qa', useShortPrompt = false): string {
+  const fileName = PROMPT_FILES[mode];
+
+  if (systemPromptCache[mode] === null) {
+    const promptPath = path.join(process.cwd(), fileName);
+    console.log(`[AI] Loading system prompt (mode=${mode}) from:`, promptPath);
 
     try {
-      systemPrompt = fs.readFileSync(promptPath, 'utf-8');
-      console.log('[AI] System prompt loaded successfully, length:', systemPrompt.length);
-      logger.info('System prompt loaded', { length: systemPrompt.length });
+      const loaded = fs.readFileSync(promptPath, 'utf-8');
+      systemPromptCache[mode] = loaded;
+      console.log(`[AI] System prompt (mode=${mode}) loaded successfully, length:`, loaded.length);
+      logger.info('System prompt loaded', { mode, length: loaded.length });
     } catch (error) {
-      logger.error('Failed to load system prompt', { promptPath, error: String(error) });
-      console.error(`FATAL: Cannot load system-prompt.txt from ${promptPath}`);
+      logger.error('Failed to load system prompt', { mode, promptPath, error: String(error) });
+      console.error(`FATAL: Cannot load ${fileName} from ${promptPath}`);
       console.error('Current working directory:', process.cwd());
       console.error('Error details:', error);
-      console.error('Ensure system-prompt.txt is in the dist/ folder alongside server.js');
+      console.error(`Ensure ${fileName} is in the dist/ folder alongside server.js`);
       process.exit(1);
     }
   }
 
+  const cached = systemPromptCache[mode]!;
+
   if (!useShortPrompt) {
-    return systemPrompt;
+    return cached;
   }
 
   const shortPrompt = OPTIONAL_SHORT_PROMPT_HEADINGS.reduce(
     (prompt, heading) => stripPromptSection(prompt, heading),
-    systemPrompt
+    cached
   );
 
-  if (shortPrompt === systemPrompt) {
-    return systemPrompt;
+  if (shortPrompt === cached) {
+    return cached;
   }
 
   logger.debug('Using short system prompt (optional sections omitted)', {
-    fullLength: systemPrompt.length,
+    mode,
+    fullLength: cached.length,
     shortLength: shortPrompt.length,
     removedSections: [...OPTIONAL_SHORT_PROMPT_HEADINGS].filter((heading) => !shortPrompt.includes(heading)),
   });
@@ -696,18 +713,19 @@ export function extractPurposeAndScope(html: string): string {
 export async function generateTestCases(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
-  customContext?: string
+  customContext?: string,
+  mode: PromptMode = 'qa'
 ): Promise<GenerateTestCasesResult> {
   const MAX_ATTEMPTS = 2;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      logger.info('Generating test cases with AI', { prId: prMetadata.prId, attempt });
+      logger.info('Generating test cases with AI', { prId: prMetadata.prId, attempt, mode });
 
       // On retry (attempt 2), use shortened system prompt (examples omitted) to leave more output budget
       const useShortPrompt = attempt >= 2;
-      const sysPrompt = loadSystemPrompt(useShortPrompt);
+      const sysPrompt = loadSystemPrompt(mode, useShortPrompt);
 
       // Initialize Gemini
       const ai = getGenAI();

@@ -1,56 +1,80 @@
-# Azure DevOps PR Test Case Generator
+# Azure DevOps PR Test Case Generator (QAZent PR Assistant)
 
-Automated service that receives Azure DevOps Pull Request webhook events, analyzes PR changes using AI, and generates comprehensive Test Case work items automatically.
+This repository ships **two coordinated parts**:
+
+1. **Azure DevOps extension** (React / Fluent UI / webpack) — PR tab, AI context settings hub, and license hub. The extension calls the backend using the user’s **Azure DevOps OAuth token** (`Authorization: Bearer`) and **`X-Ado-Org-Url`**.
+2. **Node.js HTTP API** (`src/backend/`, compiled to `dist/backend/`) — validates tokens, fetches PR metadata and diffs, runs **Google Gemini** against `system-prompt.txt`, and creates **Task** work items linked to the PR.
+
+Repository-local conventions for agents and contributors are summarized in **`.rules`**.
 
 ## Overview
 
-This backend service integrates with Azure DevOps to automate QA workflows:
+End-to-end flow in production today is **user-initiated from the PR tab** (“Generate test cases”), not service-hook webhooks:
 
-1. **Receives PR webhooks** - Listens for Pull Request Created/Updated events
-2. **Fetches code changes** - Retrieves PR metadata and code diffs via Azure DevOps API
-3. **Generates test cases** - Uses Google Gemini AI to create structured test cases
-4. **Creates work items** - Automatically creates Test Case work items in Azure DevOps
-5. **Links to PRs** - Links test cases back to originating pull requests
+1. **Authenticate** — Extension obtains an OAuth token via `azure-devops-extension-sdk`; backend verifies it per request.
+2. **Fetch changes** — Backend uses `azure-devops-node-api` (Bearer) for PR metadata and diffs (`fetchPRdiff.ts`, `ado-client.ts`).
+3. **Generate output** — `ai.ts` builds a token-bounded prompt and calls Gemini; response is JSON with `title` and `htmlDescription` (HTML with structured QA sections per `system-prompt.txt`).
+4. **Create work item** — `ado-client.ts` creates a **Task** work item with sanitized HTML and an artifact link back to the PR.
+5. **Optional async path** — When Redis (`UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN`) is configured, **`POST /api/queue/pr`** enqueues jobs for the separate **worker** process (`npm run start:worker`). This is distinct from the legacy in-memory module in `queue.ts` (see **Architecture** below).
 
 ## Key Features
 
-- **Asynchronous processing** - Immediate 202 response, background job processing
-- **Retry logic** - 3 attempts with exponential backoff for transient failures
-- **Fallback handling** - Creates minimal work item if AI generation fails
-- **Structured logging** - JSON logs with sensitive data filtering
-- **Health monitoring** - Health check endpoint for Azure App Service
-- **Local testing** - Test with mock data without webhook setup
+- **Extension + API** — Webpack builds `hub` / `settings` / `license` bundles; `npm run build` also compiles the backend to `dist/backend/`.
+- **Rate limiting and audit logging** — Applied to authenticated routes in `server.ts`.
+- **Optional Redis-backed queue** — For durable background processing when env vars are set; returns **503** if the queue is required but not configured.
+- **Retry logic** — AI generation retries with a shortened system prompt on the second attempt; ADO calls use retries where implemented.
+- **Fallback work item** — Legacy in-memory webhook processor can create a minimal Task if AI fails after retries (only relevant if that path is re-enabled).
+- **Structured logging** — JSON logs via `src/backend/utils/logger.ts` with sensitive-field discipline.
+- **Health check** — `GET /health` for load balancers (no internal queue stats in the payload).
+- **Licensing** — Lemon Squeezy + optional Postgres; extension calls `GET /license/status` and `POST /license/activate`.
 
 ## Prerequisites
 
-- **Node.js 18+** installed
-- **Azure DevOps** organization with appropriate permissions
-- **Google Gemini API** access
-- **Azure App Service** instance (for production deployment)
+- **Node.js** — `package.json` `engines` specifies **Node 24.x** and **npm ≥ 11**, matching the **`nodeVersion`** variable in **`src/backend/utils/azure-pipelines.yml`**. Use the same major version locally when possible; run **`npm run lint`** and **`npm test`** after upgrades.
+- **Azure DevOps** organization where the extension is installed
+- **Google Gemini API** key (`GEMINI_API_KEY`) for the backend
+- **Hosting** — **[Render](https://render.com)** Web Service (or equivalent) for the API; Redis (Upstash) if you use the worker queue
 
 ## Architecture
 
-### Components
+### Extension (frontend)
 
-- **server.ts** - HTTP webhook server with `/webhook` and `/health` endpoints
-- **queue.ts** - In-memory job queue with retry logic
-- **ado-client.ts** - Azure DevOps API wrapper for fetching diffs and creating work items
-- **ai.ts** - Google Gemini integration for test case generation
-- **logger.ts** - Structured JSON logging with sensitive data filtering
-- **types.ts** - TypeScript type definitions
+- **Webpack entries** — `hub` (PR tab), `settings` (AI context), `license` (`webpack.config.js`).
+- **Backend URL** — Must be an absolute `https://` URL (validated in `src/services/backendClient.ts`). Contribution properties in `vss-extension.json` point clients at the API host (e.g. `https://api.qazent.com`).
 
-### Data Flow
+### Backend (Node)
+
+| Module / area | Role |
+|---------------|------|
+| `server.ts` | `http` server: CORS, rate limits, auth middleware, routing for generate/create-comment/license/webhook (Lemon) and queue enqueue. |
+| `middleware/authenticate.ts` | Validates Azure DevOps OAuth tokens for protected routes. |
+| `middleware/rateLimiter.ts` | Per-route rate limiting. |
+| `fetchPRdiff.ts` / `ado-client.ts` | PR diffs, metadata, Task creation, PR comments, artifact URIs. |
+| `ai.ts` | Gemini client, prompt compression, JSON parse/repair, `system-prompt.txt` loader (`process.cwd()` / `system-prompt.txt` at runtime). |
+| `queue/enqueue.ts`, `queue/dequeue.ts`, `worker/worker.ts` | **Redis** job pipeline for **`POST /api/queue/pr`**. |
+| `queue.ts` | **In-memory** queue + worker loop intended for the **commented-out** service webhook flow — **not** started by default (`queue.startWorker()` is not called from `startServer()`). Do not confuse with Redis. |
+| `license/*` | License status, activation, Lemon webhook signature handling, optional Postgres store. |
+
+### Active data flow (PR tab → API)
 
 ```
-Azure DevOps PR Event
+User in Azure DevOps PR → Extension (hub.js)
+        ↓ HTTPS + Bearer token + X-Ado-Org-Url
+POST /generate-tests (optional customContext ≤ 3000 chars)
         ↓
-POST /webhook (202 Accepted)
+fetch PR diff + metadata → Gemini (system-prompt.txt + user prompt)
         ↓
-Job Queue (background)
+200 JSON: title, htmlDescription, source/target commit IDs, optional compressionReport
         ↓
-Fetch PR Diff → Generate Test Cases → Create Work Item
-        ↓
-Link to PR & Log Result
+Extension may POST /create-work-item and /post-pr-comment with same auth
+```
+
+### Service webhook path (currently disabled in code)
+
+`POST /webhook`, in-memory `queue.ts` processing, and encrypted token storage are **present only inside large commented blocks** in `server.ts` because OAuth tokens from the extension are short-lived and there is no supported server-side refresh for the old auto-webhook design. The extension still exposes a **fixed** webhook URL constant in `src/services/configService.ts` (`https://api.qazent.com/webhook`) for documentation/subscription UX; **do not assume the live server handles `POST /webhook` until that code path is explicitly re-enabled and deployed with a full token strategy.**
+
+```
+(If re-enabled in future) ADO Service Hook → POST /webhook → queue job → …
 ```
 
 ## Local Setup
@@ -62,15 +86,9 @@ cd test-extension
 npm install
 ```
 
-n### 2. Configure Environment
+### 2. Configure Environment
 
-Copy the example environment file:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and fill in your credentials:
+Create a `.env` file in the project root (there is no committed `.env.example` in this tree—add one locally if you use it). Typical variables include:
 
 ```bash
 # Azure DevOps Configuration
@@ -82,7 +100,13 @@ GEMINI_API_KEY=your-gemini-api-key
 
 # Server Configuration
 PORT=3000
+
+# Optional: Redis queue (Upstash) for POST /api/queue/pr + worker
+# UPSTASH_REDIS_URL=...
+# UPSTASH_REDIS_TOKEN=...
 ```
+
+The **PR tab extension** talks to the API with the signed-in user’s **OAuth** token; it does **not** send `ADO_PAT`. Variables like **`ADO_ORG_URL` / `ADO_PAT`** are mainly relevant for **local scripts** (for example `npm run test:local`) or any custom tooling you maintain—not for the default browser extension flow.
 
 #### Getting Azure DevOps PAT
 
@@ -131,13 +155,15 @@ The extension supports license activation and status via a backend license servi
 
   Required tables are created automatically: `license_records` and `license_seat_assignments`. No migrations or manual schema setup are required.
 
-### 3. Run Development Server
+### 3. Run the backend (development)
 
 ```bash
 npm run dev
 ```
 
-Server starts on `http://localhost:3000`
+This runs the backend entry via `ts-node` as defined in `package.json`. The **packaged** backend entry used in production is `npm start` → `node dist/backend/server.js` after `npm run build:backend`.
+
+Default listen port is **`3000`** (or `PORT` from the environment).
 
 ### 4. Test Locally
 
@@ -165,302 +191,164 @@ This will:
 
 This will fetch real diff data and create actual work items.
 
-### Option 2: Test with Webhook (Local Tunnel)
+### Option 2: Test with a service hook (local tunnel)
+
+Only applicable if your server build exposes **`POST /webhook`** (disabled in the default `server.ts` in this repo). If you enable it for experiments:
 
 1. Install ngrok: `npm install -g ngrok`
 2. Start your server: `npm run dev`
 3. Start tunnel: `ngrok http 3000`
-4. Copy the ngrok URL (e.g., `https://abc123.ngrok.io`)
-5. Configure webhook in Azure DevOps (see below)
+4. Copy the ngrok HTTPS URL
+5. Configure a service hook in Azure DevOps (see **Configuring Azure DevOps service hooks** above)
 6. Create a test PR
 
-## Configuring Azure DevOps Webhook
+## Configuring Azure DevOps service hooks (optional / product-dependent)
 
-### Step-by-Step
+The extension code references a **fixed** webhook URL (`https://api.qazent.com/webhook` via `getWebhookEndpoint()` in `src/services/configService.ts`). The **default `server.ts` in this branch does not register a live `POST /webhook` handler** (that path is commented out together with token storage and `queue.startWorker()`). Before subscribing service hooks in Azure DevOps, confirm with your deployment that the webhook endpoint is actually enabled server-side and secured as intended.
 
-1. Go to your Azure DevOps project
-2. Navigate to **Project Settings** → **Service Hooks**
-3. Click **Create subscription**
-4. Select **Web Hooks** as service
-5. Select events:
-   - **Pull request created**
-   - **Pull request updated**
-6. Click **Next**
-7. Enter your webhook URL:
-   - Local: `https://your-ngrok-url.ngrok.io/webhook`
-   - Production: `https://your-app.azurewebsites.net/webhook`
-8. Set **Content type**: `application/json`
-9. Click **Finish**
-10. Click **Test** to verify
+If your team re-enables the handler, the historical subscription steps are:
 
-## Building for Production
+1. **Project Settings** → **Service Hooks** → **Create subscription**
+2. Service: **Web Hooks**; events: **Pull request created** / **Pull request updated**
+3. URL: the HTTPS endpoint your API exposes for `POST /webhook` (must match deployment)
+4. **Content type**: `application/json`
+5. Use **Test** to verify delivery
 
-Compile TypeScript to JavaScript:
+## Building for production
 
 ```bash
 npm run build
 ```
 
-Output is in `dist/` directory.
+This runs **`build:extension`** (webpack → `dist/` for `hub.js`, `settings.js`, `license.js`, HTML, copied assets) and **`build:backend`** (TypeScript → `dist/backend/` plus `system-prompt.txt` copies). Webpack is configured with **`clean: false`** so it does not delete backend output under `dist/`.
 
-Run production build:
+Run the compiled API:
 
 ```bash
 npm start
 ```
 
-## Deployment to Azure App Service
+Runs `node dist/backend/server.js`. Run the Redis worker separately when using the queue: `npm run start:worker`.
 
-### Prerequisites
+## Deploying the API on Render.com
 
-- Azure subscription
-- Azure CLI installed (`az`)
+The backend is a plain Node **`http`** server (`npm start` → `node dist/backend/server.js` after `npm run build:backend`). A typical setup on **[Render](https://render.com)**:
 
-### Deployment Steps
+### 1. Create a Web Service
 
-#### 1. Create Azure App Service
+1. In the Render dashboard, **New** → **Web Service**, connect your Git repository (or use **Deploy Docker** / manual deploy if you prefer).
+2. **Runtime**: Node (use a version consistent with **`package.json` `engines`** and **`src/backend/utils/azure-pipelines.yml`** — e.g. **24.x**).
+3. **Build command**: `npm ci && npm run build:backend` (only the API artifact is required on Render; use **`npm run build`** if this service also needs extension bundles from the same repo).
+4. **Start command**: `npm start` (or `node dist/backend/server.js`).
+5. **Health check path**: `/health` (Render will probe it for deploys and uptime).
 
-```bash
-# Login to Azure
-az login
+Render sets **`PORT`** automatically; the server reads `process.env.PORT` (default `3000` locally).
 
-# Create resource group (if needed)
-az group create --name pr-testcase-rg --location eastus
+### 2. Environment variables
 
-# Create App Service plan
-az appservice plan create \
-  --name pr-testcase-plan \
-  --resource-group pr-testcase-rg \
-  --sku B1 \
-  --is-linux
+In **Environment** for the Web Service, set at least **`GEMINI_API_KEY`**. Add **`UPSTASH_REDIS_URL`** / **`UPSTASH_REDIS_TOKEN`** when using the queue, license/Lemon/Postgres variables per the **License configuration** section, and any other vars your deployment uses. **`ADO_PAT` / `ADO_ORG_URL`** are not required for the standard extension-driven API (each request carries the user’s OAuth token).
 
-# Create web app
-az webapp create \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg \
-  --plan pr-testcase-plan \
-  --runtime "NODE:18-lts"
-```
+Use Render **secret** / **environment group** features for sensitive values; never commit real secrets to the repo.
 
-#### 2. Configure Environment Variables
+### 3. Custom domain (optional)
+
+Attach your public API hostname (for example **`https://api.qazent.com`**) in Render and point DNS as their docs describe. Ensure **`vss-extension.json`** (and any hardcoded URLs) reference that same host.
+
+### 4. Verify deployment
 
 ```bash
-az webapp config appsettings set \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg \
-  --settings \
-    ADO_ORG_URL="https://dev.azure.com/yourorg" \
-    ADO_PAT="your-pat-token" \
-    GEMINI_API_KEY="your-gemini-key" \
-    PORT="8080"
+curl https://<your-service>.onrender.com/health
+# or your custom domain, e.g. https://api.example.com/health
 ```
 
-#### 3. Enable Always On
-
-```bash
-az webapp config set \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg \
-  --always-on true
-```
-
-#### 4. Deploy Application
-
-```bash
-# Build locally
-npm run build
-
-# Deploy using Azure CLI
-az webapp up \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg \
-  --runtime "NODE:18-lts"
-```
-
-#### 5. Verify Deployment
-
-```bash
-# Check health endpoint
-curl https://pr-testcase-generator.azurewebsites.net/health
-```
-
-Expected response:
+Example response (shape only):
 
 ```json
 {
   "status": "healthy",
   "uptime": 123,
-  "queue": {
-    "pending": 0,
-    "processing": true
-  },
   "timestamp": "2024-01-15T10:30:45.123Z"
 }
 ```
 
-#### 6. Configure Azure DevOps Webhook
+Internal queue depth is **not** exposed on `/health` by design.
 
-Update your webhook URL to point to production:
+### 5. Background worker (optional)
 
-```
-https://pr-testcase-generator.azurewebsites.net/webhook
-```
+If you use **`POST /api/queue/pr`**, run the consumer as a separate Render **Background Worker** (or second Web Service) with the same repo, **`npm run build:backend`**, start command **`npm run start:worker`**, and the same Redis-related environment variables as the API.
 
-### Alternative Deployment Methods
+### 6. Service hooks (optional)
 
-#### GitHub Actions
+Only subscribe Azure DevOps service hooks to a **`POST /webhook`** URL if your **deployed** server build has that route enabled and you have a supported token strategy. Otherwise rely on the **extension + API** flow or the **Redis** queue API (`POST /api/queue/pr`) as designed for your product.
 
-Create `.github/workflows/deploy.yml`:
+### CI/CD and the extension
 
-```yaml
-name: Deploy to Azure
+#### Azure Pipelines
 
-on:
-  push:
-    branches: [main]
+CI/CD for builds and marketplace publish is defined in **`src/backend/utils/azure-pipelines.yml`**. Point your Azure DevOps pipeline at that file (or copy its stages into your team’s YAML). At a high level it:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: npm install
-      - run: npm run build
-      - uses: azure/webapps-deploy@v2
-        with:
-          app-name: pr-testcase-generator
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-```
+- **Triggers** on `main`, `develop`, and `release/*` (with `docs/**` path exclusions); **PR** validation on `main` and `develop`.
+- **Validate** — `npm ci`, **`npm run lint`**, Jest with coverage and JUnit publish; enforces an **80%** overall test pass-rate floor.
+- **Build** (branches other than `main`) — **`npm run build`** (extension + backend), packages a VSIX with **`tfx`**, publishes the **`output`** folder as a pipeline artifact (`extension-vsix`).
+- **PublishExtension** (`main` only) — runs **`scripts/ci-publish.sh`** (bump version, build, package, publish to the Azure DevOps Marketplace) with secrets from variable groups **`pr-assistant-production`** / **`pr-assistant-development`** and **`MARKETPLACE_PAT`**.
 
-#### VS Code Azure Extension
+Deploying the **Node API** to Render is independent of that pipeline unless you add a deploy stage (for example invoking the Render deploy hook or API from Azure Pipelines).
 
-1. Install **Azure App Service** extension
-2. Right-click on `dist/` folder
-3. Select **Deploy to Web App**
-4. Follow prompts
-
-## Production Deployment Checklist
+## Production deployment checklist
 
 Before going live, verify:
 
-- [ ] All environment variables set in Azure App Service
-- [ ] Health endpoint returns 200 status
-- [ ] Azure DevOps PAT has correct scopes (Code: Read, Work Items: Read/Write)
-- [ ] Gemini API key is valid and has quota
-- [ ] Azure DevOps webhook configured with production URL
-- [ ] Test webhook delivery with real PR
-- [ ] Always On enabled in App Service
-- [ ] Application Insights configured (optional but recommended)
-- [ ] Alerts configured for error rate > 5%
+- [ ] All required environment variables set on the API (at minimum **`GEMINI_API_KEY`**; Redis vars if using the queue; license vars if selling through Lemon; **`DATABASE_URL`** if you need durable license state)
+- [ ] **`GET /health`** returns **200**
+- [ ] Extension **backend URL** in `vss-extension.json` matches the deployed API host
+- [ ] Gemini API key is valid and within quota
+- [ ] If using **`POST /api/queue/pr`**: Redis reachable from API and worker; worker process deployed (`npm run start:worker`)
+- [ ] If using service hooks to **`/webhook`**: server code path explicitly enabled in your branch and token strategy documented
+- [ ] On Render: appropriate **instance type** / scaling for long-running **`/generate-tests`** requests (free tiers may spin down or limit CPU)
+- [ ] Logs or APM (Render log stream, or a third-party tool) for production debugging (optional)
 
-## API Endpoints
+## HTTP API (backend)
 
-### POST /webhook
+Unless noted, endpoints expect **`Content-Type: application/json`**, **`Authorization: Bearer <Azure DevOps OAuth token>`**, and **`X-Ado-Org-Url: <organization base URL>`** (same pattern as `src/services/backendClient.ts`). URLs are normalized (e.g. leading duplicate slashes are collapsed).
 
-Receives Azure DevOps PR webhook events.
+| Method | Path | Auth | Summary |
+|--------|------|------|---------|
+| GET/HEAD | `/` or `/health` | No | Liveness: `status`, `uptime`, `timestamp` only. |
+| POST | `/generate-tests` | Yes | Body: `prId`, `projectName`, `repositoryId`, optional `customContext` (≤ **3000** characters). Returns AI `title` / `htmlDescription` and commit IDs. |
+| POST | `/create-work-item` | Yes | Creates a **Task** from the generated `testCase` plus PR linkage fields (`projectId`, `sourceCommitId`, `targetCommitId`, …). |
+| POST | `/post-pr-comment` | Yes | Posts a PR thread; `workItemId` optional when `commentContent` supplies full text. |
+| POST | `/api/extract-purpose-scope` | Yes | Body: `{ "html": string }` → extracted Purpose/Scope snippet. |
+| POST | `/api/queue/pr` | Yes (+ license when enforcement on) | Enqueues Redis job; **503** if Redis env is missing. |
+| GET | `/license/status` | Yes | License state for the authenticated org/user. |
+| POST | `/license/activate` | Yes | Body includes `licenseKey` (see `src/license/api.ts` / `license/routes.ts`). |
+| POST | `/webhooks/lemon-squeezy` | No (signature verified in handler) | Lemon Squeezy billing webhook; rate limited. |
 
-**Request:**
+**Commented / inactive in source:** `POST /webhook`, `POST /api/webhook-token`, and automatic startup of the in-memory worker in `queue.ts` — see comments in `src/backend/server.ts`.
 
-```json
-{
-  "eventType": "git.pullrequest.created",
-  "resource": {
-    "pullRequestId": 42,
-    "title": "Feature implementation",
-    "repository": {
-      "id": "repo-guid",
-      "name": "repo-name",
-      "project": {
-        "name": "ProjectName"
-      }
-    }
-  }
-}
-```
+### POST /webhook (disabled in default build)
 
-**Response (202 Accepted):**
-
-```json
-{
-  "status": "accepted",
-  "jobId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Response (400 Bad Request):**
-
-```json
-{
-  "error": "Invalid payload",
-  "details": "Missing required field: resource.pullRequestId"
-}
-```
-
-### GET /health
-
-Health check for monitoring.
-
-**Response (200 OK):**
-
-```json
-{
-  "status": "healthy",
-  "uptime": 3600,
-  "queue": {
-    "pending": 2,
-    "processing": true
-  },
-  "timestamp": "2024-01-15T10:30:45.123Z"
-}
-```
+Historical Azure DevOps service hook payload shape and **202** `{ status, jobId }` responses are described in commented code in `server.ts`. Treat this as **documentation of intent**, not a guarantee the route exists in your deployed binary.
 
 ## Monitoring
 
 ### Logs
 
-View logs in Azure:
+Use the **Logs** tab on your Render Web Service (and Worker, if any) for live tail and history. You can also wire log drains or external APM if your team uses them.
 
-```bash
-az webapp log tail \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg
-```
+### Key metrics to monitor
 
-### Application Insights
-
-Enable for detailed telemetry:
-
-```bash
-az monitor app-insights component create \
-  --app pr-testcase-insights \
-  --resource-group pr-testcase-rg \
-  --location eastus
-
-az webapp config appsettings set \
-  --name pr-testcase-generator \
-  --resource-group pr-testcase-rg \
-  --settings APPLICATIONINSIGHTS_CONNECTION_STRING="your-connection-string"
-```
-
-### Key Metrics to Monitor
-
-- Webhook requests received
-- Jobs processed successfully
-- Jobs failed (with reasons)
-- AI generation time
-- Work item creation time
-- Queue depth
+- Authenticated API requests (`/generate-tests`, `/create-work-item`, `/post-pr-comment`, `/api/queue/pr`, license routes) — status, duration, user/org from audit logs
+- AI generation latency and error rate (parse vs truncation vs API failures)
+- Work item and PR comment creation failures
+- Redis queue depth / worker errors (when the worker is deployed)
+- Lemon webhook delivery and signature failures
 
 ## Troubleshooting
 
 ### "Failed to connect to Azure DevOps"
 
-- Verify `ADO_ORG_URL` is correct format: `https://dev.azure.com/yourorg`
-- Check `ADO_PAT` is valid and not expired
-- Ensure PAT has correct scopes
+- From the **extension**, confirm the user is signed in and **`X-Ado-Org-Url`** matches the organization base URL
+- For **script-based** runs using a PAT, verify `ADO_ORG_URL` and that the PAT is valid, not expired, and has **Code (Read)** and **Work Items (Read & write)** where needed
 
 ### "Gemini API error"
 
@@ -470,21 +358,15 @@ az webapp config appsettings set \
 
 ### "Work item creation failed"
 
-- Verify PAT has Work Items: Write scope
-- Check project exists in Azure DevOps
-- Ensure "Test Case" work item type exists
+- Confirm the extension user has permission to create work items in the project
+- Verify the project name and IDs in the payload match the PR’s project
+- The API creates work items of type **Task** (not a custom “Test Case” WI type)
 
-### "Webhook not received"
+### "Webhook not received" or `POST /webhook` 404
 
-- Verify webhook URL is accessible from internet
-- Check Azure DevOps webhook configuration
-- Test with manual POST request:
-
-```bash
-curl -X POST http://localhost:3000/webhook \
-  -H "Content-Type: application/json" \
-  -d @mock-pr.json
-```
+- Confirm whether your deployed server actually exposes **`POST /webhook`** (it is **not** active in the default `server.ts` in this repository)
+- If you rely on the **Redis** path, use **`POST /api/queue/pr`** from an authenticated client instead
+- For local experiments only (when/if the route exists): `curl -X POST http://localhost:3000/webhook -H "Content-Type: application/json" -d @tests/mock-pr.json`
 
 ### "TypeScript errors"
 
@@ -496,14 +378,12 @@ npm run lint
 
 ## Development
 
-### Code Structure
+### Code structure
 
-- **types.ts** - All TypeScript interfaces
-- **logger.ts** - Structured logging utility
-- **ado-client.ts** - Azure DevOps API client
-- **ai.ts** - Gemini AI integration
-- **queue.ts** - Job queue with retry logic
-- **server.ts** - HTTP server and main entry point
+- **`src/`** — Extension UI (`hub/`, `settings/`, `license/`), `services/` (backend client, config), `types/extension-types.ts`
+- **`src/backend/`** — API server, AI, ADO client, Redis queue modules, worker, license subsystem, middleware
+- **`src/backend/types.ts`** — Backend job/PR/AI types (not identical to extension types)
+- **`system-prompt.txt`** — QA instructions for Gemini (must stay consistent with optional short-prompt headings in `src/backend/ai.ts` if you rename sections)
 
 ### Adding New Features
 
@@ -513,55 +393,46 @@ npm run lint
 4. Test locally with `npm run test:local`
 5. Update README with new features
 
-### Modifying System Prompt
+### Modifying the system prompt
 
-Edit `system-prompt.txt` to change AI behavior. The prompt is loaded at startup and cached.
+Edit **`system-prompt.txt`**. It is read from **`process.cwd()/system-prompt.txt`** at runtime (copied next to compiled output during `npm run build:backend`). The file is cached after first load. If you change the text of optional sections at the top of the prompt, update **`OPTIONAL_SHORT_PROMPT_HEADINGS`** in **`src/backend/ai.ts`** so the second-attempt “short prompt” still strips the right blocks.
 
-### Changing AI Model
+### Changing the Gemini model
 
-Edit `ai.ts` and update model name:
-
-```typescript
-const model = ai.getGenerativeModel({
-  model: 'gemini-2.0-flash-exp', // Change this
-  // ...
-});
-```
+Model name and generation options live in **`src/backend/ai.ts`** (e.g. `GEMINI_MODEL_NAME` from `diff-config.ts`) and use the **`@google/genai`** SDK — adjust there and run tests around prompt size and output truncation.
 
 ## Security Considerations
 
 ### Secrets Management
 
 - Never commit `.env` file
-- Use Azure Key Vault for production secrets
-- Rotate PAT tokens regularly
+- Store production secrets in Render **environment** / **secret** configuration (or your org’s vault), not in source control
+- Rotate PAT tokens regularly (for local or script-based testing only, if you use PATs)
 - Monitor API key usage
 
-### Input Validation
+### Input validation
 
-- All webhook payloads validated before processing
-- PR descriptions sanitized before sending to AI
-- AI responses validated before creating work items
+- JSON bodies validated per handler in `server.ts`
+- AI HTML sanitized (`sanitize-html`) before persistence in ADO (`ado-client.ts`, `ai.ts`)
+- Lemon Squeezy requests verified with the configured signing secret in the license webhook handler
 
-### Network Security
+### Network security
 
-- HTTPS enforced in Azure App Service
-- Consider IP whitelisting for Azure DevOps webhook IPs
-- No webhook signature validation (Azure DevOps doesn't support)
+- HTTPS is provided by Render for `*.onrender.com` and for custom domains you configure there
+- CORS allowlists ADO / Visual Studio / gallery origins (see `applyCorsHeaders` in `server.ts`); development may allow localhost/ngrok when `NODE_ENV=development`
+- Azure DevOps service hooks do not provide the same signing model as Lemon; treat webhook URLs as sensitive capabilities if enabled
 
 ## Performance
 
-### Expected Performance
+### Expected performance
 
-- Webhook response: < 100ms (202 immediate)
-- Background processing: 10-30 seconds per PR
-- Handles ~6 PRs/minute comfortably
+- **`/generate-tests`** is synchronous end-to-end (diff + AI); typical latency depends on PR size and Gemini (often on the order of tens of seconds for large diffs)
+- **`POST /api/queue/pr`** returns **202** quickly when Redis is configured; the separate worker process performs heavy work
 
-### Scaling Considerations
+### Scaling considerations
 
-- Current design: Single worker, sequential processing
-- For higher volume: Consider Azure Storage Queue
-- For multiple instances: Use external queue (Redis, Service Bus)
+- Run **multiple worker** instances only after reviewing Redis locking/idempotency in `src/backend/worker/` and queue helpers
+- Without Redis, do not rely on `queue.ts` for multi-instance scale-out (in-memory only)
 
 ## Support
 

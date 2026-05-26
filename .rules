@@ -1,0 +1,251 @@
+# QAZent PR Assistant — AI agent rules (repository-local)
+
+This file governs how assistants must behave in **this** codebase. It encodes observed architecture, conventions, and safety boundaries. When in conflict with generic style guides, **this file wins** for this repo.
+
+---
+
+## 1. Project identity
+
+- **Product**: Azure DevOps extension (“PR Assistant”) — AI-assisted test case generation from PR context.
+- **Publisher / IDs**: `QAZent`, extension id `pr-assistant-extension-qazent` (see `vss-extension.json` and `package.json`; versions may differ — treat manifest as marketplace truth for extension version).
+- **Runtime split**:
+  - **Extension UI** (hosted inside Azure DevOps): React 18 + `@fluentui/react-*` + `azure-devops-extension-sdk` / `azure-devops-extension-api`.
+  - **Backend** (separate Node HTTP service): `src/backend/**`, compiled to `dist/backend/`, deployed to **Render.com** (Web Service + optional Background Worker for Redis jobs); CI/build and marketplace publish use **Azure Pipelines** (`src/backend/utils/azure-pipelines.yml`).
+- **Primary user flow**: PR tab “Generate Test Cases” (`hub` entry) → `backendClient` calls backend with ADO OAuth token — **not** the legacy fully automated service webhook path (large blocks in `server.ts` are intentionally commented as disabled; do not “fix” by uncommenting without explicit product approval and token-lifecycle design).
+
+---
+
+## 2. Repository layout (do not reorganize without request)
+
+| Area | Path | Role |
+|------|------|------|
+| PR tab UI | `src/hub/`, `src/index.tsx`, `src/hub/hub.html` | Webpack entry `hub` |
+| Settings hub | `src/settings/` | Webpack entry `settings` |
+| License hub | `src/license/` | Webpack entry `license` |
+| Extension services | `src/services/` | HTTP client to backend, config, webhooks |
+| Shared extension types | `src/types/extension-types.ts` | Frontend API / UI types |
+| Backend only | `src/backend/**` | Server, worker, queue, AI, ADO client, license, middleware |
+| Backend types | `src/backend/types.ts` | Job payloads, PR metadata, AI shapes (may differ slightly from frontend types) |
+| Tests | `tests/**`, `src/**/*.test.ts(x)` | Jest |
+| Extension manifest | `vss-extension.json` (copied to `dist/`) | Contributions, scopes, licensing overrides |
+| Build | `webpack.config.js`, `tsconfig.json`, `tsconfig.backend.json` | Dual build: webpack → `dist/`, tsc backend → `dist/backend/` |
+| CI / CD | `src/backend/utils/azure-pipelines.yml` | Azure Pipelines: lint + Jest (80% pass-rate gate), non-`main` full build + VSIX artifact, `main` marketplace publish via `scripts/ci-publish.sh` |
+| Docs / legal | `*.md` at root, `docs/`, `vsix-check/` | Marketplace, privacy, pricing — treat as user-facing |
+
+**Invariant**: Webpack `output.clean` is **false** so backend artifacts under `dist/` are not wiped. Never enable `clean: true` without a coordinated build script change.
+
+---
+
+## 3. Build, run, and package commands
+
+- **Full build**: `npm run build` → `build:extension` (webpack + asset copy) then `build:backend` (tsc + `system-prompt.txt` copy).
+- **Extension dev watch**: `npm run dev:extension`.
+- **Backend start (production layout)**: `npm start` → `node dist/backend/server.js`.
+- **Worker**: `npm run start:worker` → `node dist/backend/worker/worker.js`.
+- **Typecheck (lint script)**: `npm run lint` → `tsc --noEmit` (root `tsconfig.json`; backend uses stricter separate project for emit).
+- **Tests**: `npm test` / `npm run test:jest` — Jest with `tests/tsconfig.test.json`.
+- **VSIX**: `npm run package:extension` (from `dist` + tfx).
+
+**Known inconsistency (do not hallucinate a fix)**: `package.json` field `"main": "dist/server.js"` does **not** match the actual backend output path `dist/backend/server.js`. Prefer `start` script and `tsconfig.backend.json` `outDir` as source of truth unless the team explicitly standardizes `main`.
+
+**Engines**: `package.json` declares Node `24.x` and npm `>=11`; **`src/backend/utils/azure-pipelines.yml`** sets **`nodeVersion`** to **`24.x`**. When changing Node features, align `engines`, that pipeline, and README — do not assume one source without checking all three.
+
+---
+
+## 4. TypeScript and module conventions
+
+- **Strict mode** is on (`strict`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, etc.). New code must compile under the same flags.
+- **Path alias**: `@logger` maps to backend logger (`src/backend/utils/logger` from app tsconfig; `utils/logger` from backend tsconfig). Use it for backend logging instead of ad-hoc `console.log` except where the codebase already uses startup diagnostics in `server.ts`.
+- **Module system**: CommonJS emit for both extension (ts-loader) and backend (tsc).
+- **JSX**: `react` classic; functional components only.
+- **Avoid**: adding `any` to silence errors; widening types to bypass strictness.
+
+---
+
+## 5. Frontend rules (Azure DevOps extension)
+
+- **SDK lifecycle**: Entrypoints must `SDK.init()` then `SDK.ready()` before relying on services (see `src/index.tsx` pattern).
+- **Authentication to backend**: Use `SDK.getAccessToken()`; cache policy in `backendClient.ts` must stay coherent with token TTL (OAuth tokens expire ~1h; client caches ~10m — do not shorten arbitrarily without understanding 401 retry path).
+- **Backend URL**: Must be absolute `http(s)://` — enforced in `validateBackendUrl`. Never pass relative URLs that would resolve against the extension host.
+- **Headers**: Preserve `Authorization` (Bearer token) and `X-Ado-Org-Url` (multi-tenant) patterns when adding API calls.
+- **UI stack**: Fluent UI v9 components; match existing spacing and component usage in `PRAssistantHub`, settings, and license screens.
+- **Feature flags**: `src/config/featureFlags.ts` and webpack `DefinePlugin` may duplicate boolean flags — keep them consistent when changing license enforcement behavior.
+- **Never**: embed secrets, PATs, or Gemini keys in extension bundles; extension runs in customer browsers.
+
+---
+
+## 6. Backend rules
+
+- **HTTP server** (`server.ts`): Central routing, rate limiting, license routes, job enqueue. Respect existing middleware order and rate limiters in `middleware/rateLimiter.ts`. **Canonical route list**: see **§15 HTTP API catalog** below.
+- **Middleware chain** (protected routes): `applyMiddleware` = **rate limit first** → **`createAuthMiddleware`** → audit (`logAuthenticatedRequest` on `res.finish`) → handler. New routes should follow the same ordering unless there is a documented exception (e.g. license activate body buffering).
+- **Auth** (`middleware/authenticate.ts`): Endpoints expect validated ADO OAuth tokens unless explicitly public (e.g. health, documented exceptions). Do not add new authenticated routes without middleware.
+- **Queue**: Upstash Redis via `@upstash/redis`; env vars `UPSTASH_REDIS_URL`, `UPSTASH_REDIS_TOKEN` validated by `validateQueueEnvironment()`. Job keys and TTLs live in `src/backend/queue/constants.ts` — change with care for backward compatibility.
+- **Worker**: Consumes queue; keep idempotency and attempt counters coherent with `enqueue` / `dequeue` / lock logic under `src/backend/worker/` and `queue/`.
+- **AI**: Google GenAI (`@google/genai`); prompt content includes `system-prompt.txt` (copied to dist). Treat prompts as product-sensitive; avoid logging full prompts or raw PII.
+- **ADO integration**: `ado-client.ts`, `fetchPRdiff.ts` — preserve retry and error-mapping behavior; use structured logger for operations.
+- **HTML / user content**: Use `sanitize-html` where untrusted HTML is prepared or stored (see `src/backend/utils/sanitize-html.ts` and tests).
+- **Environment**: Use `validateEnv.ts` helpers for required vars; fail fast on missing critical configuration in server startup paths already established.
+
+---
+
+## 7. License and billing
+
+- **Lemon Squeezy** + optional **Postgres** (`DATABASE_URL`) for durable license state; in-memory fallback when DB unset (dev only — document behavior, do not assume persistence).
+- **Webhooks**: Verify signatures using `LEMON_SQUEEZY_WEBHOOK_SECRET`; never log signing secrets or raw license keys.
+- **Hashing**: `LICENSE_HASH_SALT` for keyed hashing — required patterns in `license/` module must be preserved.
+- **API routes**: `src/backend/license/routes.ts` — maintain compatibility with `src/license/` UI and `src/license/api.ts` (`GET /license/status`, `POST /license/activate`).
+- **Lemon webhook path**: `POST /webhooks/lemon-squeezy` — public; signature verification inside handler; uses raw accumulated body string (not generic JSON parse in router).
+
+---
+
+## 8. Types and API contracts
+
+- **Duplication boundary**: `GeneratedTestCase` in `extension-types.ts` includes `htmlDescription` and optional fields aligned with UI; backend `types.ts` may differ. When changing shapes, update **both** and any serializers/deserializers and tests — never assume a single definition.
+- **REST JSON**: Prefer explicit interfaces for request/response bodies shared between `backendClient.ts` and `server.ts` handlers.
+
+---
+
+## 9. Testing expectations
+
+- **Runner**: Jest (`jest.config.ts`), default `jsdom` environment; backend-heavy suites may rely on node behaviors — follow existing test file patterns.
+- **Mocks**: `tests/utils/azure-devops-mock.ts`, `azure-devops-api-mock.ts`, redis helpers, etc. Reuse before inventing new mocks.
+- **Coverage thresholds**: Per-file thresholds exist for `server.ts`, `fetchPRdiff.ts`, middleware, `license/routes.ts`, etc. Changes to those files should maintain or improve coverage, or adjust thresholds only with team agreement.
+- **Timeouts**: Default Jest timeout 30s — integration tests may be slow; avoid flaky timing assumptions.
+- **Never**: skip tests broadly (`describe.skip` / `it.skip`) to merge without replacement strategy.
+
+---
+
+## 10. Security and compliance
+
+- **Never log**: raw OAuth tokens, PATs, Gemini keys, webhook signing secrets, full decrypted payloads, or unredacted customer code at high verbosity.
+- **Rate limits**: New public or authenticated endpoints should get appropriate limiters consistent with existing abuse-prevention patterns.
+- **CORS / origins**: Changes to CORS or allowed origins must be reviewed for extension + backend deployment model.
+- **Scopes** in `vss-extension.json`: Any new ADO capability requires manifest scope updates and customer-visible justification.
+
+---
+
+## 11. Refactoring guidelines
+
+- **Minimal diffs**: Fix what is asked; avoid drive-by renames, formatting-only sweeps, or moving files unless requested.
+- **Commented “vaulted” code**: Large disabled blocks (e.g. webhook auto-generation) document architectural decisions. **Do not delete** without explicit instruction; if re-enabling, implement the full missing workflow (frontend token push, encryption keys, queue semantics) as noted in those comments.
+- **Cross-cutting concerns**: Logging via `@logger`, validation via `validateEnv`, rate limits via `rateLimiter` — extend these modules rather than duplicating patterns.
+
+---
+
+## 12. UI/UX (extension)
+
+- Match existing Fluent patterns and hub layout; loading and error states should mirror `LoadingIndicator`, `PRAssistantHub`, and license gate components.
+- User-facing copy is product/legal sensitive; prefer small, clear deltas over wholesale rewrites.
+
+---
+
+## 13. Explicit NEVER / ALWAYS
+
+### NEVER
+- Commit secrets, `.env` files with real credentials, or tokens to the repo.
+- Bypass `sanitize-html` for ADO or user-supplied HTML fields that are rendered or re-injected.
+- Add authenticated backend routes without passing through established auth + rate-limit patterns.
+- Assume webhook-driven auto-generation is active — it is intentionally disabled until the architecture in `server.ts` comments is satisfied.
+- Treat **`src/backend/queue.ts`** (in-memory) and the **Redis** queue (`enqueue` / worker) as the same system — they are separate; see **§16**.
+- Change headings in **`system-prompt.txt`** without checking **`OPTIONAL_SHORT_PROMPT_HEADINGS`** in `src/backend/ai.ts` (short-prompt retry must stay aligned).
+- Invent files or scripts not present in the repo when answering questions — read or ask.
+- Rewrite `server.ts` wholesale without explicit user request (file is very large and comment-heavy).
+
+### ALWAYS
+- Run or consider `npm run lint` and `npm test` after non-trivial backend or shared logic changes.
+- Keep `vss-extension.json`, webpack entries, and `contributions` in sync when adding new UI surfaces.
+- Preserve dual-build integrity: webpack to `dist/` root for extension bundles + html; backend tsc to `dist/backend/`.
+- Use structured logger on backend for operational events.
+- Align `package.json` version fields with release process when doing version bumps (check both `package.json` and `vss-extension.json`).
+- After editing **`system-prompt.txt`** section titles used for stripping or validation, verify **`ai.ts`** (`OPTIONAL_SHORT_PROMPT_HEADINGS`, `extractHtmlHeadings` / validation thresholds) still matches.
+
+---
+
+## 14. Dependency and tooling notes
+
+- **Primary test stack**: Jest + ts-jest. `vitest` appears in devDependencies but is not the configured test runner — default to Jest unless migrating explicitly.
+- **Azure pipelines YAML** under `src/backend/utils/` may be auxiliary documentation or deployment hints — confirm purpose before editing.
+
+---
+
+## 15. HTTP API catalog (backend)
+
+Authoritative routing is implemented in `src/backend/server.ts`. Requests normalize the URL by stripping leading duplicate slashes (e.g. `//generate-tests` → `/generate-tests`).
+
+| Method | Path | Auth | Notes |
+|--------|------|------|------|
+| POST | `/generate-tests` | Yes | JSON: `prId`, `projectName`, `repositoryId`; optional `customContext` (max **3000** characters enforced server-side before AI). Returns `title`, `htmlDescription`, `sourceCommitId`, `targetCommitId`, optional `compressionReport`. |
+| POST | `/create-work-item` | Yes | Requires `testCase`, `prId`, `projectName`, `repositoryId`, `projectId`, `sourceCommitId`, `targetCommitId`. |
+| POST | `/post-pr-comment` | Yes | `workItemId` may be omitted when `commentContent` is provided (full-output / custom comment path). |
+| POST | `/api/extract-purpose-scope` | Yes | Body: `{ "html": string }` → `{ "extracted": string }` via `ai.extractPurposeAndScope`. |
+| POST | `/api/queue/pr` | Yes (+ active license when `ENABLE_LICENSE_ENFORCEMENT`) | Redis enqueue; **503** if `UPSTASH_REDIS_*` missing (`MissingEnvironmentVariableError`). |
+| GET | `/license/status` | Yes | Rate limit then auth (handler not wrapped in `applyMiddleware` — follow existing pattern when adding similar routes). |
+| POST | `/license/activate` | Yes | Content-Type JSON; body read in router then passed to `licenseRoutes.handleLicenseActivate`. |
+| POST | `/webhooks/lemon-squeezy` | **Public** (verified inside handler) | Rate limited; raw body string for signature verification. |
+| GET/HEAD | `/health`, `/` | Public | Uptime + timestamp only — do not reintroduce internal queue stats. |
+
+**Commented / inactive (do not re-enable piecemeal)**: `POST /webhook`, `POST /api/webhook-token`, and `queue.startWorker()` from `src/backend/queue.ts` — see repeated architecture comments in `server.ts` (OAuth token lifetime, no frontend token push).
+
+---
+
+## 16. Two queue systems (do not conflate)
+
+1. **`src/backend/queue.ts`** — In-memory array + `worker()` loop: `addJob`, `processJob`, `fetchWithRetry`, used only by the **disabled** service-webhook design. **Not** started unless `queue.startWorker()` is uncommented alongside the full token-store pipeline.
+2. **Redis path** — `enqueue.ts` / `dequeue.ts` / `worker/worker.ts` + **`POST /api/queue/pr`**: durable jobs, `validateQueueEnvironment()` for `UPSTASH_REDIS_URL` and `UPSTASH_REDIS_TOKEN`.
+
+When designing or reviewing changes, name which queue you mean. Never treat “enqueue” as interchangeable without an explicit migration plan.
+
+---
+
+## 17. CORS (`applyCorsHeaders` in `server.ts`)
+
+- **Missing `Origin`**: respond with `Access-Control-Allow-Origin: *` and **`Access-Control-Allow-Credentials: false`** (log line treats as server-to-server / non-browser CORS client).
+- **Present `Origin`**: must match an allowlist pattern (Azure DevOps hosts, `*.visualstudio.com`, gallery CDN, legacy app hostnames in code, etc.). The API itself is deployed on **Render** in production; browser calls from the extension still originate from **Azure DevOps** origins, not `*.onrender.com`, unless you add pages or tools that call the API from another site—then extend `basePatterns` accordingly. In **`NODE_ENV === "development"`**, localhost, optional ngrok host, and `process.env.NGROK_URL` may be appended — keep dev entries minimal and never widen production patterns casually.
+- **Allowed headers** (exposed to browsers): include **`Authorization`** and **`X-Ado-Org-Url`**. If the extension sends new custom headers, update this list and the extension’s `fetch` in the same change.
+
+---
+
+## 18. AI prompt contract (`system-prompt.txt` + `src/backend/ai.ts`)
+
+- **Load path**: `loadSystemPrompt()` reads **`path.join(process.cwd(), 'system-prompt.txt')`**. Build copies the file into `dist/` and `dist/backend/` — production working directory must still resolve this path or startup fails (`process.exit` in `ai.ts` on read error).
+- **Model output**: JSON with **`title`** and **`htmlDescription`** only; Gemini `responseSchema` enforces that shape. HTML must follow the **11-section** contract and tag whitelist in `system-prompt.txt`.
+- **Short prompt on retry**: `OPTIONAL_SHORT_PROMPT_HEADINGS` in `ai.ts` strips optional blocks by **exact heading substring** match. If you edit headings in `system-prompt.txt`, update `ai.ts` in lockstep or retry behavior silently stops shortening the system prompt.
+- **Compression**: `buildUserPrompt` / `buildUserPromptWithTokenCap` and `diff-config.ts` define token/line budgets — changing limits affects observability fields (`COMPRESSION_SUMMARY`, `sectionsRemoved`) and test expectations.
+- **Legacy**: `htmlDescriptionBase64` decode path exists for backward compatibility — do not reintroduce for new clients.
+
+---
+
+## 19. ADO client (`src/backend/ado-client.ts`) conventions
+
+- Use **`azdev.getBearerHandler(token)`** + `WebApi(orgUrl, authHandler)` for extension OAuth tokens.
+- Work items are **`Task`** work item type with `System.Tags` **`AI-Generated`** or **`AI-Generated-Fallback`**.
+- **`sanitizeHTML`** wraps AI- or user-influenced HTML for `System.Description` and PR comments; always pass a distinct **`source`** string for log/traceability (`ado.createTaskWorkItem`, `ado.postPRComment`, etc.).
+- **PR linking**: `buildPRArtifactUri` → `vstfs:///Git/PullRequestId/...` artifact relation on create.
+- **Diff helpers**: `generateUnifiedDiff`, `generateSyntheticFileDiff`, iteration paging — keep `diff-config.ts` imports and caps coherent when tuning AI context.
+
+---
+
+## 20. Extension license API (`src/license/api.ts`)
+
+- Obtains token via **`SDK.getAccessToken()`** and org base URL via **`ILocationService.getServiceLocation(undefined, undefined)`** (same pattern as `backendClient.ts`).
+- **`getLicenseStatus(baseUrl, signal?)`**: GET `/license/status` with Bearer + `X-Ado-Org-Url`; supports **`AbortSignal`**.
+- **`activateLicense`**: POST JSON with trimmed **`licenseKey`**, **`organization`**, **`userId`** from `SDK.getUser()`.
+- **`buildUrl`**: rejects non-`http` schemes — align any new client helpers with **`backendClient`’s** stricter absolute-URL validation where appropriate.
+
+---
+
+## 21. Webhook URL policy (`src/services/configService.ts`)
+
+- **`WEBHOOK_ENDPOINT`** is **fixed** to `https://api.qazent.com/webhook` — subscription UIs must not allow arbitrary user-defined webhook URLs (see file header).
+- **Server reality**: `POST /webhook` handling is **commented out** in `server.ts`. Any future re-enable must align this constant, infrastructure, ADO service hook registration, and the encrypted token / org store design — do not assume the live server already accepts that URL.
+
+---
+
+## 22. When uncertain
+
+- Read the file or run the script; do not guess paths, env var names, or endpoint shapes.
+- If a required doc or env template is missing from the workspace (e.g. `.env.example` referenced in README but absent), state the gap and ask for the artifact rather than inventing values.
+
+---
+
+*Generated from repository analysis; extend this file when architecture or conventions intentionally change.*

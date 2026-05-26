@@ -206,7 +206,8 @@ export async function generateTestCases(
   projectName: string,
   repositoryId: string,
   backendUrl: string,
-  customContext?: string
+  customContext: string | undefined,
+  mode: 'qa' | 'review'
 ): Promise<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }> {
   const url = buildUrl(backendUrl, '/generate-tests');
 
@@ -214,7 +215,7 @@ export async function generateTestCases(
     GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }
   >(
     url,
-    { prId, projectName, repositoryId, customContext },
+    { prId, projectName, repositoryId, customContext, mode },
     300000 //  5minutes - generating test cases can take longer for complex PRs or if the backend is cold, especially with AI processing involved
 
   );

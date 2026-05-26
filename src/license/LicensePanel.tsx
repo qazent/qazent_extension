@@ -208,6 +208,13 @@ export const LicensePanel: React.FC = () => {
         <div style={{ marginTop: 24, color: '#605e5c', fontSize: '0.875em' }}>
           Don't have a license key? Contact <a href="https://qazent.com/support" target="_blank" rel="noopener noreferrer">QAZent Support</a>.
         </div>
+        <div style={{ marginTop: 8, color: '#605e5c', fontSize: '0.875em' }}>
+          Learn more about license delivery and activation at{' '}
+          <a href="https://qazent.com/license" target="_blank" rel="noopener noreferrer">
+            qazent.com/license
+          </a>
+          .
+        </div>
       </div>
     </FluentProvider>
   );

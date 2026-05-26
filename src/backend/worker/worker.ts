@@ -280,7 +280,8 @@ export async function startWorker(): Promise<void> {
 
   validateServerEnvironment(['GEMINI_API_KEY']);
   validateQueueEnvironment();
-  ai.loadSystemPrompt();
+  ai.loadSystemPrompt('qa');
+  ai.loadSystemPrompt('review');
 
   process.on('SIGINT', () => requestShutdown('SIGINT'));
   process.on('SIGTERM', () => requestShutdown('SIGTERM'));
