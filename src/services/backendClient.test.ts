@@ -48,7 +48,7 @@ describe('Backend Client - Custom Context', () => {
       } as any);
 
       const customContext = 'Use Jest for testing';
-      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', customContext);
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', customContext, 'qa');
 
       expect(fetchMock).toHaveBeenCalledWith(
         'http://localhost:3000/generate-tests',
@@ -59,7 +59,8 @@ describe('Backend Client - Custom Context', () => {
             prId: 123,
             projectName: 'MyProject',
             repositoryId: 'repo-456',
-            customContext: 'Use Jest for testing'
+            customContext: 'Use Jest for testing',
+            mode: 'qa'
           })
         })
       );
@@ -71,7 +72,7 @@ describe('Backend Client - Custom Context', () => {
         json: async () => mockSuccessResponse
       } as any);
 
-      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000');
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', undefined, 'qa');
 
       const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
@@ -80,7 +81,7 @@ describe('Backend Client - Custom Context', () => {
         prId: 123,
         projectName: 'MyProject',
         repositoryId: 'repo-456',
-        customContext: undefined
+        mode: 'qa'
       });
     });
 
@@ -90,7 +91,7 @@ describe('Backend Client - Custom Context', () => {
         json: async () => mockSuccessResponse
       } as any);
 
-      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', '');
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', '', 'qa');
 
       const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
@@ -108,7 +109,7 @@ describe('Backend Client - Custom Context', () => {
 Line 2
 Line 3`;
 
-      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', multiLineContext);
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', multiLineContext, 'qa');
 
       const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
@@ -124,7 +125,7 @@ Line 3`;
 
       const specialContext = 'Config: {"test": true, "env": "dev"}';
 
-      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', specialContext);
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', specialContext, 'qa');
 
       const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
       const requestBody = JSON.parse(callArgs[1].body);
@@ -142,7 +143,7 @@ Line 3`;
       } as any);
 
       await expect(
-        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
+        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context', 'qa')
       ).rejects.toThrow('Invalid PR data');
     });
 
@@ -154,7 +155,7 @@ Line 3`;
       } as any);
 
       await expect(
-        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
+        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context', 'qa')
       ).rejects.toThrow('Backend service failed. Please try again.');
     });
 
@@ -163,7 +164,7 @@ Line 3`;
       fetchMock.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
 
       await expect(
-        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
+        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context', 'qa')
       ).rejects.toThrow('Request timed out. Please try again.');
     });
 
@@ -171,13 +172,13 @@ Line 3`;
       fetchMock.mockRejectedValueOnce(new Error('Network failure'));
 
       await expect(
-        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context')
+        generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', 'context', 'qa')
       ).rejects.toThrow('Network failure');
     });
   });
 
   describe('backward compatibility', () => {
-    it('should work without customContext parameter (4 parameters)', async () => {
+    it('should work without customContext parameter', async () => {
       fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockSuccessResponse
@@ -187,7 +188,9 @@ Line 3`;
         123,
         'MyProject',
         'repo-456',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        undefined,
+        'qa'
       );
 
       expect(result).toEqual(mockSuccessResponse);

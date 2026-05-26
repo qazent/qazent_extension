@@ -6,7 +6,7 @@
 
 import * as http from 'http';
 import { v4 as uuidv4 } from 'uuid';
-import { ErrorResponse, PRMetadata, QueueJobEnqueueResponse, QueuePRRequest, QueuedJobAuth, QueuedPRJob } from './types';
+import { ErrorResponse, PRCommit, PRMetadata, QueueJobEnqueueResponse, QueuePRRequest, QueuedJobAuth, QueuedPRJob } from './types';
 // --- WEBHOOK AUTO-GENERATION DISABLED --- WebhookPayload and WebhookResponse only used by webhook handler
 // import { WebhookPayload, WebhookResponse } from './types';
 import * as logger from './utils/logger';
@@ -679,8 +679,10 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
 
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
-      // Fetch PR diff and metadata together so the AI receives real PR context.
-      const [codeDiff, metadataResult] = await Promise.all([
+      // Fetch PR diff, metadata, and commit messages in parallel so the AI receives
+      // real PR context. Commits are best-effort: failure is logged and we continue
+      // with an empty list, matching the existing fetchPRMetadata fallback pattern.
+      const [codeDiff, metadataResult, commitsResult] = await Promise.all([
         fetchPRDiff(
           payload.projectName,
           payload.repositoryId,
@@ -696,6 +698,19 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
             requestId: req.requestId
           });
           return null;
+        }),
+        adoClient.fetchPRCommits(
+          payload.projectName,
+          payload.repositoryId,
+          payload.prId,
+          connection
+        ).catch((error): PRCommit[] => {
+          logger.warn('Failed to fetch PR commits, continuing without them', {
+            prId: payload.prId,
+            error: String(error),
+            requestId: req.requestId
+          });
+          return [];
         })
       ]);
 
@@ -721,9 +736,10 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         codeDiffFiles: codeDiff.changes.length,
         totalChanges: codeDiff.totalChanges,
         customContextLength: customContext?.length ?? 0,
+        commitsCount: commitsResult.length,
         mode
       });
-      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext, mode);
+      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext, mode, commitsResult);
       logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: result.title });
 
       // Return test case + commit IDs + optional compression report for observability

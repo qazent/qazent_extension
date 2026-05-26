@@ -6,7 +6,7 @@ import * as azdev from 'azure-devops-node-api';
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
-import { CodeDiff, DiffChange, DiffChangeType, PRMetadata, TaskWorkItemOutput } from './types';
+import { CodeDiff, DiffChange, DiffChangeType, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import {
@@ -92,6 +92,47 @@ export async function fetchPRMetadata(prId: number, connection: azdev.WebApi): P
       error: String(error)
     });
     throw new Error(`Failed to fetch metadata for PR ${prId}: ${error}`);
+  }
+}
+
+/**
+ * GET PR commit messages from Azure DevOps using `GitApi.getPullRequestCommits`.
+ * Returns a normalized list of `PRCommit` entries suitable for prompt rendering.
+ *
+ * The caller decides whether to swallow failures (best-effort) by attaching
+ * a `.catch(...)`; this function itself throws on transport/API errors,
+ * mirroring `fetchPRMetadata`.
+ */
+export async function fetchPRCommits(
+  projectName: string,
+  repositoryId: string,
+  prId: number,
+  connection: azdev.WebApi
+): Promise<PRCommit[]> {
+  try {
+    logger.info('Fetching PR commits', { prId, projectName, repositoryId });
+
+    const gitApi: GitApi = await connection.getGitApi();
+    const commits = await gitApi.getPullRequestCommits(repositoryId, prId, projectName);
+
+    const list: PRCommit[] = (commits ?? []).map((c) => {
+      const commitId = c.commitId ?? '';
+      return {
+        commitId,
+        shortSha: commitId ? commitId.substring(0, 8) : '',
+        author: c.author?.name ?? c.committer?.name ?? 'unknown',
+        message: (c.comment ?? '').trim(),
+        committedDate: c.committer?.date
+          ? new Date(c.committer.date).toISOString()
+          : undefined,
+      };
+    });
+
+    logger.info('PR commits fetched', { prId, count: list.length });
+    return list;
+  } catch (error) {
+    logger.error('Failed to fetch PR commits', { prId, error: String(error) });
+    throw new Error(`Failed to fetch commits for PR ${prId}: ${error}`);
   }
 }
 

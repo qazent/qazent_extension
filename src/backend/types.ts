@@ -53,6 +53,18 @@ export interface PRMetadata {
 }
 
 /**
+ * Single PR commit, normalized from Azure DevOps `GitCommitRef`.
+ * Only fields needed for prompt rendering are included.
+ */
+export interface PRCommit {
+  commitId: string;
+  shortSha: string;
+  author: string;
+  message: string;
+  committedDate?: string;
+}
+
+/**
  * Code diff from Azure DevOps API
  */
 export interface CodeDiff {

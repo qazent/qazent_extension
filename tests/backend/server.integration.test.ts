@@ -90,6 +90,7 @@ jest.mock('../../src/backend/ado-client', () => ({
     createDate: new Date('2026-03-26T00:00:00.000Z'),
     branchName: 'feature/test',
   }),
+  fetchPRCommits: jest.fn().mockResolvedValue([]),
   createTaskWorkItem: jest.fn().mockResolvedValue(77),
   postPRComment: jest.fn().mockResolvedValue(undefined),
 }));

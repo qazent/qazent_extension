@@ -27,8 +27,8 @@ describe('loadSystemPrompt', () => {
 
     const { loadSystemPrompt } = await import('../src/backend/ai');
 
-    const fullPrompt = loadSystemPrompt(false);
-    const shortPrompt = loadSystemPrompt(true);
+    const fullPrompt = loadSystemPrompt('qa', false);
+    const shortPrompt = loadSystemPrompt('qa', true);
 
     expect(fullPrompt).toContain('REPOSITORY CONTEXT (IF PROVIDED)');
     expect(fullPrompt).toContain('PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)');

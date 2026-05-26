@@ -6,13 +6,17 @@
 import { GoogleGenAI } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CodeDiff, PRMetadata, TaskWorkItemOutput } from './types';
+import { CodeDiff, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import { jsonrepair } from "jsonrepair";
 import {
   CHARS_PER_TOKEN_ESTIMATE,
   GEMINI_MODEL_NAME,
+  MAX_COMMIT_MESSAGE_CHARS,
+  MAX_COMMIT_MESSAGE_CHARS_STRICT,
+  MAX_COMMITS,
+  MAX_COMMITS_STRICT,
   MAX_DIFF_LINES_PER_FILE,
   MAX_DIFF_LINES_PER_FILE_STRICT,
   MAX_FILES_WITH_DIFF,
@@ -26,7 +30,7 @@ import {
 } from './diff-config';
 
 export const COMPRESSION_SUMMARY =
-  `User prompt is capped by (1) summarizing every included file in a one-line bullet, (2) prioritizing detailed diff blocks for the highest-signal ${MAX_FILES_WITH_DIFF} files on the first pass, (3) truncating PR description to ${MAX_PR_DESCRIPTION_CHARS} chars and repository context to ${MAX_REPOSITORY_CONTEXT_CHARS} chars, (4) trimming per-file diffs to ${MAX_DIFF_LINES_PER_FILE} lines before a stricter second pass, and (5) dynamically reducing diff detail if the prompt still exceeds roughly ${TARGET_USER_PROMPT_TOKENS} tokens. All critical PR and file-level context is retained for test case generation; only lower-priority detail is compressed first.`;
+  `User prompt is capped by (1) summarizing every included file in a one-line bullet, (2) prioritizing detailed diff blocks for the highest-signal ${MAX_FILES_WITH_DIFF} files on the first pass, (3) truncating PR description to ${MAX_PR_DESCRIPTION_CHARS} chars and repository context to ${MAX_REPOSITORY_CONTEXT_CHARS} chars, (4) trimming per-file diffs to ${MAX_DIFF_LINES_PER_FILE} lines before a stricter second pass, (5) capping commit messages at ${MAX_COMMITS} entries and ${MAX_COMMIT_MESSAGE_CHARS} chars per line, and (6) dynamically reducing diff and commit detail if the prompt still exceeds roughly ${TARGET_USER_PROMPT_TOKENS} tokens. All critical PR and file-level context is retained for test case generation; only lower-priority detail is compressed first.`;
 
 const SECTIONS_REMOVED = [
   `Full PR description → summarized to first ${MAX_PR_DESCRIPTION_CHARS_STRICT}-${MAX_PR_DESCRIPTION_CHARS} chars`,
@@ -35,6 +39,7 @@ const SECTIONS_REMOVED = [
   `Repository-Specific Context → truncated to ${MAX_REPOSITORY_CONTEXT_CHARS_STRICT}-${MAX_REPOSITORY_CONTEXT_CHARS} chars`,
   'Redundant JSON structure block → replaced by one-line instruction',
   `Detailed diff blocks → prioritized to the top ${MAX_FILES_WITH_DIFF} files first and reduced further only when needed`,
+  `Commit messages → capped to first ${MAX_COMMITS} entries with each line truncated to ${MAX_COMMIT_MESSAGE_CHARS} chars (${MAX_COMMITS_STRICT} / ${MAX_COMMIT_MESSAGE_CHARS_STRICT} on stricter passes)`,
 ] as const;
 
 /** Response schema for Gemini structured output: guarantees valid JSON with title + htmlDescription */
@@ -258,17 +263,22 @@ function buildUserPrompt(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
   customContext?: string,
+  commits: PRCommit[] = [],
   options?: {
     maxDescriptionChars: number;
     maxContextChars: number;
     maxDiffLinesPerFile: number;
     maxFilesWithDiff?: number;
+    maxCommits?: number;
+    maxCommitMessageChars?: number;
   }
 ): BuildUserPromptResult {
   const maxDesc = options?.maxDescriptionChars ?? MAX_PR_DESCRIPTION_CHARS;
   const maxCtx = options?.maxContextChars ?? MAX_REPOSITORY_CONTEXT_CHARS;
   const maxLines = options?.maxDiffLinesPerFile ?? MAX_DIFF_LINES_PER_FILE;
   const maxFilesWithDiff = options?.maxFilesWithDiff ?? Math.min(MAX_FILES_WITH_DIFF, codeDiff.changes.length);
+  const maxCommits = options?.maxCommits ?? MAX_COMMITS;
+  const maxCommitMessageChars = options?.maxCommitMessageChars ?? MAX_COMMIT_MESSAGE_CHARS;
   const rankedChanges = [...codeDiff.changes].sort((left, right) => rankDiffChange(right) - rankDiffChange(left));
   const changesWithDiff = rankedChanges.slice(0, maxFilesWithDiff);
 
@@ -285,8 +295,33 @@ PR Description: ${descriptionTruncated}
 Author: ${prMetadata.author}
 Source Branch: ${prMetadata.sourceBranch}
 Target Branch: ${prMetadata.targetBranch}
+`;
 
-Files changed: ${codeDiff.totalChanges}
+  if (commits.length > 0) {
+    const shown = commits.slice(0, maxCommits);
+    prompt += `\nCommit Messages (${commits.length} total, ${shown.length} shown):\n`;
+    for (const c of shown) {
+      const firstLine = (c.message.split('\n')[0] ?? '').trim();
+      const body = c.message.split('\n').slice(1).join('\n').trim();
+      const truncatedFirstLine =
+        firstLine.length <= maxCommitMessageChars
+          ? firstLine
+          : firstLine.slice(0, maxCommitMessageChars) + '... (commit message truncated)';
+      prompt += `- ${c.shortSha} ${c.author}: ${truncatedFirstLine}\n`;
+      if (body) {
+        const truncatedBody =
+          body.length <= maxCommitMessageChars
+            ? body
+            : body.slice(0, maxCommitMessageChars) + '... (commit body truncated)';
+        prompt += `    ${truncatedBody.replace(/\n/g, '\n    ')}\n`;
+      }
+    }
+    if (commits.length > shown.length) {
+      prompt += `... (${commits.length - shown.length} earlier commits omitted)\n`;
+    }
+  }
+
+  prompt += `\nFiles changed: ${codeDiff.totalChanges}
 `;
 
   if (typeof codeDiff.filteredChanges === 'number' && codeDiff.filteredChanges > 0) {
@@ -338,9 +373,10 @@ Files changed: ${codeDiff.totalChanges}
 function buildUserPromptWithTokenCap(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
-  customContext?: string
+  customContext?: string,
+  commits: PRCommit[] = []
 ): BuildUserPromptResult {
-  let result = buildUserPrompt(prMetadata, codeDiff, customContext);
+  let result = buildUserPrompt(prMetadata, codeDiff, customContext, commits);
   if (estimateTokens(result.prompt) <= TARGET_USER_PROMPT_TOKENS) {
     return result;
   }
@@ -353,8 +389,10 @@ function buildUserPromptWithTokenCap(
     maxContextChars: MAX_REPOSITORY_CONTEXT_CHARS_STRICT,
     maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE_STRICT,
     maxFilesWithDiff: Math.min(MAX_FILES_WITH_DIFF_STRICT, codeDiff.changes.length),
+    maxCommits: MAX_COMMITS_STRICT,
+    maxCommitMessageChars: MAX_COMMIT_MESSAGE_CHARS_STRICT,
   };
-  result = buildUserPrompt(prMetadata, codeDiff, customContext, strictOptions);
+  result = buildUserPrompt(prMetadata, codeDiff, customContext, commits, strictOptions);
 
   while (estimateTokens(result.prompt) > TARGET_USER_PROMPT_TOKENS) {
     const nextFilesWithDiff = strictOptions.maxFilesWithDiff > 6
@@ -363,10 +401,18 @@ function buildUserPromptWithTokenCap(
     const nextDiffLinesPerFile = strictOptions.maxDiffLinesPerFile > 8
       ? Math.max(8, strictOptions.maxDiffLinesPerFile - 4)
       : strictOptions.maxDiffLinesPerFile;
+    const nextMaxCommits = strictOptions.maxCommits > 3
+      ? Math.max(3, strictOptions.maxCommits - 2)
+      : strictOptions.maxCommits;
+    const nextMaxCommitMessageChars = strictOptions.maxCommitMessageChars > 60
+      ? Math.max(60, strictOptions.maxCommitMessageChars - 20)
+      : strictOptions.maxCommitMessageChars;
 
     if (
       nextFilesWithDiff === strictOptions.maxFilesWithDiff &&
-      nextDiffLinesPerFile === strictOptions.maxDiffLinesPerFile
+      nextDiffLinesPerFile === strictOptions.maxDiffLinesPerFile &&
+      nextMaxCommits === strictOptions.maxCommits &&
+      nextMaxCommitMessageChars === strictOptions.maxCommitMessageChars
     ) {
       break;
     }
@@ -375,8 +421,10 @@ function buildUserPromptWithTokenCap(
       ...strictOptions,
       maxFilesWithDiff: nextFilesWithDiff,
       maxDiffLinesPerFile: nextDiffLinesPerFile,
+      maxCommits: nextMaxCommits,
+      maxCommitMessageChars: nextMaxCommitMessageChars,
     };
-    result = buildUserPrompt(prMetadata, codeDiff, customContext, strictOptions);
+    result = buildUserPrompt(prMetadata, codeDiff, customContext, commits, strictOptions);
   }
 
   return result;
@@ -714,14 +762,20 @@ export async function generateTestCases(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
   customContext?: string,
-  mode: PromptMode = 'qa'
+  mode: PromptMode = 'qa',
+  commits: PRCommit[] = []
 ): Promise<GenerateTestCasesResult> {
   const MAX_ATTEMPTS = 2;
   let lastError: Error | null = null;
-
+ 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      logger.info('Generating test cases with AI', { prId: prMetadata.prId, attempt, mode });
+      logger.info('Generating test cases with AI', {
+        prId: prMetadata.prId,
+        attempt,
+        mode,
+        commitsCount: commits.length,
+      });
 
       // On retry (attempt 2), use shortened system prompt (examples omitted) to leave more output budget
       const useShortPrompt = attempt >= 2;
@@ -734,7 +788,8 @@ export async function generateTestCases(
       const { prompt: userPrompt, sectionsRemoved } = buildUserPromptWithTokenCap(
         prMetadata,
         codeDiff,
-        customContext
+        customContext,
+        commits
       );
 
       const MAX_OUTPUT_TOKENS = 32768;
@@ -747,6 +802,7 @@ export async function generateTestCases(
         maxOutputTokens: MAX_OUTPUT_TOKENS,
         useShortPrompt,
         attempt,
+        commitsIncluded: commits.length,
         compressionSummary: COMPRESSION_SUMMARY,
         sectionsRemoved: [...sectionsRemoved],
       });

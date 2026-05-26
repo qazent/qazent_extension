@@ -125,7 +125,8 @@ describe('Custom Context - End-to-End Integration', () => {
         'MyProject',
         'repo-123',
         'http://localhost:3000',
-        customContext
+        customContext,
+        'qa'
       );
 
       expect(fetchMock).toHaveBeenCalledWith(
@@ -148,7 +149,9 @@ describe('Custom Context - End-to-End Integration', () => {
         123,
         'MyProject',
         'repo-123',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        undefined,
+        'qa'
       );
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -237,7 +240,7 @@ describe('Custom Context - End-to-End Integration', () => {
       } as any);
 
       await expect(
-        backendClient.generateTestCases(123, 'Project', 'repo', 'http://localhost:3000', 'context')
+        backendClient.generateTestCases(123, 'Project', 'repo', 'http://localhost:3000', 'context', 'qa')
       ).rejects.toThrow();
     });
   });
