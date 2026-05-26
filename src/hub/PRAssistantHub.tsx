@@ -7,7 +7,7 @@ import * as SDK from 'azure-devops-extension-sdk';
 
 import { CommonServiceIds, getClient, IExtensionDataService, IProjectPageService } from 'azure-devops-extension-api';
 
-import { FluentProvider, webLightTheme, Checkbox, Radio, RadioGroup } from '@fluentui/react-components';
+import { FluentProvider, webLightTheme, Radio, RadioGroup } from '@fluentui/react-components';
 
 import { PRInfoSection } from './PRInfoSection';
 import { GenerateButton } from './GenerateButton';
@@ -664,61 +664,67 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         </p>
       </div>
 
-      {/* Optional: Post comment / Add label */}
-      <div
-        style={{
-          background: 'white',
-          padding: '16px 24px',
-          borderRadius: '12px',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
-          border: '1px solid #e1e1e1',
-          marginTop: '12px'
-        }}
+ {/* Optional: Post comment / Add label */}
+<div
+  style={{
+    background: 'white',
+    padding: '16px 24px',
+    borderRadius: '12px',
+    boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+    border: '1px solid #e1e1e1',
+    marginTop: '12px'
+  }}
+>
+  <div style={{ fontSize: '14px', fontWeight: 600, color: '#444', marginBottom: '10px' }}>
+    Output options
+  </div>
+
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    {/* Mode */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>Mode</div>
+      <RadioGroup
+        layout="horizontal"
+        value={mode}
+        onChange={(_e, data) => setMode(data.value as 'qa' | 'review')}
+        disabled={isGenerating}
       >
-        <div style={{ fontSize: '14px', fontWeight: 600, color: '#444', marginBottom: '10px' }}>
-          Output options
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>Mode</div>
-            <RadioGroup
-              layout="horizontal"
-              value={mode}
-              onChange={(_e, data) => setMode(data.value as 'qa' | 'review')}
-              disabled={isGenerating}
-            >
-              <Radio value="qa" label="QA Mode" />
-              <Radio value="review" label="Code Review Mode" />
-            </RadioGroup>
-          </div>
-          <Checkbox
-            checked={postCommentOnPR}
-            onChange={(_e, data) => {
-              const checked = !!data.checked;
-              setPostCommentOnPR(checked);
-              if (checked) setOutputType(false);
-            }}
-            label="Create a work item and post a summary comment on the PR (default)"
-            disabled={isGenerating}
-          />
-          {/* TODO: SET outputType flag in backend to control whether full test case details are posted in the PR comment or just a summary with link to work item, default to summary only and allow opting into full details if desired (can be noisy for large test cases) */}
-          <div style ={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '24px' }}>
-            <Checkbox
-              checked={outputType}
-              onChange={(_e, data) => setOutputType(!!data.checked)}
-              label="Skip work item — post full test case details as a PR comment only (cleaner output)"
-              disabled={isGenerating || postCommentOnPR}
-            />
-          </div>
-          {/* --- POST PR LABEL VAULTED --- */}
-          {/* <Checkbox
-            checked={addLabelToPR}
-            onChange={(_e, data) => setAddLabelToPR(!!data.checked)}
-            label={'Add label "Test Case Generated" to PR'}
-            disabled={isGenerating}
-          /> */}
-        </div>
-      </div>
+        <Radio value="qa" label="QA Mode" />
+        <Radio value="review" label="Code Review Mode" />
+      </RadioGroup>
+    </div>
+
+    {/* Output Type (RadioGroup replacing checkboxes) */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <div style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>PR Output</div>
+      
+      <RadioGroup
+        value={postCommentOnPR ? 'summary' : 'full'}
+        onChange={(_e, data) => {
+          const value = data.value as 'summary' | 'full';
+          if (value === 'summary') {
+            setPostCommentOnPR(true);
+            setOutputType(false);
+          } else {
+            setPostCommentOnPR(false);
+            setOutputType(true);
+          }
+        }}
+        disabled={isGenerating}
+      >
+        <Radio
+          value="summary"
+          label="Create a work item and post a summary comment on the PR (default)"
+        />
+
+        <Radio
+          value="full"
+          label="Skip work item — post full output as a PR comment only (cleaner output)"
+        />
+      </RadioGroup>
+    </div>
+  </div>
+</div>
 
       {/* AI Activity Feed - shows during generation */}
       {isGenerating && (
