@@ -32,12 +32,21 @@ jest.mock('https', () => {
   };
 });
 
-jest.mock('../../src/backend/utils/logger', () => ({
-  info: jest.fn(),
-  debug: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-}));
+jest.mock('../../src/backend/utils/logger', () => {
+  const actual = jest.requireActual('../../src/backend/utils/logger');
+  return {
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    // Preserve label helpers / Events catalog so server code that references
+    // logger.Events.* and logger.runWithLabels still works under the mock.
+    runWithLabels: actual.runWithLabels,
+    setLabels: actual.setLabels,
+    getLabels: actual.getLabels,
+    Events: actual.Events,
+  };
+});
 
 jest.mock('../../src/backend/queue/redisClient', () => ({
   getRedisClient: jest.fn(() => redis)
@@ -375,28 +384,22 @@ describe('backend server request path', () => {
     expect(response.status).toBe(200);
 
     const completionLog = (logger.info as jest.Mock).mock.calls.find(
-      ([message]) => message === 'HTTP POST /generate-tests completed (200)'
+      ([message]) => message === 'HTTP POST /generate-tests 200'
     );
 
     expect(completionLog).toBeDefined();
     expect(completionLog?.[1]).toEqual(
       expect.objectContaining({
-        event: 'api_request_completed',
-        method: 'POST',
-        path: '/generate-tests',
-        statusCode: 200,
-        networkPeer: 'direct',
-        ipVisibility: 'connection_only',
+        event: 'request.complete',
+        status: 200,
         remoteAddress: expect.any(String),
         forwardedIp: undefined,
-        forwardedFor: undefined,
-        origin: 'https://dev.azure.com/myorg',
-        requestId: expect.stringMatching(/^req_/),
         durationMs: expect.any(Number),
       })
     );
 
     expect(completionLog?.[1]).not.toHaveProperty('clientIp');
+    expect(completionLog?.[1]).not.toHaveProperty('statusCode');
   });
 
   it('rejects generate-tests bodies that omit required fields', async () => {

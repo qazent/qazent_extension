@@ -39,10 +39,26 @@ interface StandardErrorResponse {
 }
 
 /**
- * Generate unique request ID for tracking
+ * Generate unique request ID for tracking. Only used as a fallback when the
+ * server entry point hasn't already assigned one (e.g. in unit tests).
  */
 function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Derive the short organization name from a parsed Azure DevOps URL.
+ *   https://dev.azure.com/qazent      => "qazent"
+ *   https://qazent.visualstudio.com   => "qazent"
+ */
+function extractOrgShortName(parsedUrl: URL): string | undefined {
+  if (parsedUrl.hostname === 'dev.azure.com') {
+    return parsedUrl.pathname.split('/').filter(Boolean)[0];
+  }
+  if (parsedUrl.hostname.endsWith('.visualstudio.com')) {
+    return parsedUrl.hostname.split('.')[0];
+  }
+  return undefined;
 }
 
 /**
@@ -81,14 +97,17 @@ export async function authenticate(
   res: http.ServerResponse,
   next: () => void
 ): Promise<void> {
-  const requestId = generateRequestId();
+  // Reuse the requestId assigned by the HTTP entry point so the auth trace
+  // stays joined with the request.start/request.complete pair. Fall back to
+  // generating one for unit tests that call authenticate directly.
+  const requestId = req.requestId ?? generateRequestId();
   req.requestId = requestId;
 
   // Extract Authorization header
   const authHeader = req.headers['authorization'];
 
   if (!authHeader) {
-    logger.warn('Authentication failed - missing Authorization header', { requestId });
+    logger.warn('Authentication failed - missing Authorization header', { event: logger.Events.AUTH_FAILURE });
     sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', requestId);
     return;
   }
@@ -96,7 +115,10 @@ export async function authenticate(
   // Validate Bearer token format
   const parts = authHeader.split(' ');
   if (parts.length !== 2 || parts[0] !== 'Bearer') {
-    logger.warn('Authentication failed - invalid Authorization header format', { requestId, authHeader: authHeader.substring(0, 20) });
+    logger.warn('Authentication failed - invalid Authorization header format', {
+      event: logger.Events.AUTH_FAILURE,
+      authHeader: authHeader.substring(0, 20)
+    });
     sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Invalid authorization format. Expected: Bearer <token>', requestId);
     return;
   }
@@ -104,22 +126,16 @@ export async function authenticate(
   const token = parts[1];
 
   if (!token || token.trim() === '') {
-    logger.warn('Authentication failed - empty token', { requestId });
+    logger.warn('Authentication failed - empty token', { event: logger.Events.AUTH_FAILURE });
     sendErrorResponse(res, 401, 'INVALID_TOKEN', 'Invalid or expired token', requestId);
     return;
   }
-
-  logger.debug('Token extracted from Authorization header', {
-    requestId,
-    tokenPresent: true,
-    tokenLength: token.length
-  });
 
   // Extract and validate X-Ado-Org-Url header
   const orgUrlHeader = req.headers['x-ado-org-url'] as string | undefined;
 
   if (!orgUrlHeader) {
-    logger.warn('Authentication failed - missing X-Ado-Org-Url header', { requestId });
+    logger.warn('Authentication failed - missing X-Ado-Org-Url header', { event: logger.Events.AUTH_FAILURE });
     sendErrorResponse(res, 400, 'BAD_REQUEST', 'Missing X-Ado-Org-Url header', requestId);
     return;
   }
@@ -128,7 +144,7 @@ export async function authenticate(
   const orgUrl = orgUrlHeader.trim();
 
   if (orgUrl === '') {
-    logger.warn('Authentication failed - empty organization URL', { requestId });
+    logger.warn('Authentication failed - empty organization URL', { event: logger.Events.AUTH_FAILURE });
     sendErrorResponse(res, 400, 'BAD_REQUEST', 'Empty organization URL', requestId);
     return;
   }
@@ -138,7 +154,7 @@ export async function authenticate(
   try {
     parsedUrl = new URL(orgUrl);
   } catch (error) {
-    logger.warn('Authentication failed - invalid URL format', { requestId, orgUrl });
+    logger.warn('Authentication failed - invalid URL format', { event: logger.Events.AUTH_FAILURE, orgUrl });
     sendErrorResponse(res, 400, 'BAD_REQUEST', 'Invalid organization URL format', requestId);
     return;
   }
@@ -149,13 +165,17 @@ export async function authenticate(
   const isHttps = parsedUrl.protocol === 'https:';
 
   if (!isHttps) {
-    logger.warn('Authentication failed - non-HTTPS organization URL', { requestId, orgUrl });
+    logger.warn('Authentication failed - non-HTTPS organization URL', { event: logger.Events.AUTH_FAILURE, orgUrl });
     sendErrorResponse(res, 400, 'BAD_REQUEST', 'Organization URL must use HTTPS', requestId);
     return;
   }
 
   if (!isDevAzureCom && !isVisualStudioCom) {
-    logger.warn('Authentication failed - invalid Azure DevOps domain', { requestId, orgUrl, hostname: parsedUrl.hostname });
+    logger.warn('Authentication failed - invalid Azure DevOps domain', {
+      event: logger.Events.AUTH_FAILURE,
+      orgUrl,
+      hostname: parsedUrl.hostname
+    });
     sendErrorResponse(res, 400, 'BAD_REQUEST', 'Invalid organization URL format. Expected: https://dev.azure.com/{org} or https://{org}.visualstudio.com', requestId);
     return;
   }
@@ -166,7 +186,7 @@ export async function authenticate(
     // Verify user belongs to the expected organization
     if (identity.organization !== orgUrl) {
       logger.warn('Authentication failed - user from wrong organization', {
-        requestId,
+        event: logger.Events.AUTH_FAILURE,
         userId: identity.id,
         userOrg: identity.organization,
         expectedOrg: orgUrl
@@ -185,13 +205,12 @@ export async function authenticate(
     req.user = identity;
     req.orgUrl = orgUrl;
 
-    logger.info('User authenticated successfully', {
-      requestId,
+    // Propagate user/org labels to every subsequent log line in this request.
+    // No standalone "User authenticated successfully" line — the final
+    // request.complete log already carries userId/org via labels.
+    logger.setLabels({
       userId: identity.id,
-      displayName: identity.displayName,
-      orgUrl,
-      method: req.method,
-      url: req.url
+      org: extractOrgShortName(parsedUrl)
     });
 
     // Call next handler
@@ -201,7 +220,7 @@ export async function authenticate(
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     logger.warn('Token validation failed', {
-      requestId,
+      event: logger.Events.AUTH_FAILURE,
       error: errorMessage
     });
 

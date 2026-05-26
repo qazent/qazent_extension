@@ -83,8 +83,6 @@ async function callAzureDevOpsApi(token: string, orgUrl: string): Promise<UserId
     const url = new URL(orgUrl);
     const apiUrl = `${url.protocol}//${url.host}${url.pathname}/_apis/connectionData?api-version=7.0-preview`;
 
-    logger.debug('Validating token with Azure DevOps API', { apiUrl: apiUrl.replace(/\/\/.*@/, '//***@') });
-
     const parsedApiUrl = new URL(apiUrl);
 
     const options = {
@@ -126,9 +124,11 @@ async function callAzureDevOpsApi(token: string, orgUrl: string): Promise<UserId
               organization: orgUrl
             };
 
-            logger.info('Token validated successfully', {
+            logger.debug('Token validated successfully', {
+              event: logger.Events.AUTH_SUCCESS,
               userId: identity.id,
-              displayName: identity.displayName
+              displayName: identity.displayName,
+              cache: 'miss'
             });
 
             resolve(identity);
@@ -137,10 +137,17 @@ async function callAzureDevOpsApi(token: string, orgUrl: string): Promise<UserId
             reject(new Error('Invalid token: failed to parse response'));
           }
         } else if (res.statusCode === 401 || res.statusCode === 403) {
-          logger.warn('Token validation failed - unauthorized', { statusCode: res.statusCode });
+          logger.warn('Token validation failed - unauthorized', {
+            event: logger.Events.AUTH_FAILURE,
+            status: res.statusCode
+          });
           reject(new Error('Invalid or expired token'));
         } else {
-          logger.error('Azure DevOps API error', { statusCode: res.statusCode, body: data });
+          logger.error('Azure DevOps API error', {
+            event: logger.Events.AUTH_FAILURE,
+            status: res.statusCode,
+            body: data
+          });
           reject(new Error(`Azure DevOps API error: ${res.statusCode}`));
         }
       });
@@ -185,12 +192,10 @@ export async function validateAzureDevOpsToken(
   const cached = tokenCache.get(tokenHash);
 
   if (cached && cached.expiresAt > Date.now()) {
-    logger.debug('Token validation cache hit', { userId: cached.identity.id });
     return cached.identity;
   }
 
   // Cache miss - validate with Azure DevOps API
-  logger.debug('Token validation cache miss - calling Azure DevOps API');
   const identity = await callAzureDevOpsApi(token, orgUrl);
 
   // Store in cache

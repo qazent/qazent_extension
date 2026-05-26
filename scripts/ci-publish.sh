@@ -17,20 +17,6 @@ if [ -z "${MARKETPLACE_PAT:-}" ]; then
   exit 1
 fi
 
-# ── Bump patch version ───────────────────────────────
-echo "=== Bumping patch version in vss-extension.json ==="
-CURRENT_VERSION=$(node -p "require('./vss-extension.json').version")
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
-echo "  ${CURRENT_VERSION} → ${NEW_VERSION}"
-
-node -e "
-  const fs = require('fs');
-  const manifest = JSON.parse(fs.readFileSync('vss-extension.json', 'utf8'));
-  manifest.version = '${NEW_VERSION}';
-  fs.writeFileSync('vss-extension.json', JSON.stringify(manifest, null, 2) + '\n');
-"
-
 # ── Clean stale VSIX files ───────────────────────────
 mkdir -p "$OUTPUT_DIR"
 echo "=== Removing stale VSIX files ==="

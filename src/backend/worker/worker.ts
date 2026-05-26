@@ -52,19 +52,40 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Build a structured log context for worker events. The `jobId` is no longer
+ * included here because it's propagated as the ambient `requestId` label
+ * inside `processJob`'s runWithLabels scope.
+ */
 function buildWorkerLog(
-  jobId: string,
   stage: string,
   status: 'queued' | 'processing' | 'completed' | 'failed',
   extra?: Record<string, unknown>
 ): Record<string, unknown> {
   return {
-    jobId,
     stage,
     status,
-    timestamp: new Date().toISOString(),
     ...extra
   };
+}
+
+/**
+ * Derive the short organization name from an Azure DevOps org URL for the
+ * `org` label.
+ */
+function extractOrgShortName(orgUrl: string): string | undefined {
+  try {
+    const parsed = new URL(orgUrl);
+    if (parsed.hostname === 'dev.azure.com') {
+      return parsed.pathname.split('/').filter(Boolean)[0];
+    }
+    if (parsed.hostname.endsWith('.visualstudio.com')) {
+      return parsed.hostname.split('.')[0];
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 async function fetchPrMetadataForStoredResult(job: QueuedPRJob, auth: QueuedJobAuth): Promise<PRMetadata> {
@@ -109,7 +130,8 @@ async function handleJobFailure(jobId: string, job: QueuedPRJob | null, error: u
     writeJobError(errorRecord)
   ]);
 
-  logger.error('job_failed', buildWorkerLog(jobId, 'execute', 'failed', {
+  logger.error('Job failed', buildWorkerLog('execute', 'failed', {
+    event: logger.Events.JOB_FAILED,
     prId: job?.prId,
     attempt: attempts,
     error: err.message
@@ -117,7 +139,8 @@ async function handleJobFailure(jobId: string, job: QueuedPRJob | null, error: u
 
   if (!isImmediateDlqError(err) && attempts < MAX_JOB_ATTEMPTS) {
     await requeueJob(jobId);
-    logger.warn('job_retried', buildWorkerLog(jobId, 'retry', 'queued', {
+    logger.warn('Job retried', buildWorkerLog('retry', 'queued', {
+      event: logger.Events.JOB_RETRIED,
       prId: job?.prId,
       attempt: attempts
     }));
@@ -127,108 +150,139 @@ async function handleJobFailure(jobId: string, job: QueuedPRJob | null, error: u
   await moveJobToDlq(jobId);
   await deleteJobAuth(jobId);
   await deleteJobToken(jobId);
-  logger.error('job_dlq', buildWorkerLog(jobId, 'dlq', 'failed', {
+  logger.error('Job moved to DLQ', buildWorkerLog('dlq', 'failed', {
+    event: logger.Events.JOB_DLQ,
     prId: job?.prId,
     attempt: attempts
   }));
 }
 
 export async function processJob(jobId: string): Promise<void> {
-  activeJobId = jobId;
-  logger.info('job_dequeued', buildWorkerLog(jobId, 'dequeue', 'queued'));
-
-  const [job, auth] = await Promise.all([
-    getQueuedJob(jobId),
-    getQueuedJobAuth(jobId)
-  ]);
-
-  if (job === null || auth === null) {
-    await removeProcessingEntry(jobId);
-    await handleJobFailure(jobId, job, new Error('Missing queued job payload or auth state'));
-    activeJobId = null;
-    return;
-  }
-
-  if (typeof auth.expiresAt === 'number' && auth.expiresAt < Date.now()) {
-    await removeProcessingEntry(jobId);
-    await handleJobFailure(jobId, job, new Error('Expired token'));
-    activeJobId = null;
-    return;
-  }
-
-  const currentStatus = await getJobStatus(jobId);
-  if (currentStatus === JOB_STATUS.completed) {
-    await removeProcessingEntry(jobId);
-    logger.info('job_completed', buildWorkerLog(jobId, 'skip', 'completed', { reason: 'already_completed' }));
-    activeJobId = null;
-    return;
-  }
-
-  if (!(await isJobReadyForProcessing(jobId))) {
-    await removeProcessingEntry(jobId);
-    logger.info('job_locked', buildWorkerLog(jobId, 'skip', currentStatus === JOB_STATUS.failed ? 'failed' : 'queued', {
-      reason: 'job_not_ready'
+  // Use the jobId as the ambient `requestId` label so every log emitted while
+  // processing this job is filterable by `requestId:<jobId>` in BetterStack.
+  await logger.runWithLabels({ requestId: jobId, route: 'queue.pr' }, async () => {
+    activeJobId = jobId;
+    logger.info('Job dequeued', buildWorkerLog('dequeue', 'queued', {
+      event: logger.Events.JOB_DEQUEUED
     }));
-    activeJobId = null;
-    return;
-  }
 
-  const ownerId = createJobLockOwnerId();
-  const acquiredLock = await acquireJobLock(jobId, ownerId);
-  if (!acquiredLock) {
-    await removeProcessingEntry(jobId);
-    logger.info('job_locked', buildWorkerLog(jobId, 'lock', 'queued', { reason: 'lock_unavailable' }));
-    activeJobId = null;
-    return;
-  }
+    const [job, auth] = await Promise.all([
+      getQueuedJob(jobId),
+      getQueuedJobAuth(jobId)
+    ]);
 
-  logger.info('job_locked', buildWorkerLog(jobId, 'lock', 'processing', { ownerId }));
-  const heartbeat = startJobLockHeartbeat(jobId, ownerId);
-
-  try {
-    await setJobStatus(jobId, JOB_STATUS.processing);
-    logger.info('job_started', buildWorkerLog(jobId, 'execute', 'processing', { prId: job.prId }));
-
-    let storedResult = await getStoredJobResult(jobId);
-    let prMetadata: PRMetadata;
-
-    if (storedResult !== null) {
-      prMetadata = await fetchPrMetadataForStoredResult(job, auth);
-    } else {
-      const runOutput = await runGeminiJob(job, auth);
-      prMetadata = runOutput.prMetadata;
-      storedResult = await writeJobResult(runOutput.result);
-    }
-
-    if (heartbeat.hasLostLock() || !(await ownsJobLock(jobId, ownerId))) {
-      throw new LostJobLockError('Lost job lock ownership before Azure notification');
-    }
-
-    await notifyAzureWithJobResult(jobId, auth, prMetadata, storedResult);
-
-    if (heartbeat.hasLostLock() || !(await ownsJobLock(jobId, ownerId))) {
-      throw new LostJobLockError('Lost job lock ownership before completion');
-    }
-
-    await markJobCompleted(jobId);
-    await clearJobError(jobId);
-    await deleteJobAuth(jobId);
-    await deleteJobToken(jobId);
-    logger.info('job_completed', buildWorkerLog(jobId, 'complete', 'completed', { prId: job.prId }));
-  } catch (error) {
-    if (error instanceof LostJobLockError) {
-      logger.warn('job_lock_lost', buildWorkerLog(jobId, 'lock', 'processing', {
-        prId: job.prId,
-        error: error.message
-      }));
+    if (job === null || auth === null) {
+      await removeProcessingEntry(jobId);
+      await handleJobFailure(jobId, job, new Error('Missing queued job payload or auth state'));
+      activeJobId = null;
       return;
     }
-    await handleJobFailure(jobId, job, error);
-  } finally {
-    await heartbeat.stop();
-    await releaseJobLock(jobId, ownerId);
-    activeJobId = null;
-  }
+
+    // Now that we know the job, extend the ambient labels so subsequent logs
+    // also carry userId / org for cross-cutting filtering.
+    logger.setLabels({
+      userId: job.requestedBy.id,
+      org: extractOrgShortName(job.organizationUrl)
+    });
+
+    if (typeof auth.expiresAt === 'number' && auth.expiresAt < Date.now()) {
+      await removeProcessingEntry(jobId);
+      await handleJobFailure(jobId, job, new Error('Expired token'));
+      activeJobId = null;
+      return;
+    }
+
+    const currentStatus = await getJobStatus(jobId);
+    if (currentStatus === JOB_STATUS.completed) {
+      await removeProcessingEntry(jobId);
+      logger.info('Job already completed, skipping', buildWorkerLog('skip', 'completed', {
+        event: logger.Events.JOB_COMPLETED,
+        reason: 'already_completed'
+      }));
+      activeJobId = null;
+      return;
+    }
+
+    if (!(await isJobReadyForProcessing(jobId))) {
+      await removeProcessingEntry(jobId);
+      logger.info('Job not ready, skipping', buildWorkerLog('skip', currentStatus === JOB_STATUS.failed ? 'failed' : 'queued', {
+        event: logger.Events.JOB_LOCKED,
+        reason: 'job_not_ready'
+      }));
+      activeJobId = null;
+      return;
+    }
+
+    const ownerId = createJobLockOwnerId();
+    const acquiredLock = await acquireJobLock(jobId, ownerId);
+    if (!acquiredLock) {
+      await removeProcessingEntry(jobId);
+      logger.info('Job lock unavailable', buildWorkerLog('lock', 'queued', {
+        event: logger.Events.JOB_LOCKED,
+        reason: 'lock_unavailable'
+      }));
+      activeJobId = null;
+      return;
+    }
+
+    logger.info('Job lock acquired', buildWorkerLog('lock', 'processing', {
+      event: logger.Events.JOB_LOCKED,
+      ownerId
+    }));
+    const heartbeat = startJobLockHeartbeat(jobId, ownerId);
+
+    try {
+      await setJobStatus(jobId, JOB_STATUS.processing);
+      logger.info('Job started', buildWorkerLog('execute', 'processing', {
+        event: logger.Events.JOB_STARTED,
+        prId: job.prId
+      }));
+
+      let storedResult = await getStoredJobResult(jobId);
+      let prMetadata: PRMetadata;
+
+      if (storedResult !== null) {
+        prMetadata = await fetchPrMetadataForStoredResult(job, auth);
+      } else {
+        const runOutput = await runGeminiJob(job, auth);
+        prMetadata = runOutput.prMetadata;
+        storedResult = await writeJobResult(runOutput.result);
+      }
+
+      if (heartbeat.hasLostLock() || !(await ownsJobLock(jobId, ownerId))) {
+        throw new LostJobLockError('Lost job lock ownership before Azure notification');
+      }
+
+      await notifyAzureWithJobResult(jobId, auth, prMetadata, storedResult);
+
+      if (heartbeat.hasLostLock() || !(await ownsJobLock(jobId, ownerId))) {
+        throw new LostJobLockError('Lost job lock ownership before completion');
+      }
+
+      await markJobCompleted(jobId);
+      await clearJobError(jobId);
+      await deleteJobAuth(jobId);
+      await deleteJobToken(jobId);
+      logger.info('Job completed', buildWorkerLog('complete', 'completed', {
+        event: logger.Events.JOB_COMPLETED,
+        prId: job.prId
+      }));
+    } catch (error) {
+      if (error instanceof LostJobLockError) {
+        logger.warn('Job lock lost', buildWorkerLog('lock', 'processing', {
+          event: logger.Events.JOB_LOCK_LOST,
+          prId: job.prId,
+          error: error.message
+        }));
+        return;
+      }
+      await handleJobFailure(jobId, job, error);
+    } finally {
+      await heartbeat.stop();
+      await releaseJobLock(jobId, ownerId);
+      activeJobId = null;
+    }
+  });
 }
 
 export async function runWorkerOnce(): Promise<boolean> {
@@ -259,9 +313,9 @@ async function workerLoop(): Promise<void> {
 function requestShutdown(signal: string): void {
   shutdownRequested = true;
   logger.info('Worker shutdown requested', {
+    event: logger.Events.SHUTDOWN,
     signal,
-    activeJobId,
-    timestamp: new Date().toISOString()
+    activeJobId
   });
 }
 
@@ -272,10 +326,9 @@ export function resetWorkerStateForTests(): void {
 
 export async function startWorker(): Promise<void> {
   logger.info('Worker startup initiated', {
+    event: logger.Events.STARTUP,
     pid: process.pid,
-    nodeEnv: process.env.NODE_ENV ?? 'undefined',
-    idleSleepMs: WORKER_IDLE_SLEEP_MS,
-    timestamp: new Date().toISOString()
+    idleSleepMs: WORKER_IDLE_SLEEP_MS
   });
 
   validateServerEnvironment(['GEMINI_API_KEY']);
@@ -287,9 +340,9 @@ export async function startWorker(): Promise<void> {
   process.on('SIGTERM', () => requestShutdown('SIGTERM'));
 
   logger.info('Worker started and ready to poll Upstash Redis', {
+    event: logger.Events.STARTUP,
     pid: process.pid,
-    queueMode: 'redis-only',
-    timestamp: new Date().toISOString()
+    queueMode: 'redis-only'
   });
 
   const recoveryInterval = setInterval(() => {
@@ -305,9 +358,9 @@ export async function startWorker(): Promise<void> {
   } finally {
     clearInterval(recoveryInterval);
     logger.info('Worker stopped', {
+      event: logger.Events.SHUTDOWN,
       activeJobId,
-      shutdownRequested,
-      timestamp: new Date().toISOString()
+      shutdownRequested
     });
   }
 }

@@ -15,12 +15,21 @@ jest.mock('https', () => {
   };
 });
 
-jest.mock('../../src/backend/utils/logger', () => ({
-  info: jest.fn(),
-  debug: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-}));
+jest.mock('../../src/backend/utils/logger', () => {
+  const actual = jest.requireActual<typeof import('../../src/backend/utils/logger')>(
+    '../../src/backend/utils/logger'
+  );
+  return {
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    runWithLabels: actual.runWithLabels,
+    setLabels: actual.setLabels,
+    getLabels: actual.getLabels,
+    Events: actual.Events,
+  };
+});
 
 let redis: RedisTestClient;
 

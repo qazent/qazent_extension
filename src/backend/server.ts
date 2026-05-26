@@ -593,8 +593,6 @@ function handleHealth(_req: http.IncomingMessage, res: http.ServerResponse): voi
 
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(response));
-
-  logger.debug('Health check', { uptime });
 }
 
 /**
@@ -654,25 +652,18 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       }
 
       logger.info('Generate tests request', {
+        event: logger.Events.GENERATE_TESTS,
         prId: payload.prId,
         projectName: payload.projectName,
         repositoryId: payload.repositoryId,
         mode,
         hasCustomContext: !!customContext,
         contextText: customContext === undefined || customContext === null || customContext === '' ? 'None' : (customContext.length > 100 ? customContext.substring(0, 100) + '...' : customContext),
-        userId: req.user?.id,
-        userDisplayName: req.user?.displayName,
-        requestId: req.requestId
+        userDisplayName: req.user?.displayName
       });
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
-      logger.debug('Token extracted for generate-tests', {
-        tokenPresent: Boolean(token),
-        tokenLength: token?.length,
-        orgUrl: req.orgUrl,
-        tokenSource: 'authorization-header'
-      });
 
       // Extract organization name from URL for fetchPRDiff
       const orgName = extractOrgName(req.orgUrl!);
@@ -694,8 +685,7 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         adoClient.fetchPRMetadata(payload.prId, connection).catch((error) => {
           logger.warn('Failed to fetch PR metadata, using request fallback', {
             prId: payload.prId,
-            error: String(error),
-            requestId: req.requestId
+            error: String(error)
           });
           return null;
         }),
@@ -707,8 +697,7 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         ).catch((error): PRCommit[] => {
           logger.warn('Failed to fetch PR commits, continuing without them', {
             prId: payload.prId,
-            error: String(error),
-            requestId: req.requestId
+            error: String(error)
           });
           return [];
         })
@@ -762,12 +751,11 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         // body may be invalid; ignore for logging
       }
       logger.error('Failed to generate tests', {
+        event: logger.Events.GENERATE_TESTS,
         error: err.message,
         errorName: err.name,
         stack: err.stack,
-        prId,
-        requestId: req.requestId,
-        userId: req.user?.id
+        prId
       });
 
       const errorResponse: ErrorResponse = {
@@ -821,21 +809,14 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
       }
 
       logger.info('Create work item request', {
+        event: logger.Events.CREATE_WORK_ITEM,
         prId: payload.prId,
         projectName: payload.projectName,
-        userId: req.user?.id,
-        userDisplayName: req.user?.displayName,
-        requestId: req.requestId
+        userDisplayName: req.user?.displayName
       });
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
-      logger.debug('Token extracted for create-work-item', {
-        tokenPresent: Boolean(token),
-        tokenLength: token?.length,
-        orgUrl: req.orgUrl,
-        tokenSource: 'authorization-header'
-      });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
       // Create minimal PR metadata for work item creation
@@ -876,7 +857,10 @@ async function handleCreateWorkItem(req: AuthenticatedRequest, res: http.ServerR
       }));
 
     } catch (error) {
-      logger.error('Failed to create work item', { error: String(error) });
+      logger.error('Failed to create work item', {
+        event: logger.Events.CREATE_WORK_ITEM,
+        error: String(error)
+      });
 
       const errorResponse: ErrorResponse = {
         error: 'Work item creation failed',
@@ -939,25 +923,18 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       }
 
       logger.info('Post PR comment request', {
+        event: logger.Events.POST_PR_COMMENT,
         prId: payload.prId,
         projectName: payload.projectName,
         workItemId: payload.workItemId ?? null,
         hasCustomContent: !!payload.commentContent,
         customContentLength: payload.commentContent?.length ?? 0,
         outputMode: payload.commentContent ? 'full_output' : 'work_item_link',
-        userId: req.user?.id,
-        userDisplayName: req.user?.displayName,
-        requestId: req.requestId
+        userDisplayName: req.user?.displayName
       });
 
       // Create connection using user's token and organization
       const token = req.headers['authorization']!.split(' ')[1];
-      logger.debug('Token extracted for post-pr-comment', {
-        tokenPresent: Boolean(token),
-        tokenLength: token?.length,
-        orgUrl: req.orgUrl,
-        tokenSource: 'authorization-header'
-      });
       const connection = adoClient.createConnection(token, req.orgUrl!);
 
       // If no custom commentContent is provided, the backend will post its default message.
@@ -977,7 +954,10 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
       res.end(JSON.stringify({ success: true }));
 
     } catch (error) {
-      logger.error('Failed to post PR comment', { error: String(error) });
+      logger.error('Failed to post PR comment', {
+        event: logger.Events.POST_PR_COMMENT,
+        error: String(error)
+      });
 
       const errorResponse: ErrorResponse = {
         error: 'Failed to post comment',
@@ -1119,7 +1099,10 @@ async function handleExtractPurposeScope(req: AuthenticatedRequest, res: http.Se
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ extracted }));
     } catch (error) {
-      logger.error('Failed to extract purpose-scope', { error: String(error) });
+      logger.error('Failed to extract purpose-scope', {
+        event: logger.Events.EXTRACT_PURPOSE_SCOPE,
+        error: String(error)
+      });
 
       const errorResponse: ErrorResponse = {
         error: 'Failed to extract purpose-scope',
@@ -1221,13 +1204,12 @@ async function handleQueuePR(req: AuthenticatedRequest, res: http.ServerResponse
       };
 
       logger.info('Queue PR request received', {
+        event: logger.Events.QUEUE_PR_ENQUEUE,
         jobId,
         prId: job.prId,
         repo: job.repo,
         filesChangedCount: filesChanged.length,
-        userId: req.user.id,
-        userDisplayName: req.user.displayName,
-        requestId: req.requestId
+        userDisplayName: req.user.displayName
       });
 
       await enqueuePRJob(job, jobAuth);
@@ -1238,10 +1220,9 @@ async function handleQueuePR(req: AuthenticatedRequest, res: http.ServerResponse
     } catch (error) {
       if (error instanceof MissingEnvironmentVariableError) {
         logger.error('Queue service is not configured', {
+          event: logger.Events.QUEUE_PR_ENQUEUE,
           error: error.message,
-          missing: error.variableNames,
-          requestId: req.requestId,
-          userId: req.user?.id
+          missing: error.variableNames
         });
 
         const errorResponse: ErrorResponse = {
@@ -1272,9 +1253,8 @@ async function handleQueuePR(req: AuthenticatedRequest, res: http.ServerResponse
       }
 
       logger.error('Failed to enqueue PR job', {
-        error: error instanceof Error ? error.message : String(error),
-        requestId: req.requestId,
-        userId: req.user?.id
+        event: logger.Events.QUEUE_PR_ENQUEUE,
+        error: error instanceof Error ? error.message : String(error)
       });
 
       const errorResponse: ErrorResponse = {
@@ -1309,15 +1289,10 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
     typeof origin === "string" ? origin : null;
 
   if (!normalizedOrigin) {
-    logger.debug("CORS: No origin header, treating as server-to-server request");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Credentials", "false");
     return;
   }
-
-  logger.debug("CORS: Incoming origin", { origin: normalizedOrigin });
-
-
 
   // Allowed patterns
   const basePatterns = [
@@ -1375,10 +1350,10 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin!);
     res.setHeader("Access-Control-Allow-Credentials", "true");
-    logger.debug("CORS: Allowed origin", { origin });
   } else {
     res.setHeader("Access-Control-Allow-Credentials", "false");
-    logger.warn("CORS: Blocked origin", {
+    logger.warn("CORS blocked origin", {
+      event: logger.Events.CORS_BLOCKED,
       origin,
       allowedPatterns
     });
@@ -1392,65 +1367,26 @@ function applyCorsHeaders(res: http.ServerResponse, origin?: string): void {
   res.setHeader("Access-Control-Max-Age", "86400");
 }
 /**
- * Audit logging: Log all authenticated requests
+ * Generate a unique request id for tracing. Stored on req and propagated
+ * automatically through logger.runWithLabels.
  */
-function logAuthenticatedRequest(
-  req: AuthenticatedRequest,
-  res: http.ServerResponse,
-  startTime: number
-): void {
-  // Log on response finish
-  res.on('finish', () => {
-    const durationMs = Date.now() - startTime;
-    const statusCode = res.statusCode;
-    const requestPath = req.url?.split('?')[0] || 'unknown';
-    const network = getRequestNetworkContext(req);
-    const logData = {
-      event: 'api_request_completed',
-      requestId: req.requestId,
-      userId: req.user?.id || 'anonymous',
-      userDisplayName: req.user?.displayName || 'Anonymous',
-      method: req.method,
-      path: requestPath,
-      statusCode,
-      durationMs,
-      forwardedIp: network.forwardedIp,
-      forwardedIpHeader: network.forwardedIpHeader,
-      forwardedFor: network.forwardedFor,
-      remoteAddress: network.remoteAddress,
-      networkPeer: network.forwardedIp ? 'forwarded' : 'direct',
-      ipVisibility: network.forwardedIp ? 'proxy_forwarded' : 'connection_only',
-      origin: network.origin,
-      host: network.host,
-      userAgent: req.headers['user-agent'],
-    };
-
-    if (statusCode >= 400) {
-      logger.warn(`HTTP ${req.method || 'UNKNOWN'} ${requestPath} failed (${statusCode})`, logData);
-    } else {
-      logger.info(`HTTP ${req.method || 'UNKNOWN'} ${requestPath} completed (${statusCode})`, logData);
-    }
-  });
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**
- * Helper to apply middleware chain: rate limiting + authentication + audit logging + handler
+ * Helper to apply middleware chain: rate limiting + authentication + handler.
+ * Per-request audit logging happens via the top-level res.on('finish') hook
+ * installed in the http.createServer callback, so every request (authenticated
+ * or not) emits exactly one request.complete / request.failed line.
  */
 function applyMiddleware(
   rateLimiter: (req: http.IncomingMessage, res: http.ServerResponse, next: () => void) => void,
   handler: (req: AuthenticatedRequest, res: http.ServerResponse) => Promise<void>
 ) {
   return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
-    const startTime = Date.now();
-
-    // Apply rate limiting first
     rateLimiter(req, res, async () => {
-      // Then apply authentication
       await createAuthMiddleware(async (authReq: AuthenticatedRequest) => {
-        // Add audit logging
-        logAuthenticatedRequest(authReq, res, startTime);
-
-        // Finally call the handler
         await handler(authReq, res);
       })(req, res);
     });
@@ -1489,30 +1425,50 @@ function startServer(): void {
   // Create HTTP server with main request handler
   // Security: All endpoints (except /health) protected with authentication
   const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
-    const method = req.method;
-    const url = req.url;
+    const method = req.method ?? 'UNKNOWN';
+    const url = req.url ?? '';
+    const route = url.split('?')[0] || 'unknown';
     const origin = req.headers.origin;
 
-    logger.info("Request received", { method, url, origin });
+    const requestId = generateRequestId();
+    (req as AuthenticatedRequest).requestId = requestId;
+    const requestStartedAt = Date.now();
 
-    // Apply CORS headers to all responses
-    applyCorsHeaders(res, origin);
+    await logger.runWithLabels({ requestId, method, route }, async () => {
+      logger.info(`HTTP ${method} ${route}`, {
+        event: logger.Events.REQUEST_START,
+        origin
+      });
 
-    // Normalize URL (fixes //generate-tests)
-    const normalizedUrl = url?.replace(/^\/+/, '/');
-    logger.debug("Normalized URL", { normalizedUrl });
+      // Per-request audit log: fires exactly once when response is sent.
+      res.on('finish', () => {
+        const durationMs = Date.now() - requestStartedAt;
+        const status = res.statusCode;
+        const network = getRequestNetworkContext(req);
+        const failed = status >= 400;
+        const logFn = failed ? logger.warn : logger.info;
+        logFn(`HTTP ${method} ${route} ${status}`, {
+          event: failed ? logger.Events.REQUEST_FAILED : logger.Events.REQUEST_COMPLETE,
+          status,
+          durationMs,
+          forwardedIp: network.forwardedIp,
+          remoteAddress: network.remoteAddress,
+          userAgent: req.headers['user-agent']
+        });
+      });
 
+      // Apply CORS headers to all responses
+      applyCorsHeaders(res, origin);
 
-    // Handle preflight requests
-    if (method === 'OPTIONS') {
-      logger.debug("OPTIONS preflight received", { url, origin });
+      // Normalize URL (fixes //generate-tests)
+      const normalizedUrl = url.replace(/^\/+/, '/');
 
-      res.writeHead(204);
-      res.end();
-
-      logger.debug("OPTIONS response sent (204)");
-      return;
-    }
+      // Handle preflight requests
+      if (method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
 
     // Health check endpoint (PUBLIC - no authentication, only rate limiting)
     if ((normalizedUrl === '/health' || normalizedUrl === '/') && (method === 'GET' || method === 'HEAD')) {
@@ -1524,11 +1480,7 @@ function startServer(): void {
 
     // Generate tests endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/generate-tests' && method === 'POST') {
-      logger.debug("POST /generate-tests hit");
-
       const contentType = req.headers['content-type'];
-      logger.debug("POST content-type", { contentType });
-
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
 
@@ -1541,18 +1493,13 @@ function startServer(): void {
         return;
       }
 
-      logger.debug("Applying authentication and rate limiting...");
       await applyMiddleware(rateLimitGenerateTests, handleGenerateTests)(req, res);
       return;
     }
 
     // Create work item endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/create-work-item' && method === 'POST') {
-      logger.info("POST /create-work-item hit");
-
       const contentType = req.headers['content-type'];
-      logger.debug("POST content-type", { contentType });
-
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1566,8 +1513,6 @@ function startServer(): void {
 
     // Post PR comment endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/post-pr-comment' && method === 'POST') {
-      logger.info("POST /post-pr-comment hit");
-
       const contentType = req.headers['content-type'];
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
@@ -1596,8 +1541,6 @@ function startServer(): void {
 
     // Extract purpose-scope endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/api/extract-purpose-scope' && method === 'POST') {
-        logger.debug("POST /api/extract-purpose-scope hit");
-
       const contentType = req.headers['content-type'];
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
@@ -1612,8 +1555,6 @@ function startServer(): void {
 
     // Queue PR endpoint (PROTECTED - authentication + rate limiting)
     if (normalizedUrl === '/api/queue/pr' && method === 'POST') {
-      logger.debug("POST /api/queue/pr hit");
-
       const contentType = req.headers['content-type'];
       if (!contentType || !contentType.includes('application/json')) {
         logger.warn("Invalid content type", { contentType });
@@ -1646,10 +1587,8 @@ function startServer(): void {
       let activateBody = '';
       req.on('data', (chunk: Buffer) => { activateBody += chunk.toString(); });
       req.on('end', async () => {
-        const activateStartTime = Date.now();
         rateLimitLicenseActivate(req, res, async () => {
           await createAuthMiddleware(async (authReq: AuthenticatedRequest) => {
-            logAuthenticatedRequest(authReq, res, activateStartTime);
             await licenseRoutes.handleLicenseActivate(authReq, res, activateBody);
           })(req, res);
         });
@@ -1715,10 +1654,11 @@ function startServer(): void {
       return;
     }
     */
+    }); // close runWithLabels
   });
 
-    server.listen(PORT, "0.0.0.0", () => {
-    logger.info("Server started", { port: PORT });
+  server.listen(PORT, "0.0.0.0", () => {
+    logger.info("Server started", { event: logger.Events.STARTUP, port: PORT });
     console.log(`Server listening on port ${PORT}`);
   });
 
@@ -1731,17 +1671,17 @@ function startServer(): void {
 
   // Handle process termination
   process.on('SIGTERM', () => {
-    logger.info('SIGTERM received, shutting down gracefully');
+    logger.info('SIGTERM received, shutting down gracefully', { event: logger.Events.SHUTDOWN, signal: 'SIGTERM' });
     server.close(() => {
-      logger.info('Server closed');
+      logger.info('Server closed', { event: logger.Events.SHUTDOWN });
       process.exit(0);
     });
   });
 
   process.on('SIGINT', () => {
-    logger.info('SIGINT received, shutting down gracefully');
+    logger.info('SIGINT received, shutting down gracefully', { event: logger.Events.SHUTDOWN, signal: 'SIGINT' });
     server.close(() => {
-      logger.info('Server closed');
+      logger.info('Server closed', { event: logger.Events.SHUTDOWN });
       process.exit(0);
     });
   });

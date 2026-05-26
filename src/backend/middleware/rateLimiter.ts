@@ -100,13 +100,6 @@ export function createRateLimiter(config: RateLimitConfig) {
 
       try {
         const redis = getRedisClient();
-        logger.info('Sending rate limit request to Upstash Redis', {
-          ip,
-          route,
-          key: rateLimitKey,
-          windowMs: config.windowMs,
-          maxRequests: config.maxRequests
-        });
         const evalResult = await redis.eval(
           RATE_LIMIT_SCRIPT,
           [rateLimitKey],
@@ -115,24 +108,14 @@ export function createRateLimiter(config: RateLimitConfig) {
         const rateLimit = parseRateLimitEvalResult(evalResult, config.windowMs);
         const remaining = Math.max(0, config.maxRequests - rateLimit.count);
 
-        logger.info('Received rate limit response from Upstash Redis', {
-          ip,
-          route,
-          key: rateLimitKey,
-          count: rateLimit.count,
-          remaining,
-          retryAfterSeconds: rateLimit.retryAfterSeconds
-        });
-
         res.setHeader('X-RateLimit-Limit', config.maxRequests.toString());
         res.setHeader('X-RateLimit-Remaining', remaining.toString());
         res.setHeader('X-RateLimit-Reset', rateLimit.resetAtIso);
 
         if (rateLimit.count > config.maxRequests) {
           logger.warn('Rate limit exceeded', {
+            event: logger.Events.RATELIMIT_EXCEEDED,
             ip,
-            route,
-            key: rateLimitKey,
             count: rateLimit.count,
             limit: config.maxRequests,
             retryAfter: rateLimit.retryAfterSeconds
@@ -160,9 +143,8 @@ export function createRateLimiter(config: RateLimitConfig) {
         const requestId = getRequestId(req);
 
         logger.error('Rate limiter Redis failure', {
+          event: logger.Events.RATELIMIT_ERROR,
           ip,
-          route,
-          requestId,
           error: error instanceof Error ? error.message : String(error)
         });
 
