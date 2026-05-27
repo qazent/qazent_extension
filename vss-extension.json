@@ -2,10 +2,10 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-qazent",
   "name": "PR Assistant",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "public": true,
   "publisher": "QAZent",
-  "description": "AI-powered PR test case generation assistant",
+  "description": "AI-powered Azure DevOps PR analysis: structured test cases or code reviews from real diffs, with work items, PR comments, and custom context.",
 
   "targets": [
     { "id": "Microsoft.VisualStudio.Services" }
@@ -24,11 +24,19 @@
     "__DoNotDownload",
     "pull-request",
     "testing",
-    "ai",
-    "test",
-    "utility",
-    "automatic",
-    "agile"
+    "AI",
+    "Test",
+    "Utility",
+    "Save time",
+    "Shift-left testing",
+    "Pull Request Analysis",
+    "Pull Request",
+    "QA",
+    "AI Powered",
+    "Secure",
+    "Code Review",
+    "Automatic",
+    "Agile"
   ],
 
   "content": {
@@ -93,7 +101,7 @@
       "type": "ms.vss-web.tab",
       "targets": ["ms.vss-code-web.pr-tabs"],
       "properties": {
-        "name": "Generate Test Cases",
+        "name": "Analyze PR",
         "order": 100,
         "uri": "hub.html"
       }

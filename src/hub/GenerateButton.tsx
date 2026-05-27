@@ -1,5 +1,5 @@
 /**
- * Generate Test Cases Button Component
+ * Analyze PR primary action button
  */
 
 import * as React from 'react';
@@ -45,9 +45,9 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
         >
           {isLoading
             ? (countdown != null && countdown > 0
-                ? `Generating... Estimated time remaining: ${countdown}s`
-                : 'Generating...')
-            : 'Generate AI Test Cases'}
+                ? `Analyzing... Estimated time remaining: ${countdown}s`
+                : 'Analyzing...')
+            : 'Analyze'}
         </Button>
     </div>
   );

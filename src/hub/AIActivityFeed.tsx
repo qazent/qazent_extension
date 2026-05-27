@@ -15,7 +15,7 @@ const AIActivityFeed: React.FC<AIActivityFeedProps> = ({ currentStep, completedS
   const steps = [
     { id: 1, label: 'Fetching PR metadata' },
     { id: 2, label: 'Analyzing code diff' },
-    { id: 3, label: 'Generating AI test cases' },
+    { id: 3, label: 'Running AI analysis' },
     { id: 4, label: 'Creating work item' },
     { id: 5, label: 'Posting PR comment' }
     // --- POST PR LABEL VAULTED ---

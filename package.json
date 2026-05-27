@@ -4,7 +4,7 @@
   "name": "azure-test-extension",
   "public": true,
   "publisher": "QAZent",
-  "description": "AI-powered PR test case generation assistant",
+  "description": "AI-powered Azure DevOps PR analysis: structured test cases or code reviews from real diffs, with work items, PR comments, and custom context.",
   "main": "dist/server.js",
   "engines": {
     "node": "24.x",

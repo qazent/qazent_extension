@@ -14,7 +14,6 @@ Analyze the PR and produce a single review document. The output must contain:
 • specific, line- or file-scoped findings grounded in the diff
 • security considerations
 • performance and reliability considerations
-• test coverage assessment (gaps and risks)
 • concrete suggested changes or follow-ups
 • regression risks
 
@@ -28,15 +27,17 @@ When reviewing the PR diff, determine:
 
 1. What functionality changed (added / modified / removed)
 2. Whether the change actually achieves the stated PR intent
-3. Correctness: bugs, broken invariants, missing error handling, race conditions, unhandled edge cases
+3. Correctness: bugs, broken invariants, missing error handling, race conditions, null checks, unhandled edge cases
 4. Design: API contracts, separation of concerns, naming, abstractions, layering
 5. Security: authn/authz, input validation, injection, secrets, data exposure, dependency risk
-6. Performance: hot paths, N+1, allocations, async / blocking, large payloads, cache implications
-7. Testability and coverage: missing tests, weak assertions, untested error paths
+6. Performance: hot paths, N+1, allocations, async / blocking, large payloads, cache implications, file locks 
 8. Regression risk: callers, consumers, migrations, feature flags, public APIs
 9. Observability: logging, metrics, traces, error reporting
 
 Recognize common file patterns:
+
+Project Configuration
+• .props files, .target files, appsettings.json, tsconfig.json, webpack.config.ts, .sln, .csproj, 
 
 API / Backend
 • endpoints, request validation, error handling, authentication, idempotency, status codes
@@ -50,10 +51,7 @@ Database
 Configuration
 • environment settings, feature flags, dependencies, secrets handling
 
-Tests
-• existing coverage, new tests added, gaps relative to the diff
-
-Prioritize findings by severity: Blocker (correctness, security, data integrity, breaking contract) → Major (design flaw, regression risk, missing tests for changed behavior) → Minor (readability, naming, small refactors) → Nit (cosmetic).
+Prioritize findings by severity: Blocker (correctness, security, data integrity, breaking contract) → Major (design flaw, regression risk) → Minor (readability, code smell, naming, small refactors) → Nit (cosmetic).
 
 Before producing the final answer, think privately and follow this reasoning process:
 
@@ -110,14 +108,12 @@ HTML STRUCTURE REQUIREMENT
 
 Your HTML must contain EXACTLY these sections in this order:
 
-1. Summary
 2. Purpose
 3. Scope of Change
 4. Verdict
 5. Findings
 6. Security Considerations
 7. Performance & Reliability
-8. Test Coverage
 9. Risks
 10. Suggested Follow-ups
 

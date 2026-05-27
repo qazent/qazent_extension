@@ -656,11 +656,11 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }}
       >
         <p style={{ margin: 0 }}>
-          Click the button below to generate AI‑driven test cases based on the pull request title, description, code changes, custom context, and overall change impact. A work item will be created automatically. You can optionally post a comment on the PR (uncheck below to skip).
+          Click the button below to run analysis on this pull request using the title, description, code changes, commit messages, and custom context. Depending on your mode and output options, results appear as structured test cases or a code review — as a work item, a PR comment, or both.
         </p>
         <p style={{ marginTop: '12px' }}>
           This process may take some time, especially for larger pull requests or when the backend is under heavy load. Please wait after clicking
-          <strong> "Generate"</strong>. If something goes wrong, an error message will appear above.
+          <strong> Analyze</strong>. If something goes wrong, an error message will appear above.
         </p>
       </div>
 
