@@ -3,7 +3,7 @@
  * AI integration module using Google Gemini
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
@@ -734,11 +734,11 @@ function findNextH2Index(html: string, startIndex: number): number {
  */
 export function extractPurposeAndScope(html: string): string {
   const headings = extractHtmlHeadings(html);
-  const purposeIndex = headings.findIndex((heading) => heading.normalizedTitle === 'purpose');
+  const purposeIndex = headings.findIndex((heading) => heading.normalizedTitle === 'summary');
   if (purposeIndex === -1) return '';
 
   const scopeIndex = headings.findIndex(
-    (heading, index) => index > purposeIndex && heading.normalizedTitle === 'scope of change'
+    (heading, index) => index > purposeIndex && heading.normalizedTitle === 'impact'
   );
 
   if (scopeIndex === -1) {
@@ -815,8 +815,12 @@ export async function generateTestCases(
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],
         config: {
-          temperature: 0.35, // Adjusted for more focused output; can be tuned based on observed response quality
+          temperature: 0.50, // Adjusted for more focused output; can be tuned based on observed response quality
           maxOutputTokens: MAX_OUTPUT_TOKENS,
+          thinkingConfig: {
+            includeThoughts: true,
+            thinkingLevel: ThinkingLevel.HIGH
+          },
           responseMimeType: 'application/json',
           responseSchema: AI_RESPONSE_SCHEMA
         }

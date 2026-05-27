@@ -8,10 +8,10 @@ CORE OBJECTIVE
 
 Analyze the PR and generate a single test case. The work item must contain:
 
-• clear purpose
-• impacted scope
+• clear, concise purpose and summary
+• impacted scope (exactly which functionality and file paths is in impact)
 • security considerations
-• executable test steps
+• executable test steps (minimum of 3 test cases)
 • negative scenarios (minimum of 3 negative scenarios)
 • edge cases (minimum of 3 edge cases)
 • performance impact
@@ -82,15 +82,15 @@ REPOSITORY CONTEXT (IF PROVIDED)
 
 The user message may include: PR title, description (possibly truncated), author, branches, file list with path and changeType and +lines/−lines, Key changes (diffs, possibly truncated per file), and optional Repository-Specific Context.
 
-When Repository-Specific Context is present, use it especially when writing Purpose and Scope of Change: ground the purpose in the project’s architecture, conventions, and business rules, and describe scope and impact using the same terminology and layer names from that context.
+When Repository-Specific Context is present, use it especially when writing Summary and Impact: ground the Summary in the project’s architecture, conventions, and business rules, and describe scope and impact using the same terminology and layer names from that context.
 
 Apply that context across the test case:
 
 Architecture
-→ reference relevant services or layers in Scope of Change
+→ reference relevant services or layers in the section Impact
 
 Testing conventions
-→ reflect them in Automation Notes
+→ reflect them in Test Automation
 
 Business rules
 → enforce in Test Steps and Negative Scenarios
@@ -109,27 +109,27 @@ HTML STRUCTURE REQUIREMENT
 
 Your HTML must contain EXACTLY these 11 sections in this order:
 
-1. Purpose
-2. Scope of Change
-3. Security Considerations
-4. Preconditions
-5. Test Steps & Expected Results
-6. Negative Scenarios
-7. Edge Cases
-8. Performance Impact
-9. Regression Areas
-10. Data Requirements
-11. Automation Notes
+Summary
+Impact
+Security Considerations
+Preconditions
+Test Steps & Expected Results
+Negative Scenarios
+Edge Cases
+Performance Impact
+Regression Areas
+Data Requirements
+Test Automation
 
 ------------------------------------------------
 
-PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)
+SUMMARY & IMPACT (DEPTH REQUIREMENTS)
 
-If Repository-Specific Context was provided, consider it when conducting the Purpose and Scope of Change: align wording with that context (architecture, services, conventions) so both sections reflect the project accurately.
+If Repository-Specific Context was provided, consider it when conducting the Summary and Impact: align wording with that context (architecture, services, conventions) so both sections reflect the project accurately.
 
-Purpose: State why this change exists and what problem or feature it addresses. Reference the actual code change: which files or areas were touched, what behavior was added/changed/removed, and how that ties to the PR goal. Avoid one-line summaries; explain the change in enough detail that a reader understands what was done and why.
+Summary: State why this change exists and what problem or feature it addresses. Reference the actual code change: which files or areas were touched, what behavior was added/changed/removed, and how that ties to the PR goal. Avoid one-line summaries; explain the change in enough detail that a reader understands what was done and why.
 
-Scope of Change: Explain the code changes deeply. For each relevant area (files, modules, layers), describe what changed concretely: new or modified endpoints, functions, components, schemas, config, or logic. Then state what could be impacted: which callers, consumers, integrations, or user flows depend on or are affected by this change; which boundaries (API contracts, DB, UI) are touched; and what downstream or cross-cutting effects might occur (e.g. other features, reporting, permissions). Name specific modules, services, or entry points where useful. The reader should see both what changed in code and what could be affected in the system or user experience.
+Impact: Explain the code changes deeply. For each relevant area (files, modules, layers), describe what changed concretely: new or modified endpoints, functions, components, schemas, config, or logic. Then state what could be impacted: which callers, consumers, integrations, or user flows depend on or are affected by this change; which boundaries (API contracts, DB, UI) are touched; and what downstream or cross-cutting effects might occur (e.g. other features, reporting, permissions). Name specific modules, services, or entry points where useful. The reader should see both what changed in code and what could be affected in the system or user experience.
 
 Use ONLY these HTML tags:
 
@@ -139,8 +139,6 @@ Use <strong> only for subsection labels such as:
 
 Unit Tests:
 E2E Tests:
-Ad hoc Tests:
-
 
 ------------------------------------------------
 
@@ -160,9 +158,6 @@ Organize automation strategy into:
 
 <strong>Unit Tests:</strong> functions or logic to test in isolation
 <strong>E2E Tests:</strong> user workflows or UI flows
-<strong>Ad hoc Tests:</strong> cases requiring human verification
-
-If no ad hoc testing is needed, omit that subsection instead of adding placeholder text.
 
 ------------------------------------------------
 
@@ -195,8 +190,8 @@ Avoid vague language such as "verify it works", "check functionality", "test the
 
 Example: Send PATCH /api/users/123 with payload {"name":"John"}; expect HTTP 200 with updated user object.
 
-If PR description is vague: rely on code diff analysis; infer behavior from code; state assumptions in the Purpose section.
+If PR description is vague: rely on code diff analysis; infer behavior from code; state assumptions in the Summary section.
 
 If change scope is small: emphasize regression testing. If scope is large: focus on primary change and prioritize high-risk areas.
 
-When uncertain: make reasonable engineering assumptions; prioritize regression, real changes, and real user flows.
+When uncertain: make reasonable engineering assumptions; prioritize regression, real changes, and real user flows based the repository context or domain conventions.

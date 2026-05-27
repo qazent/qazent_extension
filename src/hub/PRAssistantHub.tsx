@@ -369,20 +369,20 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }
         setCompletedSteps(prev => [...prev, 5]);
 
+
         // Show success message for outputType mode
-        setCurrentStep(null);
-        const detailParts: string[] = [];
-        if (fullOutputCommentPosted) {
-          detailParts.push('Full test case details posted as PR comment.');
-        } else {
-          detailParts.push('Failed to post full output as PR comment.');
-        }
+        await AIActivityFeed({currentStep: null, completedSteps: completedSteps});
         setSuccessMessage({
-          text: "Test case posted as PR comment!",
-          url: '',
-          details: detailParts.join(' ')
+          text: fullOutputCommentPosted
+            ? 'Analysis posted on the pull request'
+            : 'Analysis completed',
+          url: 'result.workItemUrl',
+          details: fullOutputCommentPosted
+            ? 'The full output was added as a PR comment. Open the pull request to review it.'
+            : 'The analysis finished but could not be posted as a PR comment. Please try again.'
         });
         setTimeout(() => setSuccessMessage(null), 60000);
+
 
       } else {
         // Default mode: create work item, then optionally post comment
@@ -437,42 +437,36 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           }
           setCompletedSteps(prev => [...prev, 5]);
         }
-
-        // --- POST PR LABEL VAULTED ---
-        // Step 6c: Post PR label (optional)
-        // if (addLabelToPR) {
-        //   setCurrentStep(6);
-        //   try {
-        //     await backendClient.postPRLabel({
-        //       prId: prData.prId,
-        //       projectName,
-        //       repositoryId,
-        //       connection: backendUrl,
-        //       labelName: 'Test Case Generated'
-        //     });
-        //   } catch (err) {
-        //     console.warn('PR label failed but work item was created:', err);
-        //   }
-        //   setCompletedSteps(prev => [...prev, 6]);
-        // }
+        
+        setCompletedSteps(prev => [...prev, 6]);
+        console.log('Completed steps:', completedSteps);
 
         // Step 7: Show success message
         setCurrentStep(null);
         const detailParts: string[] = [];
         if (detailsCommentPosted) {
-          detailParts.push('A PR comment with the test case details was posted successfully.');
+          detailParts.push('A PR comment with the output was posted successfully.');
         } else if (workItemCommentPosted) {
-          detailParts.push('A PR comment with the work item link was posted successfully.');
+          detailParts.push('A work item was created successfully.');
         } else if (postCommentOnPR) {
-          detailParts.push('Work item created, but the PR comment was not posted successfully.');
+          detailParts.push('Work item created, but the summaryPR comment was not posted successfully.');
         }
-        // if (addLabelToPR) detailParts.push('A label has been added to this PR.');
         if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
-        setSuccessMessage({
-          text: "Work item created successfully!",
-          url: result.workItemUrl,
-          details: detailParts.join(' ')
+        
+        // if radio button is set to comment then dont link the success message to the work item
+        if (detailsCommentPosted) setSuccessMessage({
+          text: "Output posted as PR comment!",
+          url: '',
+          details: 'A PR comment with the output was posted successfully.'
         });
+        // if radio button is set to full then link the success message to the work item
+        if (!outputType && postCommentOnPR) {
+          setSuccessMessage({
+            text: "Work item created successfully!",
+            url: result.workItemUrl,
+            details: 'Got it! The work item has been created.'
+          });
+        }
         setTimeout(() => setSuccessMessage(null), 60000);
       }
 

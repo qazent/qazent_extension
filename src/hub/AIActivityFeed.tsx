@@ -1,25 +1,25 @@
 /**
  * AI Activity Feed Component
- * Displays real-time progress of the 5-step test case generation workflow
+ * Displays real-time progress of the PR analysis workflow (hub → backend → ADO).
  */
 
 import * as React from 'react';
 import { Spinner } from '@fluentui/react-components';
 
 interface AIActivityFeedProps {
-  currentStep: number | null;  // 1-5 for active step, null when not generating
+  currentStep: number | null;  // 1-6 for active step, null when not generating
   completedSteps: number[];    // Array of completed step indices
 }
 
 const AIActivityFeed: React.FC<AIActivityFeedProps> = ({ currentStep, completedSteps }) => {
   const steps = [
-    { id: 1, label: 'Fetching PR metadata' },
-    { id: 2, label: 'Analyzing code diff' },
-    { id: 3, label: 'Running AI analysis' },
-    { id: 4, label: 'Creating work item' },
-    { id: 5, label: 'Posting PR comment' }
-    // --- POST PR LABEL VAULTED ---
-    // { id: 6, label: 'Posting PR label' }
+    { id: 1, label: 'Fetching your code changes...' },
+    { id: 2, label: 'Ranking your hard work...' },
+    { id: 3, label: 'Talking with the AI...' },
+    { id: 4, label: 'Processing what the AI said...' },
+    { id: 5, label: 'Sharing the results with you...' },
+    { id: 6, label: '"I need to git pull --my-life-together", said the AI...' },
+    { id: 7, label: 'Making sure everything is perfect...' },
   ];
 
   const getStepState = (stepId: number): 'pending' | 'active' | 'completed' => {
@@ -121,7 +121,7 @@ const AIActivityFeed: React.FC<AIActivityFeedProps> = ({ currentStep, completedS
           marginBottom: '12px'
         }}
       >
-        AI Processing Steps
+        Analysis progress
       </div>
 
       <div
@@ -136,7 +136,13 @@ const AIActivityFeed: React.FC<AIActivityFeedProps> = ({ currentStep, completedS
           return (
             <div key={step.id} style={getStepStyles(state)}>
               {renderStepIcon(state)}
-              <span>{step.label}</span>
+              {step.label ? (
+                <span>{step.label}</span>
+              ) : (
+                <span aria-hidden="true" style={{ minHeight: '1.4em' }}>
+                  {'\u00A0'}
+                </span>
+              )}
             </div>
           );
         })}
