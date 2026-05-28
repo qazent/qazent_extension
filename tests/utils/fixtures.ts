@@ -6,7 +6,7 @@ import type { PRMetadata, CodeDiff } from '../../src/backend/types';
 
 /** Minimal HTML that passes relaxed AI validation. */
 export const MIN_VALID_HTML =
-  '<h2>Purpose</h2><p>Verify.</p><h2>Scope of Change</h2><p>Scope.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Unit tests.</p>' +
+  '<h2>Summary</h2><p>Verify.</p><h2>Impact</h2><p>Scope.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Unit tests.</p>' +
   'x'.repeat(2600);
 
 /** Valid AI HTML using numbered h3 headings that should also pass relaxed validation. */

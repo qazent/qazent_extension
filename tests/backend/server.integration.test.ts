@@ -794,7 +794,7 @@ describe('backend server request path', () => {
         'x-ado-org-url': 'https://dev.azure.com/myorg',
         'x-forwarded-for': '198.51.100.27',
       },
-      body: JSON.stringify({ html: '<h2>Purpose</h2><p>Verify auth path</p>' }),
+      body: JSON.stringify({ html: '<h2>Summary</h2><p>Verify auth path</p>' }),
     });
 
     expect(response.status).toBe(200);
@@ -806,7 +806,7 @@ describe('backend server request path', () => {
     });
 
     const aiModule = await import('../../src/backend/ai');
-    expect(aiModule.extractPurposeAndScope).toHaveBeenCalledWith('<h2>Purpose</h2><p>Verify auth path</p>');
+    expect(aiModule.extractPurposeAndScope).toHaveBeenCalledWith('<h2>Summary</h2><p>Verify auth path</p>');
   });
 
   it('returns 500 when extract-purpose-scope fails downstream', async () => {

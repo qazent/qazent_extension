@@ -16,7 +16,7 @@ jest.mock('../../src/backend/queue/redisClient', () => ({
 jest.mock('../../src/backend/utils/logger', () => createLoggerMock());
 jest.mock('../../src/backend/ai', () => ({
   loadSystemPrompt: jest.fn(),
-  extractPurposeAndScope: jest.fn(() => '<h2>Purpose</h2><p>Validate queue worker.</p>'),
+  extractPurposeAndScope: jest.fn(() => '<h2>Summary</h2><p>Validate queue worker.</p>'),
   generateTestCases: jest.fn()
 }));
 jest.mock('../../src/backend/fetchPRdiff', () => ({

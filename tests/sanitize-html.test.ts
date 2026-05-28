@@ -16,7 +16,7 @@ describe('sanitizeHTML', () => {
 
   it('preserves expected formatting tags for generated work item content', () => {
     const input =
-      '<h2>Purpose</h2><p><strong>Verify</strong> output.</p><table><tr><th scope="col">Step</th><th>Expected</th></tr><tr><td colspan="2">Done</td></tr></table>';
+      '<h2>Summary</h2><p><strong>Verify</strong> output.</p><table><tr><th scope="col">Step</th><th>Expected</th></tr><tr><td colspan="2">Done</td></tr></table>';
 
     expect(sanitizeHTML(input)).toBe(input);
     expect(mockWarn).not.toHaveBeenCalled();
@@ -40,7 +40,7 @@ describe('sanitizeHTML', () => {
 
     const output = sanitizeHTML(input);
 
-    expect(output).toContain('<h2>Purpose</h2>');
+    expect(output).toContain('<h2>Summary</h2>');
     expect(output).toContain('<p>Safe</p>');
     expect(output).toContain('<a target="_blank" rel="noopener noreferrer">Bad link</a>');
     expect(output).not.toContain('onclick');

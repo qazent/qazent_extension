@@ -229,7 +229,7 @@ describe('Azure DevOps content persistence', () => {
     const patchDocument = createWorkItem.mock.calls[0][1];
     const descriptionOperation = patchDocument.find((op: { path: string }) => op.path === '/fields/System.Description');
 
-    expect(descriptionOperation.value).toContain('<h2>Purpose</h2>');
+    expect(descriptionOperation.value).toContain('<h2>Summary</h2>');
     expect(descriptionOperation.value).toContain('<p>Keep me</p>');
     expect(descriptionOperation.value).not.toContain('onclick');
     expect(descriptionOperation.value).not.toContain('<script');

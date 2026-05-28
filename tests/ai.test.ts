@@ -78,7 +78,7 @@ describe('generateTestCases', () => {
   });
 
   it('should return htmlDescription with raw HTML', async () => {
-    const html = '<h2>Purpose</h2><p>Verify the new feature works correctly.</p><h2>Scope of Change</h2><p>Feature module.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Automate with unit tests.</p>' + 'x'.repeat(2500);
+    const html = '<h2>Summary</h2><p>Verify the new feature works correctly.</p><h2>Impact</h2><p>Feature module.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Automate with unit tests.</p>' + 'x'.repeat(2500);
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Feature Functionality',
@@ -89,15 +89,15 @@ describe('generateTestCases', () => {
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Feature Functionality');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<table>');
     expect(result.htmlDescription).toContain('Verify the new feature works correctly.');
     expect(result.htmlDescription).not.toContain('<script');
   });
 
   it('should return htmlDescription with multi-line HTML', async () => {
-    const mockHtml = `<h2>Purpose</h2><p>Verify the new feature works correctly</p>
-<h2>Scope of Change</h2><p>Feature module</p>
+    const mockHtml = `<h2>Summary</h2><p>Verify the new feature works correctly</p>
+<h2>Impact</h2><p>Feature module</p>
 <h2>Preconditions</h2><ul><li>System is running</li></ul>
 <h2>Test Steps & Expected Results</h2>
 <table><tr><th>Step</th><th>Expected Result</th></tr>
@@ -120,7 +120,7 @@ describe('generateTestCases', () => {
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Feature Functionality');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<table>');
   });
 
@@ -132,7 +132,7 @@ describe('generateTestCases', () => {
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Test Title');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<h2>Automation Notes</h2>');
   });
 
@@ -186,7 +186,7 @@ describe('generateTestCases', () => {
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     expect(result.title).toBe('Test Case: Retry Success');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
   });
 
   it('retries with relaxed section thresholds after truncation failure', async () => {
@@ -239,7 +239,7 @@ describe('generateTestCases', () => {
   });
 
   it('should parse when AI returns raw HTML with } inside htmlDescription value', async () => {
-    const rawHtmlWithBrace = '<h2>Purpose</h2><p>Test with code } and more</p><h2>Scope of Change</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Unit tests</p>' + 'x'.repeat(2600);
+    const rawHtmlWithBrace = '<h2>Summary</h2><p>Test with code } and more</p><h2>Impact</h2><p>Scope</p><h2>Preconditions</h2><p>None</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>Step 1</td><td>Result 1</td></tr></table><h2>Negative Scenarios</h2><p>None</p><h2>Edge Cases</h2><p>None</p><h2>Regression Areas</h2><p>None</p><h2>Data Requirements</h2><p>None</p><h2>Automation Notes</h2><p>Unit tests</p>' + 'x'.repeat(2600);
     const responseText = JSON.stringify({
       title: 'Test Case: Brace in HTML',
       htmlDescription: rawHtmlWithBrace
@@ -250,7 +250,7 @@ describe('generateTestCases', () => {
 
     expect(result.title).toBe('Test Case: Brace in HTML');
     expect(result.htmlDescription).toContain('code } and more');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
   });
 
   it('should parse when AI returns markdown-wrapped JSON with htmlDescription', async () => {
@@ -263,7 +263,7 @@ describe('generateTestCases', () => {
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Raw HTML in wrapper');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<h2>Automation Notes</h2>');
   });
 
@@ -272,7 +272,7 @@ describe('generateTestCases', () => {
       '<h2 onclick="alert(1)">Purpose</h2>' +
       '<p>Safe</p>' +
       '<script>alert(2)</script>' +
-      '<h2>Scope of Change</h2><p>Scope</p>' +
+      '<h2>Impact</h2><p>Scope</p>' +
       '<h2>Preconditions</h2><p>None</p>' +
       '<h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table>' +
       '<h2>Negative Scenarios</h2><p>None</p>' +
@@ -291,7 +291,7 @@ describe('generateTestCases', () => {
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<p>Safe</p>');
     expect(result.htmlDescription).not.toContain('onclick');
     expect(result.htmlDescription).not.toContain('<script');
@@ -299,7 +299,7 @@ describe('generateTestCases', () => {
   });
 
   it('should accept legacy htmlDescriptionBase64 and decode to htmlDescription', async () => {
-    const html = '<h2>Purpose</h2><p>Legacy.</p><h2>Scope of Change</h2><p>Scope.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Unit tests.</p>' + 'x'.repeat(2600);
+    const html = '<h2>Summary</h2><p>Legacy.</p><h2>Impact</h2><p>Scope.</p><h2>Preconditions</h2><p>None.</p><h2>Test Steps & Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>OK</td></tr></table><h2>Negative Scenarios</h2><p>None.</p><h2>Edge Cases</h2><p>None.</p><h2>Regression Areas</h2><p>None.</p><h2>Data Requirements</h2><p>None.</p><h2>Automation Notes</h2><p>Unit tests.</p>' + 'x'.repeat(2600);
     const base64Value = Buffer.from(html, 'utf-8').toString('base64');
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
@@ -311,7 +311,7 @@ describe('generateTestCases', () => {
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
     expect(result.title).toBe('Test Case: Legacy');
-    expect(result.htmlDescription).toContain('<h2>Purpose</h2>');
+    expect(result.htmlDescription).toContain('<h2>Summary</h2>');
     expect(result.htmlDescription).toContain('<h2>Automation Notes</h2>');
     expect(result.htmlDescription).not.toContain('<script');
   });
@@ -334,7 +334,7 @@ describe('generateTestCases', () => {
   it('accepts inline formatting inside headings', async () => {
     const html = [
       '<h2><strong>Purpose</strong></h2><p>Verify the new heading parser.</p>',
-      '<h2>Scope of Change</h2><p>Applies to AI validation and extraction.</p>',
+      '<h2>Impact</h2><p>Applies to AI validation and extraction.</p>',
       '<h2>Preconditions</h2><p>PR data is available.</p>',
       '<h2>Test Steps &amp; Expected Results</h2><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>Validation succeeds</td></tr></table>',
       '<h2>Negative Scenarios</h2><p>Reject short junk responses.</p>',
@@ -382,8 +382,8 @@ describe('generateTestCases', () => {
 
   it('preserves safe table attributes through sanitization', async () => {
     const html = [
-      '<h2>Purpose</h2><p>Verify safe table attributes are preserved.</p>',
-      '<h2>Scope of Change</h2><p>Generated HTML includes formatted tables.</p>',
+      '<h2>Summary</h2><p>Verify safe table attributes are preserved.</p>',
+      '<h2>Impact</h2><p>Generated HTML includes formatted tables.</p>',
       '<h2>Preconditions</h2><p>AI returns supported table markup.</p>',
       '<h2>Test Steps &amp; Expected Results</h2><table border="1" cellspacing="0" cellpadding="5"><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>Attributes remain</td></tr></table>',
       '<h2>Negative Scenarios</h2><p>Disallowed scripts are still removed.</p>',
@@ -418,7 +418,7 @@ describe('generateTestCases', () => {
 
   it('does not treat paragraph mentions of automation notes as a valid section', async () => {
     const html = [
-      '<h2>Purpose</h2><p>Refer to the automation notes section for follow-up work.</p>',
+      '<h2>Summary</h2><p>Refer to the automation notes section for follow-up work.</p>',
       '<p>This output is intentionally long but structurally incomplete.</p>',
       '<p>' + 'x'.repeat(900) + '</p>',
     ].join('');
@@ -452,15 +452,15 @@ describe('extractPurposeAndScope', () => {
 
   it('keeps h3 subsections inside the Scope of Change section until the next h2', () => {
     const html = [
-      '<h2>Purpose</h2><p>Summarize the change.</p>',
-      '<h2>Scope of Change</h2>',
+      '<h2>Summary</h2><p>Summarize the change.</p>',
+      '<h2>Impact</h2>',
       '<h3>Backend</h3><p>API details.</p>',
       '<h3>Frontend</h3><p>UI details.</p>',
       '<h2>Preconditions</h2><p>Next major section.</p>',
     ].join('');
 
     expect(extractPurposeAndScope(html)).toBe(
-      '<h2>Purpose</h2><p>Summarize the change.</p><h2>Scope of Change</h2><h3>Backend</h3><p>API details.</p><h3>Frontend</h3><p>UI details.</p>'
+      '<h2>Summary</h2><p>Summarize the change.</p><h2>Impact</h2><h3>Backend</h3><p>API details.</p><h3>Frontend</h3><p>UI details.</p>'
     );
   });
 });
