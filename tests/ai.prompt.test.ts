@@ -31,12 +31,16 @@ describe('loadSystemPrompt', () => {
     const shortPrompt = loadSystemPrompt('qa', true);
 
     expect(fullPrompt).toContain('REPOSITORY CONTEXT (IF PROVIDED)');
-    expect(fullPrompt).toContain('PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)');
+    expect(
+      fullPrompt.includes('PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)') ||
+      fullPrompt.includes('SUMMARY & IMPACT (DEPTH REQUIREMENTS)')
+    ).toBe(true);
     expect(fullPrompt).toContain('Before producing the final answer, think privately');
 
     expect(shortPrompt.length).toBeLessThan(fullPrompt.length);
     expect(shortPrompt).not.toContain('REPOSITORY CONTEXT (IF PROVIDED)');
     expect(shortPrompt).not.toContain('PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)');
+    expect(shortPrompt).not.toContain('SUMMARY & IMPACT (DEPTH REQUIREMENTS)');
     expect(shortPrompt).not.toContain('Before producing the final answer, think privately');
     expect(shortPrompt).toContain('HTML STRUCTURE REQUIREMENT');
     expect(shortPrompt).toContain('OUTPUT FORMAT & CONSTRAINTS');

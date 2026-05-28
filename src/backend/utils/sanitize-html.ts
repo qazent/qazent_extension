@@ -64,8 +64,12 @@ export function sanitizeHTML(html: string, context?: SanitizeHTMLContext): strin
 
   const normalized = stripControlCharacters(html);
   const sanitized = sanitizeHtml(normalized, SANITIZE_OPTIONS).trim();
+  const normalizedHeadings = sanitized.replace(
+    /<(h[2-4])>\s*Purpose\s*<\/\1>/gi,
+    '<$1>Summary</$1>'
+  );
 
-  if (sanitized !== html.trim()) {
+  if (normalizedHeadings !== html.trim()) {
     logger.warn('HTML sanitization modified content', {
       source: context?.source ?? 'unknown',
       prId: context?.prId,
@@ -73,11 +77,11 @@ export function sanitizeHTML(html: string, context?: SanitizeHTMLContext): strin
       workItemId: context?.workItemId,
       originalLength: html.length,
       normalizedLength: normalized.length,
-      sanitizedLength: sanitized.length,
-      removedCharactersEstimate: Math.max(0, normalized.length - sanitized.length),
+      sanitizedLength: normalizedHeadings.length,
+      removedCharactersEstimate: Math.max(0, normalized.length - normalizedHeadings.length),
       controlCharactersRemoved: html.length - normalized.length,
     });
   }
 
-  return sanitized;
+  return normalizedHeadings;
 }

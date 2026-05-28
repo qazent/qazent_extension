@@ -85,6 +85,7 @@ const OPTIONAL_SHORT_PROMPT_HEADINGS = [
   'Before producing the final answer, think privately and follow this reasoning process:',
   'REPOSITORY CONTEXT (IF PROVIDED)',
   'PURPOSE & SCOPE OF CHANGE (DEPTH REQUIREMENTS)',
+  'SUMMARY & IMPACT (DEPTH REQUIREMENTS)',
 ] as const;
 
 function stripPromptSection(prompt: string, heading: string): string {
@@ -725,20 +726,24 @@ function findNextH2Index(html: string, startIndex: number): number {
 }
 
 /**
- * Extracts everything from <h2>Purpose</h2> through the entire
- * <h2>Scope of Change</h2> section, including all text under both headers.
+ * Extracts everything from <h2>Summary</h2> through the entire
+ * <h2>Impact</h2> section, including all text under both headers.
  * 
  * In JavaScript and TypeScript, indexOf() returns -1 when the substring is not found in the string. 
- * “If the <h2>Purpose</h2> header does not exist, return an empty string.”
+ * “If the <h2>Summary</h2> header does not exist, return an empty string.”
  * 
  */
 export function extractPurposeAndScope(html: string): string {
   const headings = extractHtmlHeadings(html);
-  const purposeIndex = headings.findIndex((heading) => heading.normalizedTitle === 'summary');
+  const purposeIndex = headings.findIndex(
+    (heading) => heading.normalizedTitle === 'summary' || heading.normalizedTitle === 'purpose'
+  );
   if (purposeIndex === -1) return '';
 
   const scopeIndex = headings.findIndex(
-    (heading, index) => index > purposeIndex && heading.normalizedTitle === 'impact'
+    (heading, index) =>
+      index > purposeIndex &&
+      (heading.normalizedTitle === 'impact' || heading.normalizedTitle === 'scope of change')
   );
 
   if (scopeIndex === -1) {
@@ -806,6 +811,7 @@ export async function generateTestCases(
         compressionSummary: COMPRESSION_SUMMARY,
         sectionsRemoved: [...sectionsRemoved],
       });
+      const thinkingLevelHigh = (ThinkingLevel as unknown as { HIGH?: unknown } | undefined)?.HIGH ?? 'HIGH';
 
 
       // Generate content using new SDK API
@@ -819,7 +825,7 @@ export async function generateTestCases(
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           thinkingConfig: {
             includeThoughts: true,
-            thinkingLevel: ThinkingLevel.HIGH
+            thinkingLevel: thinkingLevelHigh as ThinkingLevel
           },
           responseMimeType: 'application/json',
           responseSchema: AI_RESPONSE_SCHEMA
