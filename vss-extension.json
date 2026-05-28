@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "pr-assistant-extension-qazent",
   "name": "PR Assistant",
-  "version": "4.1.1",
+  "version": "4.1.3",
   "public": true,
   "publisher": "QAZent",
   "description": "AI-powered Azure DevOps PR analysis: structured test cases or code reviews from real diffs, with work items, PR comments, and custom context.",
