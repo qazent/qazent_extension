@@ -1,5 +1,6 @@
 import sanitizeHtml, { type IOptions } from 'sanitize-html';
 import * as logger from './logger';
+import { repairHtmlCodeBlocks } from './repair-html';
 
 /**
  * Only allow the formatting our generated descriptions and PR summaries need.
@@ -62,7 +63,11 @@ function stripControlCharacters(value: string): string {
 export function sanitizeHTML(html: string, context?: SanitizeHTMLContext): string {
   if (!html) return '';
 
-  const normalized = stripControlCharacters(html);
+  // Pre-process before sanitizing: escape <pre><code> contents and balance the
+  // code-block wrappers so malformed AI output renders correctly instead of
+  // leaking raw markup or swallowing the rest of the document.
+  const repaired = repairHtmlCodeBlocks(html);
+  const normalized = stripControlCharacters(repaired);
   const sanitized = sanitizeHtml(normalized, SANITIZE_OPTIONS).trim();
   const normalizedHeadings = sanitized.replace(
     /<(h[2-4])>\s*Purpose\s*<\/\1>/gi,
