@@ -925,53 +925,29 @@ export async function generateTestCases(
         throw validationErr;
       }
 
-      // Validate response completeness using flexible heading detection to avoid
-      // rejecting valid AI output for harmless formatting differences.
+      // Publish every parseable response (non-empty title + htmlDescription already
+      // guaranteed by validateTaskOutput). The completeness heuristics below are
+      // advisory only: we log when output looks sparse but never reject it, because
+      // mode-specific prompts (e.g. deep-review) legitimately emit few sections.
       const htmlLength = taskOutput.htmlDescription.length;
       const headings = extractHtmlHeadings(taskOutput.htmlDescription);
       const sectionTitlesFound = headings.map((heading) => heading.title);
       const hasAutomationNotes = headings.some((heading) => /automation\s*notes/i.test(heading.normalizedTitle));
       const sectionCount = headings.length;
-      const MIN_HTML_LENGTH = 800;
-      const STRONG_HTML_LENGTH = 2000;
 
-      const useRelaxedValidation = attempt >= 2;
-      const minSectionCount = useRelaxedValidation ? 5 : 6;
-      const minSectionCountWithStrongLength = useRelaxedValidation ? 3 : 4;
-      const lengthOk = htmlLength >= MIN_HTML_LENGTH;
-      const sectionsOk =
-        sectionCount >= minSectionCount ||
-        (sectionCount >= minSectionCountWithStrongLength && htmlLength >= STRONG_HTML_LENGTH) ||
-        hasAutomationNotes;
-
-      if (!lengthOk || !sectionsOk) {
-        logger.warn('AI response appears truncated', {
+      const ADVISORY_MIN_HTML_LENGTH = 800;
+      const ADVISORY_MIN_SECTION_COUNT = 3;
+      if (htmlLength < ADVISORY_MIN_HTML_LENGTH || sectionCount < ADVISORY_MIN_SECTION_COUNT) {
+        logger.warn('AI response below completeness heuristics (publishing anyway)', {
           prId: prMetadata.prId,
           htmlLength,
-          minRequired: MIN_HTML_LENGTH,
-          strongLengthThreshold: STRONG_HTML_LENGTH,
-          lengthOk,
-          sectionsOk,
-          hasAutomationNotes,
+          advisoryMinHtmlLength: ADVISORY_MIN_HTML_LENGTH,
           sectionCount,
-          minSectionCount,
-          minSectionCountWithStrongLength,
-          useRelaxedValidation,
+          advisoryMinSectionCount: ADVISORY_MIN_SECTION_COUNT,
+          hasAutomationNotes,
           sectionTitlesFound,
           htmlPreviewFirst200: taskOutput.htmlDescription.substring(0, 200),
           htmlPreviewLast200: taskOutput.htmlDescription.substring(Math.max(0, taskOutput.htmlDescription.length - 200)),
-          attempt
-        });
-        throw new Error('AI response truncated - missing sections');
-      }
-
-      if (useRelaxedValidation) {
-        logger.info('Accepted AI response on retry with relaxed section thresholds', {
-          prId: prMetadata.prId,
-          sectionCount,
-          htmlLength,
-          minSectionCount,
-          minSectionCountWithStrongLength,
           attempt
         });
       }

@@ -189,42 +189,26 @@ describe('generateTestCases', () => {
     expect(result.htmlDescription).toContain('<h2>Summary</h2>');
   });
 
-  it('retries with relaxed section thresholds after truncation failure', async () => {
+  it('publishes a sparse response on the first attempt without retrying', async () => {
     const firstAttemptHtml = [
-      '<h3>1. Purpose</h3><p>Initial response is a bit too sparse for first-pass validation.</p>',
+      '<h3>1. Purpose</h3><p>A sparse response is now published as-is.</p>',
       '<h3>2. Scope of Change</h3><p>Only a few sections were generated.</p>',
       '<h3>3. Preconditions</h3><p>Backend is running.</p>',
-      '<h3>4. Test Steps &amp; Expected Results</h3><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>Retry kicks in</td></tr></table>',
+      '<h3>4. Test Steps &amp; Expected Results</h3><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>Published either way</td></tr></table>',
       'x'.repeat(1200),
     ].join('');
 
-    const secondAttemptHtml = [
-      '<h3>1. Purpose</h3><p>Retry returns one additional section.</p>',
-      '<h3>2. Scope of Change</h3><p>Validation accepts this on retry.</p>',
-      '<h3>3. Preconditions</h3><p>Backend is running.</p>',
-      '<h3>4. Test Steps &amp; Expected Results</h3><table><tr><th>Step</th><th>Expected Result</th></tr><tr><td>1</td><td>Retry succeeds</td></tr></table>',
-      '<h3>5. Negative Scenarios</h3><p>Still reject clearly truncated junk.</p>',
-      'x'.repeat(1200),
-    ].join('');
-
-    mockGenerateContent
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          title: 'Test Case: Retry needed',
-          htmlDescription: firstAttemptHtml
-        })
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({
+        title: 'Test Case: Retry needed',
+        htmlDescription: firstAttemptHtml
       })
-      .mockResolvedValueOnce({
-        text: JSON.stringify({
-          title: 'Test Case: Retry succeeds',
-          htmlDescription: secondAttemptHtml
-        })
-      });
+    });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
 
-    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
-    expect(result.title).toBe('Test Case: Retry succeeds');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    expect(result.title).toBe('Test Case: Retry needed');
   });
 
   it('should throw after two failed attempts', async () => {
@@ -404,7 +388,7 @@ describe('generateTestCases', () => {
     expect(result.htmlDescription).toContain('<table border="1" cellspacing="0" cellpadding="5">');
   });
 
-  it('still rejects obviously truncated structured output', async () => {
+  it('publishes a short structured response instead of rejecting it', async () => {
     mockGenerateContent.mockResolvedValue({
       text: JSON.stringify({
         title: 'Test Case: Truncated',
@@ -412,11 +396,13 @@ describe('generateTestCases', () => {
       })
     });
 
-    await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
-      .rejects.toThrow('AI response truncated - missing sections');
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    expect(result.title).toBe('Test Case: Truncated');
   });
 
-  it('does not treat paragraph mentions of automation notes as a valid section', async () => {
+  it('publishes a structurally incomplete response (few sections) instead of rejecting it', async () => {
     const html = [
       '<h2>Summary</h2><p>Refer to the automation notes section for follow-up work.</p>',
       '<p>This output is intentionally long but structurally incomplete.</p>',
@@ -430,8 +416,10 @@ describe('generateTestCases', () => {
       })
     });
 
-    await expect(generateTestCases(mockPRMetadata, mockCodeDiff))
-      .rejects.toThrow('AI response truncated - missing sections');
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    expect(result.title).toBe('Test Case: Paragraph mention only');
   });
 });
 
