@@ -9,17 +9,29 @@ interface GenerateButtonProps {
   isLoading: boolean;
   isDisabled: boolean;
   onClick: () => void;
-  countdown?: number | null;
 }
 
 export const GenerateButton: React.FC<GenerateButtonProps> = ({
   isLoading,
   isDisabled,
-  onClick,
-  countdown
+  onClick
 }) => {
   return (
     <div style={{ marginBottom: '16px', textAlign: 'center' }}>
+      <style>{`
+        @keyframes generatePulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(0.6); }
+        }
+        .generate-pulse-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #FFFFFF;
+          display: inline-block;
+          animation: generatePulse 1s ease-in-out infinite;
+        }
+      `}</style>
       <Button
           appearance="primary"
           disabled={isLoading || isDisabled}
@@ -43,11 +55,12 @@ export const GenerateButton: React.FC<GenerateButtonProps> = ({
             (e.currentTarget as HTMLButtonElement).style.background = '#0078d4';
           }}
         >
-          {isLoading
-            ? (countdown != null && countdown > 0
-                ? `Analyzing... Estimated time remaining: ${countdown}s`
-                : 'Analyzing...')
-            : 'Analyze'}
+          {isLoading ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+              <span className="generate-pulse-dot" />
+              Analyzing...
+            </span>
+          ) : 'Analyze'}
         </Button>
     </div>
   );

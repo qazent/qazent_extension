@@ -84,7 +84,6 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [projectName, setProjectName] = React.useState<string>('');
   const [projectId, setProjectId] = React.useState<string>('');
   const [customContext, setCustomContext] = React.useState<string>('');
-  const [countdown, setCountdown] = React.useState<number | null>(null);
   const [currentStep, setCurrentStep] = React.useState<number | null>(null);
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
@@ -149,31 +148,6 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       setLicenseCheckState('timeout');
     }
   }, [timedOut, licenseCheckState]);
-
-  // Countdown timer: ticks down from 180s while generating, clears on success/error/completion
-  React.useEffect(() => {
-    if (!isGenerating || successMessage !== null || error !== null) {
-      setCountdown(null);
-      return;
-    }
-
-    if (countdown === null) {
-      setCountdown(180); // Start countdown at 180 seconds (3 minutes)
-      return;
-    }
-
-    if (countdown === 0) {
-      setCountdown(null);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setCountdown(prev => prev !== null && prev > 0 ? prev - 1 : prev);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isGenerating, successMessage, error, countdown]);
-
 
   const loadPRContext = async (config: any) => {
     try {
@@ -352,6 +326,11 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         // outputType mode: skip work item creation, post full HTML directly as PR comment
         let fullOutputCommentPosted = false;
         setCompletedSteps(prev => [...prev, 3]);
+
+        setCurrentStep(4);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setCompletedSteps(prev => [...prev, 4]);
+
         setCurrentStep(5);
         try {
           const fullOutputResponse = await backendClient.postPRComment({
@@ -367,9 +346,16 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }
         setCompletedSteps(prev => [...prev, 5]);
 
+        setCurrentStep(6);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setCompletedSteps(prev => [...prev, 6]);
+
+        setCurrentStep(7);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setCompletedSteps(prev => [...prev, 7]);
+        setCurrentStep(null);
 
         // Show success message for outputType mode
-        await AIActivityFeed({currentStep: null, completedSteps: completedSteps});
         setSuccessMessage({
           text: fullOutputCommentPosted
             ? 'Analysis posted on the pull request'
@@ -436,8 +422,13 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           setCompletedSteps(prev => [...prev, 5]);
         }
         
+        setCurrentStep(6);
+        await new Promise(resolve => setTimeout(resolve, 400));
         setCompletedSteps(prev => [...prev, 6]);
-        console.log('Completed steps:', completedSteps);
+
+        setCurrentStep(7);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        setCompletedSteps(prev => [...prev, 7]);
 
         // Step 7: Show success message
         setCurrentStep(null);
@@ -683,7 +674,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       >
         <Radio value="qa" label="QA Mode" />
         <Radio value="review" label="Code Review Mode" />
-        <Radio value="deep-review" label="Deep Technical Review Mode (more comprehensive)" />
+        <Radio value="deep-review" label="Deep Technical Review Mode" />
       </RadioGroup>
     </div>
 
@@ -707,7 +698,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       >
         <Radio
           value="summary"
-          label="Post full output as a work item on the PR"
+          label="Post full output as a work item with a link to the PR"
         />
 
         <Radio
@@ -739,7 +730,6 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           isLoading={isGenerating}
           isDisabled={!prData}
           onClick={handleGenerateTests}
-          countdown={countdown}
         />
       </div>
         </>

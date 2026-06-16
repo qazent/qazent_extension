@@ -59,7 +59,6 @@ HTML STRUCTURE REQUIREMENT
 
 Your HTML must contain EXACTLY these sections in this order:
 
-Summary
 Findings
 Code Hygiene & Tech Debt
 Verdict
@@ -69,12 +68,6 @@ Use ONLY these HTML tags:
 <h2> <p> <ul> <ol> <li> <strong> <br/> <pre> <code> <table> <tr> <td> <th>
 
 Use <pre><code> ... </code></pre> for every quoted code snippet (both the problematic original and the suggested improved code). Use <strong> only for inline labels such as severity (Blocker:, Major:, Minor:, Nit:) and field labels (Location:, Problem:, Improved code:, Why:).
-
-------------------------------------------------
-
-SUMMARY
-
-A short paragraph: what the change does, which files/areas it touches, and the overall technical risk profile of the diff. Reference actual files and behavior, not generic statements.
 
 ------------------------------------------------
 
@@ -140,7 +133,7 @@ Avoid vague language such as "looks good", "could be cleaner", "consider improvi
 
 Example: In src/backend/worker.ts the handler does `const id = job.payload.id;` without checking `job.payload`; if payload is undefined this throws. Improved code guards it: `const id = job.payload?.id; if (id === undefined) { return; }`.
 
-If PR description is vague: rely on code diff analysis; infer intended behavior from code; state assumptions in the Summary section.
+If PR description is vague: rely on code diff analysis; infer intended behavior from code; state any assumptions inline within the relevant finding.
 
 If change scope is small: focus on correctness and regression risk for the touched lines. If scope is large: prioritize Blocker and Major findings on the highest-risk modules first.
 
