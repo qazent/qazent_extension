@@ -637,12 +637,12 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       // Validate optional `mode` field. Default to 'qa' for backward compatibility with
       // clients that don't yet send the new flag.
       const rawMode = payload.mode;
-      let mode: 'qa' | 'review' = 'qa';
+      let mode: 'qa' | 'review' | 'deep-review' = 'review';
       if (rawMode !== undefined && rawMode !== null && rawMode !== '') {
-        if (typeof rawMode !== 'string' || (rawMode !== 'qa' && rawMode !== 'review')) {
+        if (typeof rawMode !== 'string' || (rawMode !== 'qa' && rawMode !== 'review' && rawMode !== 'deep-review')) {
           const errorResponse: ErrorResponse = {
             error: 'Invalid mode',
-            details: `mode must be one of: 'qa', 'review' (got: ${JSON.stringify(rawMode)})`
+            details: `mode must be one of: 'qa', 'review', 'deep-review' (got: ${JSON.stringify(rawMode)})`
           };
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(errorResponse));
@@ -1315,10 +1315,11 @@ function startServer(): void {
   // Azure DevOps connections created per-request using user's OAuth token
   // No global connection initialization needed
 
-  // Load AI system prompts (QA + Review) so a missing file fails fast at startup.
+  // Load AI system prompts (QA + Review + Deep Review) so a missing file fails fast at startup.
   try {
     ai.loadSystemPrompt('qa');
     ai.loadSystemPrompt('review');
+    ai.loadSystemPrompt('deep-review');
   } catch (error) {
     logger.error('Failed to load system prompt', { error: String(error) });
     console.error('FATAL: Failed to load system prompt');

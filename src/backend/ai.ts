@@ -66,16 +66,18 @@ const AI_RESPONSE_SCHEMA = {
 /** let parsed: Partial<GeneratedTestCase>;
 */
 
-export type PromptMode = 'qa' | 'review';
+export type PromptMode = 'qa' | 'review' | 'deep-review';
 
 const PROMPT_FILES: Record<PromptMode, string> = {
   qa: 'system-prompt.txt',
   review: 'system-prompt-review.txt',
+  'deep-review': 'system-prompt-deep-review.txt',
 };
 
 const systemPromptCache: Record<PromptMode, string | null> = {
   qa: null,
   review: null,
+  'deep-review': null,
 };
 
 let genAI: GoogleGenAI | null = null;

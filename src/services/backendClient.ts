@@ -207,7 +207,7 @@ export async function generateTestCases(
   repositoryId: string,
   backendUrl: string,
   customContext: string | undefined,
-  mode: 'qa' | 'review'
+  mode: 'qa' | 'review' | 'deep-review' 
 ): Promise<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }> {
   const url = buildUrl(backendUrl, '/generate-tests');
 

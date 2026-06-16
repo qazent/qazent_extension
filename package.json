@@ -1,5 +1,5 @@
 {
-  "version": "3.1.16",
+  "version": "4.5.0",
   "id": "pr-assistant-extension-qazent",
   "name": "azure-test-extension",
   "public": true,
@@ -18,7 +18,7 @@
     "build": "npm run build:extension && npm run build:backend",
     "copy:extension-assets": "cpx \"*.md\" dist/ && cpx \"icon.png\" dist/ && cpx \"vss-extension.json\" dist/ && cpx \"public/*.png\" dist/public/ && cpx \"public/*.gif\" dist/public/ && cpx \"public/workflow/**/*\" dist/public/workflow/",
     "build:extension": "webpack --config webpack.config.js && npm run copy:extension-assets",
-    "build:backend": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist/ && cpx system-prompt.txt dist/backend/ && cpx system-prompt-review.txt dist/ && cpx system-prompt-review.txt dist/backend/",
+    "build:backend": "tsc -p tsconfig.backend.json && cpx system-prompt.txt dist/ && cpx system-prompt.txt dist/backend/ && cpx system-prompt-review.txt dist/ && cpx system-prompt-review.txt dist/backend/ && cpx system-prompt-deep-review.txt dist/ && cpx system-prompt-deep-review.txt dist/backend/",
     "dev:extension": "webpack --config webpack.config.js --mode development --watch",
     "patch:marketplace-manifests": "powershell -ExecutionPolicy Bypass -File scripts/patch-marketplace-manifests.ps1 -VsixDirectory ./output -VsixPrefix QAZent.pr-assistant-extension-qazent- -SourceManifestPath ./dist/vss-extension.json",
     "package:extension": "tfx extension create --root dist --manifest-globs vss-extension.json --output-path ./output && npm run patch:marketplace-manifests",

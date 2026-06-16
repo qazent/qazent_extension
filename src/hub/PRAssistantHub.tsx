@@ -89,9 +89,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
   const [outputType, setOutputType] = React.useState<boolean>(false);
-  const [mode, setMode] = React.useState<'qa' | 'review'>('qa');
-  // --- POST PR LABEL VAULTED ---
-  // const [addLabelToPR, setAddLabelToPR] = React.useState<boolean>(true);
+  const [mode, setMode] = React.useState<'qa' | 'review' | 'deep-review'>('qa');
 
 
   React.useEffect(() => {
@@ -680,11 +678,12 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       <RadioGroup
         layout="horizontal"
         value={mode}
-        onChange={(_e, data) => setMode(data.value as 'qa' | 'review')}
+        onChange={(_e, data) => setMode(data.value as 'qa' | 'review' | 'deep-review')}
         disabled={isGenerating}
       >
         <Radio value="qa" label="QA Mode" />
         <Radio value="review" label="Code Review Mode" />
+        <Radio value="deep-review" label="Deep Technical Review Mode (more comprehensive)" />
       </RadioGroup>
     </div>
 
@@ -708,12 +707,12 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       >
         <Radio
           value="summary"
-          label="Create a work item and post a summary comment on the PR (default)"
+          label="Post full output as a work item on the PR"
         />
 
         <Radio
           value="full"
-          label="Skip work item — post full output as a PR comment only (cleaner output)"
+          label="Post full output as a comment on the PR"
         />
       </RadioGroup>
     </div>

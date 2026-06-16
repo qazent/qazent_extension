@@ -335,6 +335,7 @@ export async function startWorker(): Promise<void> {
   validateQueueEnvironment();
   ai.loadSystemPrompt('qa');
   ai.loadSystemPrompt('review');
+  ai.loadSystemPrompt('deep-review');
 
   process.on('SIGINT', () => requestShutdown('SIGINT'));
   process.on('SIGTERM', () => requestShutdown('SIGTERM'));
