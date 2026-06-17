@@ -27,6 +27,18 @@ const CODE_OPEN_REGEX = /^\s*<code\b[^>]*>/i;
  */
 const CLOSER_REGEX = /<\/code>\s*<\/pre>|<\/pre>|<\/code>/i;
 
+/** Matches HTML break tags (<br>, <br/>, <br />) in any casing. */
+const BR_TAG_REGEX = /<br\s*\/?>/gi;
+
+/**
+ * Convert break tags to real newlines. Inside a <pre> block newlines already
+ * render as line breaks, so a model-emitted <br/> is redundant; without this it
+ * would be escaped to visible `<br/>` text by escapeCodeContent.
+ */
+function convertBreaksToNewlines(content: string): string {
+  return content.replace(BR_TAG_REGEX, '\n');
+}
+
 /**
  * Escape the textual contents of a code block so raw `<`, `>`, and `&` render
  * literally instead of being parsed as markup. Existing entities (e.g. `&gt;`)
@@ -76,11 +88,11 @@ export function repairHtmlCodeBlocks(html: string): string {
     if (!closer || closer.index === undefined) {
       // Unclosed block: escape the remainder and close it. There is no further
       // structured content to lose because nothing closed the block.
-      out += escapeCodeContent(after) + closeTag;
+      out += escapeCodeContent(convertBreaksToNewlines(after)) + closeTag;
       break;
     }
 
-    out += escapeCodeContent(after.slice(0, closer.index)) + closeTag;
+    out += escapeCodeContent(convertBreaksToNewlines(after.slice(0, closer.index))) + closeTag;
     rest = after.slice(closer.index + closer[0].length);
   }
 

@@ -81,4 +81,23 @@ describe('repairHtmlCodeBlocks', () => {
     const html = '<pre class="x"><code data-lang="cpp">a < b</code></pre>';
     expect(repairHtmlCodeBlocks(html)).toBe('<pre><code>a &lt; b</code></pre>');
   });
+
+  it('converts <br/>, <br>, and <br /> inside a code block to newlines', () => {
+    const html = '<pre><code>a();<br/>b();<br>c();<br />d();</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe('<pre><code>a();\nb();\nc();\nd();</code></pre>');
+  });
+
+  it('escapes raw markup while converting breaks in the same code block', () => {
+    const html = '<pre><code>vector<int> v;<br/>v.push_back(1);</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe(
+      '<pre><code>vector&lt;int&gt; v;\nv.push_back(1);</code></pre>'
+    );
+  });
+
+  it('leaves <br/> outside code blocks intact', () => {
+    const html = '<p>line one<br/>line two</p><pre><code>a();<br/>b();</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe(
+      '<p>line one<br/>line two</p><pre><code>a();\nb();</code></pre>'
+    );
+  });
 });
