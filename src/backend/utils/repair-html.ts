@@ -46,7 +46,10 @@ function convertBreaksToNewlines(content: string): string {
  */
 function escapeCodeContent(content: string): string {
   return content
-    .replace(/&(?!(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);)/gi, '&amp;')
+    .replace(
+      /&(?!(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);)/gi,
+      '&amp;',
+    )
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
@@ -72,9 +75,10 @@ export function repairHtmlCodeBlocks(html: string): string {
     out += rest.slice(0, open.index);
     let after = rest.slice(open.index + open[0].length);
 
+    // Normalize <pre ...> to plain <pre>.
     out += '<pre>';
 
-    // Preserve an immediate <code> wrapper if present.
+    // Preserve an immediate <code> wrapper if present (normalized).
     const codeOpen = after.match(CODE_OPEN_REGEX);
     const hasCode = Boolean(codeOpen);
     if (codeOpen) {
@@ -92,7 +96,11 @@ export function repairHtmlCodeBlocks(html: string): string {
       break;
     }
 
-    out += escapeCodeContent(convertBreaksToNewlines(after.slice(0, closer.index))) + closeTag;
+    out +=
+      escapeCodeContent(
+        convertBreaksToNewlines(after.slice(0, closer.index)),
+      ) + closeTag;
+
     rest = after.slice(closer.index + closer[0].length);
   }
 
