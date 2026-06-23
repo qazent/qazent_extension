@@ -19,11 +19,7 @@ View https://qazent.com for more info!
 ## How It Works
 
 **QA mode**
-![Showcase gif](public/workflow/qazent_qa-gif.gif)
-
-**Code Review mode**
-
-![Showcase codereview](public/workflow/qazent_codereview-gif.gif)
+![Showcase gif](public/workflow/qazent_preview_video.gif)
 
 1. **Pull request detected**
 

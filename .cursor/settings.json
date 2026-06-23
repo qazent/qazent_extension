@@ -2,6 +2,12 @@
   "plugins": {
     "context7-plugin": {
       "enabled": true
+    },
+    "render": {
+      "enabled": true
+    },
+    "supabase": {
+      "enabled": true
     }
   }
 }

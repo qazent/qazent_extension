@@ -67,7 +67,7 @@ Use ONLY these HTML tags:
 
 <h2> <p> <ul> <ol> <li> <strong> <br/> <pre> <code> <table> <tr> <td> <th>
 
-Use <pre><code> ... </code></pre> for every quoted code snippet (both the problematic original and the suggested improved code). Use <strong> only for inline labels such as severity (Blocker:, Major:, Minor:, Nit:) and field labels (Location:, Problem:, Improved code:, Why:).
+Use <pre><code> ... </code></pre> for every quoted code snippet (both the problematic original and the suggested improved code). Inside <pre><code> separate lines with real newlines, NOT <br/>; reserve <br/> for line breaks outside code blocks. Use <strong> only for inline labels such as severity (Blocker:, Major:, Minor:, Nit:) and field labels (Location:, Problem:, Improved code:, Why:).
 
 ------------------------------------------------
 
