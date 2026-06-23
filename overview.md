@@ -27,7 +27,7 @@ View https://qazent.com for more info!
 
    ![Code Diff](public/hero-preview.png)
 
-   ![Analyze PR tab](public/workflow/pr-tab-05-26.png)
+   ![Analyze PR tab](public/workflow/overview-pr.png)
 
 2. **Choose QA mode or Code Review mode**
 
