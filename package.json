@@ -42,7 +42,7 @@
     "agile"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
     "@fluentui/react-combobox": "^9.15.0",
     "@fluentui/react-components": "^9.73.0",
