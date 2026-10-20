@@ -58,6 +58,15 @@ describe('sanitizeHTML', () => {
     );
   });
 
+  it('keeps suggested code readable and relatively indented inside pre/code', () => {
+    const input =
+      '<p>Add a null check.</p><p><strong>Suggested code:</strong></p><pre><code>    if (!item.filament_preset)\n        continue;</code></pre>';
+
+    expect(sanitizeHTML(input)).toBe(
+      '<p>Add a null check.</p><p><strong>Suggested code:</strong></p><pre><code>if (!item.filament_preset)\n    continue;</code></pre>'
+    );
+  });
+
   it('includes source metadata in sanitization warnings', () => {
     sanitizeHTML('<p onclick="alert(1)">Scope</p>', {
       source: 'ado.postPRComment',

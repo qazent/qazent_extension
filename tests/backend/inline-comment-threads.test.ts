@@ -2,10 +2,13 @@
  * @jest-environment node
  */
 
+import { generateUnifiedDiff } from '../../src/backend/ado-client';
 import { CodeDiff } from '../../src/backend/types';
 import {
+  applySuggestedCode,
   buildPullRequestThreadContext,
   buildThreadContext,
+  getLineTextFromUnifiedDiff,
   resolveInlineCommentThreads,
 } from '../../src/backend/inline-comment-threads';
 
@@ -68,6 +71,58 @@ describe('buildThreadContext', () => {
       rightFileEnd: null,
       rightFileStart: null,
     });
+  });
+
+  it('highlights an explicit character span like the ADO sample request', () => {
+    expect(
+      buildThreadContext({
+        filePath: '/new_feature.cpp',
+        line: 5,
+        side: 'right',
+        startOffset: 1,
+        endOffset: 13,
+      })
+    ).toEqual({
+      filePath: '/new_feature.cpp',
+      leftFileEnd: null,
+      leftFileStart: null,
+      rightFileEnd: { line: 5, offset: 13 },
+      rightFileStart: { line: 5, offset: 1 },
+    });
+  });
+});
+
+describe('getLineTextFromUnifiedDiff', () => {
+  const oldContent = ['keep-a', 'keep-b', 'keep-c'].join('\n');
+  const newContent = ['keep-a', '    filament_preset = item.filament_preset;', 'keep-b', 'keep-c'].join('\n');
+  const { diffContent } = generateUnifiedDiff('src/edited.ts', oldContent, newContent);
+
+  it('reads the new-file line that a right-side comment should highlight', () => {
+    expect(getLineTextFromUnifiedDiff(diffContent, 2, 'right')).toBe(
+      '    filament_preset = item.filament_preset;'
+    );
+  });
+
+  it('reads the old-file line that a left-side comment should highlight', () => {
+    expect(getLineTextFromUnifiedDiff(diffContent, 2, 'left')).toBe('keep-b');
+  });
+});
+
+describe('applySuggestedCode', () => {
+  it('appends a suggested replacement as a pre/code block', () => {
+    expect(
+      applySuggestedCode('<p>Missing null check before <code>filament_preset</code>.</p>', {
+        suggestedCode: '    if (!item.filament_preset)\n        continue;',
+      })
+    ).toBe(
+      '<p>Missing null check before <code>filament_preset</code>.</p><p><strong>Suggested code:</strong></p><pre><code>    if (!item.filament_preset)\n        continue;</code></pre>'
+    );
+  });
+
+  it('does not duplicate an existing suggested-code section', () => {
+    const html =
+      '<p>Missing null check.</p><p><strong>Suggested code:</strong></p><pre><code>if (!x) continue;</code></pre>';
+    expect(applySuggestedCode(html, { suggestedCode: 'if (!x) continue;' })).toBe(html);
   });
 });
 
@@ -205,6 +260,161 @@ describe('resolveInlineCommentThreads', () => {
     );
     expect(result.skippedInlineComments).toEqual([]);
     expect(result.inlineComments).toHaveLength(1);
+  });
+
+  it('highlights the non-whitespace span of the target diff line', () => {
+    const oldContent = ['keep-a', 'keep-b', 'keep-c'].join('\n');
+    const newContent = ['keep-a', '    filament_preset = item.filament_preset;', 'keep-b', 'keep-c'].join('\n');
+    const { diffContent } = generateUnifiedDiff('/src/edited.ts', oldContent, newContent);
+    const lineText = '    filament_preset = item.filament_preset;';
+
+    const result = resolveInlineCommentThreads(
+      [{ filePath: '/src/edited.ts', line: 2, side: 'right', contentHtml: '<p>Use the selected filament</p>' }],
+      makeDiff({
+        changes: [
+          {
+            filePath: '/src/edited.ts',
+            changeType: 'edit',
+            linesAdded: 1,
+            linesDeleted: 0,
+            diffContent,
+            changeTrackingId: 7,
+            oldLineCount: 3,
+            newLineCount: 4,
+          },
+        ],
+      })
+    );
+
+    expect(result.inlineComments[0].threadContext.rightFileStart).toEqual({
+      line: 2,
+      offset: lineText.search(/\S/) + 1,
+    });
+    expect(result.inlineComments[0].threadContext.rightFileEnd).toEqual({
+      line: 2,
+      offset: lineText.length,
+    });
+  });
+
+  it('highlights inline code even when a suggested pre/code block is present', () => {
+    const oldContent = ['keep-a', 'keep-b'].join('\n');
+    const newContent = ['keep-a', '    filament_preset = item.filament_preset;'].join('\n');
+    const { diffContent } = generateUnifiedDiff('/src/edited.ts', oldContent, newContent);
+    const lineText = '    filament_preset = item.filament_preset;';
+    const snippet = 'filament_preset';
+
+    const result = resolveInlineCommentThreads(
+      [
+        {
+          filePath: '/src/edited.ts',
+          line: 2,
+          side: 'right',
+          contentHtml:
+            '<p>Null check <code>filament_preset</code></p><p><strong>Suggested code:</strong></p><pre><code>if (!item.filament_preset)\n    continue;</code></pre>',
+        },
+      ],
+      makeDiff({
+        changes: [
+          {
+            filePath: '/src/edited.ts',
+            changeType: 'edit',
+            linesAdded: 1,
+            linesDeleted: 0,
+            diffContent,
+            changeTrackingId: 7,
+            oldLineCount: 2,
+            newLineCount: 2,
+          },
+        ],
+      })
+    );
+
+    expect(result.inlineComments[0].threadContext.rightFileStart).toEqual({
+      line: 2,
+      offset: lineText.indexOf(snippet) + 1,
+    });
+    expect(result.inlineComments[0].threadContext.rightFileEnd).toEqual({
+      line: 2,
+      offset: lineText.indexOf(snippet) + snippet.length,
+    });
+  });
+
+  it('highlights a quoted code snippet on the target line', () => {
+    const oldContent = ['keep-a', 'keep-b'].join('\n');
+    const newContent = ['keep-a', '    filament_preset = item.filament_preset;'].join('\n');
+    const { diffContent } = generateUnifiedDiff('/src/edited.ts', oldContent, newContent);
+    const lineText = '    filament_preset = item.filament_preset;';
+    const snippet = 'filament_preset';
+
+    const result = resolveInlineCommentThreads(
+      [
+        {
+          filePath: '/src/edited.ts',
+          line: 2,
+          side: 'right',
+          contentHtml: '<p>Null check <code>filament_preset</code></p>',
+        },
+      ],
+      makeDiff({
+        changes: [
+          {
+            filePath: '/src/edited.ts',
+            changeType: 'edit',
+            linesAdded: 1,
+            linesDeleted: 0,
+            diffContent,
+            changeTrackingId: 7,
+            oldLineCount: 2,
+            newLineCount: 2,
+          },
+        ],
+      })
+    );
+
+    expect(result.inlineComments[0].threadContext.rightFileStart).toEqual({
+      line: 2,
+      offset: lineText.indexOf(snippet) + 1,
+    });
+    expect(result.inlineComments[0].threadContext.rightFileEnd).toEqual({
+      line: 2,
+      offset: lineText.indexOf(snippet) + snippet.length,
+    });
+  });
+
+  it('uses explicit offset/endOffset from the comment payload when they fit the line', () => {
+    const oldContent = ['int value = 42;'].join('\n');
+    const newContent = ['int value = 42;'].join('\n');
+    const { diffContent } = generateUnifiedDiff('/src/edited.ts', oldContent, newContent);
+
+    const result = resolveInlineCommentThreads(
+      [
+        {
+          filePath: '/src/edited.ts',
+          line: 1,
+          side: 'right',
+          contentHtml: '<p>Should we add a comment about what this value means?</p>',
+          offset: 1,
+          endOffset: 13,
+        },
+      ],
+      makeDiff({
+        changes: [
+          {
+            filePath: '/src/edited.ts',
+            changeType: 'edit',
+            linesAdded: 0,
+            linesDeleted: 0,
+            diffContent,
+            changeTrackingId: 7,
+            oldLineCount: 1,
+            newLineCount: 1,
+          },
+        ],
+      })
+    );
+
+    expect(result.inlineComments[0].threadContext.rightFileStart).toEqual({ line: 1, offset: 1 });
+    expect(result.inlineComments[0].threadContext.rightFileEnd).toEqual({ line: 1, offset: 13 });
   });
 
   it('uses firstComparingIteration from the diff when resolving', () => {

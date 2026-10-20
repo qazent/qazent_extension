@@ -39,6 +39,30 @@ function convertBreaksToNewlines(content: string): string {
   return content.replace(BR_TAG_REGEX, '\n');
 }
 
+const TAB_SIZE = 4;
+
+function expandTabs(value: string): string {
+  return value.replace(/\t/g, ' '.repeat(TAB_SIZE));
+}
+
+export function dedentCodeContent(content: string): string {
+  const lines = expandTabs(content.replace(/\r\n/g, '\n')).split('\n');
+  while (lines.length > 0 && lines[0].trim() === '') {
+    lines.shift();
+  }
+  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+    lines.pop();
+  }
+  const indents = lines
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.match(/^ */)?.[0].length ?? 0);
+  const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
+  if (minIndent <= 0) {
+    return lines.join('\n');
+  }
+  return lines.map((line) => line.slice(Math.min(minIndent, line.length))).join('\n');
+}
+
 /**
  * Escape the textual contents of a code block so raw `<`, `>`, and `&` render
  * literally instead of being parsed as markup. Existing entities (e.g. `&gt;`)
@@ -92,13 +116,13 @@ export function repairHtmlCodeBlocks(html: string): string {
     if (!closer || closer.index === undefined) {
       // Unclosed block: escape the remainder and close it. There is no further
       // structured content to lose because nothing closed the block.
-      out += escapeCodeContent(convertBreaksToNewlines(after)) + closeTag;
+      out += escapeCodeContent(dedentCodeContent(convertBreaksToNewlines(after))) + closeTag;
       break;
     }
 
     out +=
       escapeCodeContent(
-        convertBreaksToNewlines(after.slice(0, closer.index)),
+        dedentCodeContent(convertBreaksToNewlines(after.slice(0, closer.index))),
       ) + closeTag;
 
     rest = after.slice(closer.index + closer[0].length);

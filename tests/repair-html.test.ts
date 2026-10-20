@@ -100,4 +100,25 @@ describe('repairHtmlCodeBlocks', () => {
       '<p>line one<br/>line two</p><pre><code>a();\nb();</code></pre>'
     );
   });
+
+  it('dedents a code block while keeping relative indentation', () => {
+    const html = '<pre><code>    if (x) {\n        return;\n    }</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe(
+      '<pre><code>if (x) {\n    return;\n}</code></pre>'
+    );
+  });
+
+  it('strips a leading blank line before dedenting', () => {
+    const html = '<pre><code>\n        if (!item.filament_preset)\n            continue;</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe(
+      '<pre><code>if (!item.filament_preset)\n    continue;</code></pre>'
+    );
+  });
+
+  it('expands leading tabs so nested code stays aligned', () => {
+    const html = '<pre><code>\tif (x)\n\t\treturn;</code></pre>';
+    expect(repairHtmlCodeBlocks(html)).toBe(
+      '<pre><code>if (x)\n    return;</code></pre>'
+    );
+  });
 });

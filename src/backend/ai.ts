@@ -7,7 +7,12 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
-import { InlineCommentSeverity, parseNumericLine, RawInlineComment } from './inline-comment-threads';
+import {
+  applySuggestedCode,
+  InlineCommentSeverity,
+  parseNumericLine,
+  RawInlineComment,
+} from './inline-comment-threads';
 import { annotateUnifiedDiffWithLineNumbers } from './ado-client';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
@@ -67,11 +72,14 @@ const INLINE_COMMENT_RESPONSE_SCHEMA = {
         properties: {
           filePath: { type: "string" },
           line: { type: "number" },
+          offset: { type: "number" },
+          endOffset: { type: "number" },
           side: { type: "string", enum: ["left", "right"] },
           contentHtml: { type: "string" },
+          suggestedCode: { type: "string" },
           severity: { type: "string", enum: ["Blocker", "Major", "Minor", "Nit"] },
         },
-        required: ["filePath", "line", "side", "contentHtml"],
+        required: ["filePath", "line", "side", "contentHtml", "suggestedCode"],
       },
     },
   },
@@ -833,7 +841,12 @@ function parseInlineComments(parsed: unknown, prMetadata: PRMetadata): RawInline
     if (!item || typeof item !== 'object') {
       continue;
     }
-    const candidate = item as Partial<RawInlineComment> & { line?: unknown };
+    const candidate = item as Partial<RawInlineComment> & {
+      line?: unknown;
+      offset?: unknown;
+      endOffset?: unknown;
+      suggestedCode?: unknown;
+    };
     const line = parseNumericLine(candidate.line);
     if (typeof candidate.filePath !== 'string' || typeof line !== 'number') {
       continue;
@@ -844,23 +857,35 @@ function parseInlineComments(parsed: unknown, prMetadata: PRMetadata): RawInline
     if (typeof candidate.contentHtml !== 'string') {
       continue;
     }
-    const contentHtml = sanitizeHTML(candidate.contentHtml, {
-      source: 'ai.inlineComments',
-      prId: prMetadata.prId,
-      projectName: prMetadata.projectName,
-    });
+    const suggestedCode =
+      typeof candidate.suggestedCode === 'string' && candidate.suggestedCode.trim() !== ''
+        ? candidate.suggestedCode
+        : undefined;
+    const contentHtml = sanitizeHTML(
+      applySuggestedCode(candidate.contentHtml, { suggestedCode }),
+      {
+        source: 'ai.inlineComments',
+        prId: prMetadata.prId,
+        projectName: prMetadata.projectName,
+      }
+    );
     if (!contentHtml) {
       continue;
     }
     const severity = INLINE_COMMENT_SEVERITIES.includes(candidate.severity as InlineCommentSeverity)
       ? (candidate.severity as InlineCommentSeverity)
       : undefined;
+    const offset = parseNumericLine(candidate.offset);
+    const endOffset = parseNumericLine(candidate.endOffset);
     comments.push({
       filePath: candidate.filePath,
       line,
       side: candidate.side,
       contentHtml,
       ...(severity ? { severity } : {}),
+      ...(typeof offset === 'number' && offset >= 0 ? { offset } : {}),
+      ...(typeof endOffset === 'number' && endOffset >= 0 ? { endOffset } : {}),
+      ...(suggestedCode ? { suggestedCode } : {}),
     });
   }
   return comments;
@@ -905,7 +930,7 @@ export async function generateTestCases(
               maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE_INLINE,
               promptLead: 'Comment on specific diff lines for this Pull Request',
               jsonContract:
-                'Return JSON only: { "title": "Inline Review: <short summary>", "htmlDescription": "<encoded HTML>", "inlineComments": [{ "filePath": "src/file.ts", "line": 42, "side": "right", "contentHtml": "<p>finding</p>", "severity": "Major" }] }. line is the annotated new:N (right) or old:N (left) file line number, not a hunk index.',
+                'Return JSON only: { "title": "Inline Review: <short summary>", "htmlDescription": "<encoded HTML>", "inlineComments": [{ "filePath": "src/file.ts", "line": 42, "offset": 1, "endOffset": 13, "side": "right", "contentHtml": "<p>finding</p>", "suggestedCode": "if (!value) {\\n    return;\\n}", "severity": "Major" }] }. line is the annotated new:N (right) or old:N (left) file line number, not a hunk index. offset/endOffset are 1-based character indexes on that file line (first character is 1) and mark the highlighted span. suggestedCode is required for every finding: the exact replacement snippet with real newlines and nested indentation.',
             }
           : undefined
       );

@@ -148,4 +148,77 @@ describe('generateTestCases inline comments mode', () => {
       },
     ]);
   });
+
+  it('always attaches suggested code as a readable pre/code block', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: JSON.stringify({
+        title: 'Inline Review: feature',
+        htmlDescription: html,
+        inlineComments: [
+          {
+            filePath: '/src/feature.ts',
+            line: 5,
+            offset: 1,
+            endOffset: 13,
+            side: 'right',
+            contentHtml: '<p>Missing null check before <code>filament_preset</code>.</p>',
+            suggestedCode: '    if (!item.filament_preset)\n        continue;',
+            severity: 'Major',
+          },
+        ],
+      }),
+    });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff, undefined, 'inline-comments');
+    const schema = mockGenerateContent.mock.calls[0][0].config.responseSchema;
+    const prompt = mockGenerateContent.mock.calls[0][0].contents[0].parts[0].text as string;
+
+    expect(schema.properties.inlineComments.items.properties).toHaveProperty('suggestedCode');
+    expect(prompt).toMatch(/suggestedCode/);
+    expect(result.inlineComments?.[0].contentHtml).toBe(
+      '<p>Missing null check before <code>filament_preset</code>.</p><p><strong>Suggested code:</strong></p><pre><code>if (!item.filament_preset)\n    continue;</code></pre>'
+    );
+    expect(result.inlineComments?.[0].suggestedCode).toBe(
+      '    if (!item.filament_preset)\n        continue;'
+    );
+  });
+
+  it('keeps 1-based highlight offsets from the model payload', async () => {
+    mockGenerateContent.mockResolvedValue({
+      text: JSON.stringify({
+        title: 'Inline Review: feature',
+        htmlDescription: html,
+        inlineComments: [
+          {
+            filePath: '/src/feature.ts',
+            line: 5,
+            offset: 1,
+            endOffset: 13,
+            side: 'right',
+            contentHtml: '<p>Should we add a comment about <code>value</code>?</p>',
+            severity: 'Minor',
+          },
+        ],
+      }),
+    });
+
+    const result = await generateTestCases(mockPRMetadata, mockCodeDiff, undefined, 'inline-comments');
+    const schema = mockGenerateContent.mock.calls[0][0].config.responseSchema;
+    const prompt = mockGenerateContent.mock.calls[0][0].contents[0].parts[0].text as string;
+
+    expect(schema.properties.inlineComments.items.properties).toHaveProperty('offset');
+    expect(schema.properties.inlineComments.items.properties).toHaveProperty('endOffset');
+    expect(prompt).toMatch(/offset/);
+    expect(result.inlineComments).toEqual([
+      {
+        filePath: '/src/feature.ts',
+        line: 5,
+        side: 'right',
+        contentHtml: '<p>Should we add a comment about <code>value</code>?</p>',
+        severity: 'Minor',
+        offset: 1,
+        endOffset: 13,
+      },
+    ]);
+  });
 });

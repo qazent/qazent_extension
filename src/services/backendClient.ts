@@ -207,6 +207,9 @@ export interface InlineCommentPayload {
   side: 'left' | 'right';
   contentHtml: string;
   severity?: 'Blocker' | 'Major' | 'Minor' | 'Nit';
+  offset?: number;
+  endOffset?: number;
+  suggestedCode?: string;
 }
 
 export interface SkippedInlineComment {

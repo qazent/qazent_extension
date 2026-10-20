@@ -12,6 +12,9 @@ export interface RawInlineComment {
   side: InlineCommentSide;
   contentHtml: string;
   severity?: InlineCommentSeverity;
+  offset?: number;
+  endOffset?: number;
+  suggestedCode?: string;
 }
 
 export interface CommentPosition {
@@ -78,20 +81,170 @@ const SEVERITY_RANK: Record<string, number> = {
   Nit: 3,
 };
 
+function stripLineNumberAnnotations(line: string): string {
+  return line.replace(/^(?:old:\d+\s+)?(?:new:\d+\s+)?/, '');
+}
+
+function parseUnifiedBodyLine(line: string): { kind: 'add' | 'del' | 'ctx'; text: string } | null {
+  if (line.startsWith('+++') || line.startsWith('---')) {
+    return null;
+  }
+  if (line.startsWith('+')) {
+    return { kind: 'add', text: line.startsWith('+ ') ? line.slice(2) : line.slice(1) };
+  }
+  if (line.startsWith('-')) {
+    return { kind: 'del', text: line.startsWith('- ') ? line.slice(2) : line.slice(1) };
+  }
+  if (line.startsWith(' ')) {
+    return { kind: 'ctx', text: line.startsWith('  ') ? line.slice(2) : line.slice(1) };
+  }
+  return null;
+}
+
+export function getLineTextFromUnifiedDiff(
+  diffContent: string,
+  line: number,
+  side: InlineCommentSide
+): string | undefined {
+  if (!diffContent || line < 1) {
+    return undefined;
+  }
+
+  let oldLine = 0;
+  let newLine = 0;
+  for (const raw of diffContent.split('\n')) {
+    const body = stripLineNumberAnnotations(raw);
+    const hunk = body.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      oldLine = Number(hunk[1]);
+      newLine = Number(hunk[2]);
+      continue;
+    }
+
+    const parsed = parseUnifiedBodyLine(body);
+    if (!parsed) {
+      continue;
+    }
+    if (parsed.kind === 'add') {
+      if (side === 'right' && newLine === line) {
+        return parsed.text;
+      }
+      newLine += 1;
+      continue;
+    }
+    if (parsed.kind === 'del') {
+      if (side === 'left' && oldLine === line) {
+        return parsed.text;
+      }
+      oldLine += 1;
+      continue;
+    }
+    if ((side === 'left' ? oldLine : newLine) === line) {
+      return parsed.text;
+    }
+    oldLine += 1;
+    newLine += 1;
+  }
+  return undefined;
+}
+
+function firstCodeSnippet(contentHtml: string): string | undefined {
+  const withoutPre = contentHtml.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, '');
+  const match = withoutPre.match(/<code>([\s\S]*?)<\/code>/i);
+  const snippet = match?.[1]?.replace(/<[^>]+>/g, '').trim();
+  return snippet || undefined;
+}
+
+export function applySuggestedCode(
+  contentHtml: string,
+  options?: { suggestedCode?: string }
+): string {
+  const suggestedCode = options?.suggestedCode;
+  if (typeof suggestedCode !== 'string' || suggestedCode.trim() === '') {
+    return contentHtml;
+  }
+  if (/<strong>\s*Suggested code:\s*<\/strong>/i.test(contentHtml)) {
+    return contentHtml;
+  }
+  return `${contentHtml}<p><strong>Suggested code:</strong></p><pre><code>${suggestedCode}</code></pre>`;
+}
+
+function clampCommentOffset(value: number | undefined, fallback: number, maxOffset: number): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    return Math.min(Math.max(1, fallback), maxOffset);
+  }
+  const oneBased = value === 0 ? 1 : value;
+  return Math.min(Math.max(1, oneBased), maxOffset);
+}
+
+export function resolveCommentSpanOffsets({
+  lineText,
+  startOffset,
+  endOffset,
+  contentHtml,
+}: {
+  lineText?: string;
+  startOffset?: number;
+  endOffset?: number;
+  contentHtml?: string;
+}): { start: number; end: number } {
+  const length = lineText?.length ?? 0;
+  const hasExplicit = typeof startOffset === 'number' || typeof endOffset === 'number';
+  if (hasExplicit) {
+    const maxOffset = Math.max(1, length, startOffset ?? 0, endOffset ?? 0);
+    const start = clampCommentOffset(startOffset, 1, maxOffset);
+    const end = clampCommentOffset(endOffset, length || maxOffset, maxOffset);
+    return end < start ? { start, end: start } : { start, end };
+  }
+
+  if (lineText && contentHtml) {
+    const snippet = firstCodeSnippet(contentHtml);
+    if (snippet) {
+      const index = lineText.indexOf(snippet);
+      if (index >= 0) {
+        return { start: index + 1, end: index + snippet.length };
+      }
+    }
+  }
+
+  if (!lineText || length === 0) {
+    return { start: 1, end: 1 };
+  }
+
+  const startIndex = lineText.search(/\S/);
+  if (startIndex < 0) {
+    return { start: 1, end: Math.max(1, length) };
+  }
+  let endIndex = length - 1;
+  while (endIndex > startIndex && /\s/.test(lineText[endIndex] ?? '')) {
+    endIndex -= 1;
+  }
+  return { start: startIndex + 1, end: endIndex + 1 };
+}
+
 export function buildThreadContext({
   filePath,
   line,
   side,
   lineLength,
+  startOffset,
+  endOffset,
 }: {
   filePath: string;
   line: number;
   side: InlineCommentSide;
   lineLength?: number;
+  startOffset?: number;
+  endOffset?: number;
 }): ThreadContext {
-  const offsetEnd = Math.max(1, lineLength ?? 1);
-  const start: CommentPosition = { line, offset: 1 };
-  const end: CommentPosition = { line, offset: offsetEnd };
+  const maxOffset = Math.max(1, lineLength ?? 0, startOffset ?? 0, endOffset ?? 0);
+  const startOffsetResolved = clampCommentOffset(startOffset, 1, maxOffset);
+  const endOffsetResolved = clampCommentOffset(endOffset ?? lineLength, maxOffset, maxOffset);
+  const start: CommentPosition = { line, offset: startOffsetResolved };
+  const end: CommentPosition = {
+    line,
+    offset: Math.max(startOffsetResolved, endOffsetResolved),
+  };
   const adoPath = toAdoThreadFilePath(filePath);
 
   if (side === 'left') {
@@ -149,7 +302,13 @@ export function coerceRawComment(value: unknown): RawInlineComment | null {
   if (!value || typeof value !== 'object') {
     return null;
   }
-  const candidate = value as Partial<RawInlineComment> & { line?: unknown; severity?: unknown };
+  const candidate = value as Partial<RawInlineComment> & {
+    line?: unknown;
+    offset?: unknown;
+    endOffset?: unknown;
+    suggestedCode?: unknown;
+    severity?: unknown;
+  };
   const line = parseNumericLine(candidate.line);
   if (
     typeof candidate.filePath !== 'string' ||
@@ -160,14 +319,23 @@ export function coerceRawComment(value: unknown): RawInlineComment | null {
     return null;
   }
   const severity = candidate.severity;
+  const offset = parseNumericLine(candidate.offset);
+  const endOffset = parseNumericLine(candidate.endOffset);
+  const suggestedCode =
+    typeof candidate.suggestedCode === 'string' && candidate.suggestedCode.trim() !== ''
+      ? candidate.suggestedCode
+      : undefined;
   return {
     filePath: candidate.filePath,
     line,
     side: candidate.side,
-    contentHtml: candidate.contentHtml,
+    contentHtml: applySuggestedCode(candidate.contentHtml, { suggestedCode }),
     ...(severity === 'Blocker' || severity === 'Major' || severity === 'Minor' || severity === 'Nit'
       ? { severity }
       : {}),
+    ...(typeof offset === 'number' && offset >= 0 ? { offset } : {}),
+    ...(typeof endOffset === 'number' && endOffset >= 0 ? { endOffset } : {}),
+    ...(suggestedCode ? { suggestedCode } : {}),
   };
 }
 
@@ -241,6 +409,14 @@ export function resolveInlineCommentThreads(
       continue;
     }
 
+    const lineText = getLineTextFromUnifiedDiff(change.diffContent, comment.line, comment.side);
+    const span = resolveCommentSpanOffsets({
+      lineText,
+      startOffset: comment.offset,
+      endOffset: comment.endOffset,
+      contentHtml: comment.contentHtml,
+    });
+
     ranked.push({
       rank: SEVERITY_RANK[comment.severity ?? ''] ?? 4,
       accepted: comment,
@@ -257,6 +433,9 @@ export function resolveInlineCommentThreads(
           filePath: comment.filePath,
           line: comment.line,
           side: comment.side,
+          lineLength: lineText?.length,
+          startOffset: span.start,
+          endOffset: span.end,
         }),
         pullRequestThreadContext: buildPullRequestThreadContext({
           changeTrackingId: change.changeTrackingId,
