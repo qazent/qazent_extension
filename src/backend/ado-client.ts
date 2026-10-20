@@ -137,6 +137,49 @@ export async function fetchPRCommits(
   }
 }
 
+type DiffOp = { kind: 'eq' | 'del' | 'add'; text: string };
+
+function diffLineOps(oldLines: string[], newLines: string[]): DiffOp[] {
+  const oldCount = oldLines.length;
+  const newCount = newLines.length;
+  const lengths: Uint32Array[] = Array.from({ length: oldCount + 1 }, () => new Uint32Array(newCount + 1));
+
+  for (let oldIndex = oldCount - 1; oldIndex >= 0; oldIndex--) {
+    for (let newIndex = newCount - 1; newIndex >= 0; newIndex--) {
+      lengths[oldIndex][newIndex] =
+        oldLines[oldIndex] === newLines[newIndex]
+          ? lengths[oldIndex + 1][newIndex + 1] + 1
+          : Math.max(lengths[oldIndex + 1][newIndex], lengths[oldIndex][newIndex + 1]);
+    }
+  }
+
+  const ops: DiffOp[] = [];
+  let oldIndex = 0;
+  let newIndex = 0;
+  while (oldIndex < oldCount && newIndex < newCount) {
+    if (oldLines[oldIndex] === newLines[newIndex]) {
+      ops.push({ kind: 'eq', text: oldLines[oldIndex] });
+      oldIndex += 1;
+      newIndex += 1;
+    } else if (lengths[oldIndex + 1][newIndex] >= lengths[oldIndex][newIndex + 1]) {
+      ops.push({ kind: 'del', text: oldLines[oldIndex] });
+      oldIndex += 1;
+    } else {
+      ops.push({ kind: 'add', text: newLines[newIndex] });
+      newIndex += 1;
+    }
+  }
+  while (oldIndex < oldCount) {
+    ops.push({ kind: 'del', text: oldLines[oldIndex] });
+    oldIndex += 1;
+  }
+  while (newIndex < newCount) {
+    ops.push({ kind: 'add', text: newLines[newIndex] });
+    newIndex += 1;
+  }
+  return ops;
+}
+
 /**
  * Generate a unified diff with proper hunks, context, and safe truncation.
  */
@@ -150,9 +193,17 @@ export function generateUnifiedDiff(
   const diffPath = normalizeDiffPath(filePath);
   const oldLines = oldContent.split("\n");
   const newLines = newContent.split("\n");
+  const ops = diffLineOps(oldLines, newLines);
 
   let linesAdded = 0;
   let linesDeleted = 0;
+  for (const op of ops) {
+    if (op.kind === 'add') {
+      linesAdded += 1;
+    } else if (op.kind === 'del') {
+      linesDeleted += 1;
+    }
+  }
 
   const hunks: {
     oldStart: number;
@@ -162,71 +213,98 @@ export function generateUnifiedDiff(
     lines: string[];
   }[] = [];
 
-  let i = 0;
-  let j = 0;
-
-  while (i < oldLines.length || j < newLines.length) {
-    if (oldLines[i] === newLines[j]) {
-      i++;
-      j++;
-      continue;
+  let opIndex = 0;
+  let oldLine = 1;
+  let newLine = 1;
+  while (opIndex < ops.length) {
+    while (opIndex < ops.length && ops[opIndex].kind === 'eq') {
+      oldLine += 1;
+      newLine += 1;
+      opIndex += 1;
+    }
+    if (opIndex >= ops.length) {
+      break;
     }
 
-    // Start of a hunk
-    const hunkStartOld = i;
-    const hunkStartNew = j;
-
-    const hunkLines: string[] = [];
-
-    // Collect changed block
-    while (i < oldLines.length && j < newLines.length && oldLines[i] !== newLines[j]) {
-      hunkLines.push(`- ${oldLines[i]}`);
-      hunkLines.push(`+ ${newLines[j]}`);
-      linesDeleted++;
-      linesAdded++;
-      i++;
-      j++;
+    const changeStart = opIndex;
+    let contextBefore = 0;
+    while (contextBefore < contextLines && changeStart - 1 - contextBefore >= 0 && ops[changeStart - 1 - contextBefore].kind === 'eq') {
+      contextBefore += 1;
     }
 
-    // Handle trailing additions
-    while (j < newLines.length && (i >= oldLines.length)) {
-      hunkLines.push(`+ ${newLines[j]}`);
-      linesAdded++;
-      j++;
+    let changeEnd = changeStart;
+    let lastChange = changeStart;
+    while (changeEnd < ops.length) {
+      if (ops[changeEnd].kind !== 'eq') {
+        lastChange = changeEnd;
+        changeEnd += 1;
+        continue;
+      }
+      let equalRun = 0;
+      while (changeEnd + equalRun < ops.length && ops[changeEnd + equalRun].kind === 'eq') {
+        equalRun += 1;
+      }
+      if (equalRun > contextLines * 2 && lastChange >= changeStart) {
+        break;
+      }
+      changeEnd += equalRun;
     }
 
-    // Handle trailing deletions
-    while (i < oldLines.length && (j >= newLines.length)) {
-      hunkLines.push(`- ${oldLines[i]}`);
-      linesDeleted++;
-      i++;
+    let contextAfter = 0;
+    while (
+      contextAfter < contextLines &&
+      lastChange + 1 + contextAfter < ops.length &&
+      ops[lastChange + 1 + contextAfter].kind === 'eq'
+    ) {
+      contextAfter += 1;
     }
 
-    // Add context lines before
-    const contextBeforeStart = Math.max(0, hunkStartOld - contextLines);
-    const contextBefore = oldLines.slice(contextBeforeStart, hunkStartOld).map(l => `  ${l}`);
-    const newContextBeforeStart = Math.max(0, hunkStartNew - contextLines);
-
-    // Add context lines after
-    const contextAfterEnd = Math.min(oldLines.length, i + contextLines);
-    const contextAfter = oldLines.slice(i, contextAfterEnd).map(l => `  ${l}`);
+    const hunkStart = changeStart - contextBefore;
+    const hunkEnd = lastChange + 1 + contextAfter;
+    const hunkOps = ops.slice(hunkStart, hunkEnd);
+    let oldCount = 0;
+    let newCount = 0;
+    const lines: string[] = [];
+    for (const op of hunkOps) {
+      if (op.kind === 'eq') {
+        lines.push(`  ${op.text}`);
+        oldCount += 1;
+        newCount += 1;
+      } else if (op.kind === 'del') {
+        lines.push(`- ${op.text}`);
+        oldCount += 1;
+      } else {
+        lines.push(`+ ${op.text}`);
+        newCount += 1;
+      }
+    }
 
     hunks.push({
-      oldStart: contextBeforeStart + 1,
-      newStart: newContextBeforeStart + 1,
-      oldCount: contextBefore.length + (i - hunkStartOld) + contextAfter.length,
-      newCount: contextBefore.length + (j - hunkStartNew) + contextAfter.length,
-      lines: [...contextBefore, ...hunkLines, ...contextAfter]
+      oldStart: oldLine - contextBefore,
+      newStart: newLine - contextBefore,
+      oldCount,
+      newCount,
+      lines,
     });
+
+    for (let walk = hunkStart; walk < hunkEnd; walk++) {
+      const op = ops[walk];
+      if (op.kind === 'eq') {
+        oldLine += 1;
+        newLine += 1;
+      } else if (op.kind === 'del') {
+        oldLine += 1;
+      } else {
+        newLine += 1;
+      }
+    }
+    opIndex = hunkEnd;
   }
 
-  // Build final diff
   let diff = `--- a/${diffPath}\n+++ b/${diffPath}\n`;
-
   for (const hunk of hunks) {
     diff += `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@\n`;
     diff += hunk.lines.join("\n") + "\n";
-
     if (diff.length > maxChars) {
       diff = diff.slice(0, maxChars) + `\n... (diff truncated for AI safety)`;
       break;

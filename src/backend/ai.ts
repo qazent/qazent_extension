@@ -20,6 +20,7 @@ import {
   MAX_COMMITS,
   MAX_COMMITS_STRICT,
   MAX_DIFF_LINES_PER_FILE,
+  MAX_DIFF_LINES_PER_FILE_INLINE,
   MAX_DIFF_LINES_PER_FILE_STRICT,
   MAX_FILES_WITH_DIFF,
   MAX_FILES_WITH_DIFF_STRICT,
@@ -427,6 +428,7 @@ function buildUserPromptWithTokenCap(
     annotateLineNumbers?: boolean;
     jsonContract?: string;
     promptLead?: string;
+    maxDiffLinesPerFile?: number;
   }
 ): BuildUserPromptResult {
   let result = buildUserPrompt(prMetadata, codeDiff, customContext, commits, {
@@ -900,6 +902,7 @@ export async function generateTestCases(
         requestInlineComments
           ? {
               annotateLineNumbers: true,
+              maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE_INLINE,
               promptLead: 'Comment on specific diff lines for this Pull Request',
               jsonContract:
                 'Return JSON only: { "title": "Inline Review: <short summary>", "htmlDescription": "<encoded HTML>", "inlineComments": [{ "filePath": "src/file.ts", "line": 42, "side": "right", "contentHtml": "<p>finding</p>", "severity": "Major" }] }. line is the annotated new:N (right) or old:N (left) file line number, not a hunk index.',

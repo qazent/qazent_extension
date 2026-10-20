@@ -7,6 +7,7 @@ export const TARGET_USER_PROMPT_TOKENS = 12000;
 export const MAX_PR_DESCRIPTION_CHARS = 1600;
 export const MAX_REPOSITORY_CONTEXT_CHARS = 4000;
 export const MAX_DIFF_LINES_PER_FILE = 80;
+export const MAX_DIFF_LINES_PER_FILE_INLINE = 320;
 export const MAX_FILES_WITH_DIFF = 32;
 export const MAX_COMMITS = 20;
 export const MAX_COMMIT_MESSAGE_CHARS = 240;
@@ -18,7 +19,7 @@ export const MAX_FILES_WITH_DIFF_STRICT = 20;
 export const MAX_COMMITS_STRICT = 10;
 export const MAX_COMMIT_MESSAGE_CHARS_STRICT = 120;
 
-export const DIFF_MAX_CHARS_PER_FILE = 6000;
+export const DIFF_MAX_CHARS_PER_FILE = 24000;
 export const DIFF_CONTEXT_LINES = 12;
 export const MAX_SYNTHETIC_DIFF_LINES = 120;
 export const MAX_FILES_FOR_AI = 120;

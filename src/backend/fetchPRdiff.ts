@@ -364,6 +364,14 @@ export async function fetchPRDiff(
             diffContent = diff.diffContent;
             linesAdded = diff.linesAdded;
             linesDeleted = diff.linesDeleted;
+            if (diffContent.includes('diff truncated for AI safety')) {
+              logger.warn('Unified diff truncated before prompt construction', {
+                filePath,
+                linesAdded,
+                linesDeleted,
+                diffChars: diffContent.length,
+              });
+            }
           } else if (oldContentMissing && newContentAvailable) {
             changeType = "add";
             newContent = newContentResult.value;
