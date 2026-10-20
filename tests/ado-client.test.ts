@@ -2,7 +2,8 @@
  * Unit tests for Azure DevOps client artifact URI construction
  */
 
-import { buildPRArtifactUri, createTaskWorkItem, postPRComment } from '../src/backend/ado-client';
+import { buildPRArtifactUri, createTaskWorkItem, fetchPRDiffFallback, postPRComment, postPRInlineComments } from '../src/backend/ado-client';
+import { ResolvedInlineCommentThread } from '../src/backend/inline-comment-threads';
 import { PRMetadata } from '../src/backend/types';
 import { describe, it, expect } from '@jest/globals';
 
@@ -277,6 +278,141 @@ describe('Azure DevOps content persistence', () => {
         connection,
       })
     ).rejects.toThrow('Failed to post PR comment: thread create failed');
+  });
+});
+
+function sampleInlineThread(overrides: Partial<ResolvedInlineCommentThread> = {}): ResolvedInlineCommentThread {
+  return {
+    comments: [
+      {
+        parentCommentId: 0,
+        content: '<p onclick="alert(1)">Should we add a comment about what this value means?</p><script>bad()</script>',
+        commentType: 1,
+      },
+    ],
+    status: 1,
+    threadContext: {
+      filePath: '/path/to/file',
+      leftFileEnd: null,
+      leftFileStart: null,
+      rightFileEnd: { line: 5, offset: 13 },
+      rightFileStart: { line: 5, offset: 1 },
+    },
+    pullRequestThreadContext: {
+      changeTrackingId: 1,
+      iterationContext: {
+        firstComparingIteration: 1,
+        secondComparingIteration: 2,
+      },
+    },
+    ...overrides,
+  };
+}
+
+describe('postPRInlineComments', () => {
+  it('posts threads with ADO file/line context and sanitizes HTML', async () => {
+    const createThread = jest.fn().mockResolvedValue({});
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({ createThread }),
+    } as unknown as any;
+
+    const result = await postPRInlineComments({
+      projectName: 'project-name',
+      repositoryId: 'repo-123',
+      prId: 22,
+      connection,
+      inlineComments: [sampleInlineThread()],
+    });
+
+    expect(result).toEqual({ posted: 1, failed: 0 });
+    expect(createThread).toHaveBeenCalledWith(
+      {
+        comments: [
+          {
+            parentCommentId: 0,
+            content: '<p>Should we add a comment about what this value means?</p>',
+            commentType: 1,
+          },
+        ],
+        status: 1,
+        threadContext: {
+          filePath: '/path/to/file',
+          leftFileEnd: null,
+          leftFileStart: null,
+          rightFileEnd: { line: 5, offset: 13 },
+          rightFileStart: { line: 5, offset: 1 },
+        },
+        pullRequestThreadContext: {
+          changeTrackingId: 1,
+          iterationContext: {
+            firstComparingIteration: 1,
+            secondComparingIteration: 2,
+          },
+        },
+      },
+      'repo-123',
+      22,
+      'project-name'
+    );
+  });
+
+  it('continues posting after one thread fails', async () => {
+    const createThread = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({});
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({ createThread }),
+    } as unknown as any;
+
+    const result = await postPRInlineComments({
+      projectName: 'project-name',
+      repositoryId: 'repo-123',
+      prId: 22,
+      connection,
+      inlineComments: [
+        sampleInlineThread(),
+        sampleInlineThread({
+          threadContext: {
+            filePath: '/other.ts',
+            leftFileEnd: null,
+            leftFileStart: null,
+            rightFileEnd: { line: 8, offset: 1 },
+            rightFileStart: { line: 8, offset: 1 },
+          },
+        }),
+      ],
+    });
+
+    expect(result).toEqual({ posted: 1, failed: 1 });
+    expect(createThread).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetchPRDiffFallback iteration metadata', () => {
+  it('stores latestIterationId and changeTrackingId on fallback diffs', async () => {
+    const connection = {
+      getGitApi: jest.fn().mockResolvedValue({
+        getPullRequestIterations: jest.fn().mockResolvedValue([{ id: 1 }, { id: 3 }]),
+        getPullRequestIterationChanges: jest.fn().mockResolvedValue({
+          changeEntries: [
+            { item: { path: '/src/a.ts' }, changeType: 'edit', changeTrackingId: 9 },
+          ],
+        }),
+      }),
+    } as unknown as any;
+
+    const result = await fetchPRDiffFallback('project-name', 'repo-123', 42, connection);
+
+    expect(result.latestIterationId).toBe(3);
+    expect(result.firstComparingIteration).toBe(1);
+    expect(result.changes[0]).toEqual(
+      expect.objectContaining({
+        filePath: '/src/a.ts',
+        changeType: 'edit',
+        changeTrackingId: 9,
+      })
+    );
   });
 });
 

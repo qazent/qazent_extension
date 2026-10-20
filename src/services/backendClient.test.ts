@@ -2,7 +2,7 @@
  * Unit tests for backend client - Custom Context feature
  */
 
-import { generateTestCases } from './backendClient';
+import { generateTestCases, postPRInlineComments } from './backendClient';
 import { afterEach, describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 // ---- Typed fetch mock ----
@@ -195,6 +195,64 @@ Line 3`;
 
       expect(result).toEqual(mockSuccessResponse);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends inline-comments as an exclusive mode', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockSuccessResponse
+      } as any);
+
+      await generateTestCases(123, 'MyProject', 'repo-456', 'http://localhost:3000', undefined, 'inline-comments');
+
+      const callArgs = fetchMock.mock.calls[0] as [string, FetchRequestInit];
+      expect(JSON.parse(callArgs[1].body)).toEqual({
+        prId: 123,
+        projectName: 'MyProject',
+        repositoryId: 'repo-456',
+        mode: 'inline-comments',
+      });
+    });
+  });
+
+  describe('postPRInlineComments', () => {
+    it('posts the resolved thread batch to the backend', async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ posted: 2, failed: 0, skipped: 1 })
+      } as any);
+
+      const inlineComments = [
+        {
+          filePath: '/src/a.ts',
+          line: 4,
+          side: 'right' as const,
+          contentHtml: '<p>Finding</p>',
+          severity: 'Major' as const,
+        },
+      ];
+
+      const result = await postPRInlineComments({
+        prId: 22,
+        projectName: 'MyProject',
+        repositoryId: 'repo-456',
+        connection: 'http://localhost:3000',
+        inlineComments,
+      });
+
+      expect(result).toEqual({ posted: 2, failed: 0, skipped: 1 });
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://localhost:3000/post-pr-inline-comments',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            prId: 22,
+            projectName: 'MyProject',
+            repositoryId: 'repo-456',
+            inlineComments,
+          }),
+        })
+      );
     });
   });
 });

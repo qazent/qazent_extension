@@ -138,7 +138,7 @@ Nothing is changed in your code: PR Assistant only creates work items and commen
 | Output hygiene | `src/backend/utils/repair-html.ts`, `sanitize-html.ts`, `extract-json.ts` | Repairs malformed model output (especially code blocks) and sanitizes HTML before it is persisted. |
 | Redis queue | `src/backend/queue/`, `src/backend/worker/` | Optional durable job pipeline behind `POST /api/queue/pr`, with locking and idempotency. |
 | Licensing | `src/backend/license/` | Lemon Squeezy API and webhooks, hashed license keys, in-memory or Postgres store. |
-| System prompts | `system-prompt.txt`, `system-prompt-review.txt`, `system-prompt-deep-review.txt` | One prompt per mode; copied next to the compiled backend at build time. |
+| System prompts | `system-prompt.txt`, `system-prompt-review.txt`, `system-prompt-deep-review.txt`, `system-prompt-inline-comments.txt` | One prompt per mode; copied next to the compiled backend at build time. |
 
 <details>
 <summary><strong>HTTP API reference (the contract between extension and backend)</strong></summary>
@@ -150,7 +150,7 @@ Unless noted, endpoints expect `Content-Type: application/json`, `Authorization:
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET/HEAD | `/`, `/health` | Public | Liveness: `status`, `uptime`, `timestamp`. |
-| POST | `/generate-tests` | Yes | Body: `prId`, `projectName`, `repositoryId`, `mode` (`qa` / `review` / `deep-review`), optional `customContext` (max 3000 characters). Returns `title`, `htmlDescription`, commit IDs, optional compression report. |
+| POST | `/generate-tests` | Yes | Body: `prId`, `projectName`, `repositoryId`, `mode` (`qa` / `review` / `deep-review` / `inline-comments`), optional `customContext` (max 3000 characters). Returns `title`, `htmlDescription`, commit IDs, optional compression report. Inline-comments mode also returns `inlineComments` and `skippedInlineComments`. |
 | POST | `/create-work-item` | Yes | Creates a Task work item from a generated result and links it to the PR. |
 | POST | `/post-pr-comment` | Yes | Posts a PR comment thread (work item link or full content). |
 | POST | `/api/extract-purpose-scope` | Yes | Extracts the Purpose/Scope section from generated HTML for the summary comment. |
@@ -495,7 +495,7 @@ Security is the reason many teams choose PR Assistant, and it is the reason we a
 | **Generated output** | Written to Azure DevOps as a work item and/or PR comment | Sanitized with `sanitize-html` before it is persisted. |
 | **Logs** | Structured JSON on the API | Operational metadata only; tokens, keys, and full customer code are never logged. |
 
-The extension requests the following Azure DevOps scopes, declared in `vss-extension.json`: `vso.code`, `vso.work_write`, `vso.notification_write`, `vso.hooks_interact`, `vso.threads_full`, and `vso.extension.data_write`. Any change to this list is a user-visible change and is reviewed as such.
+The extension requests the following Azure DevOps scopes, declared in `vss-extension.json`: `vso.code_write`, `vso.work_write`, `vso.notification_write`, `vso.hooks_interact`, `vso.threads_full`, and `vso.extension.data_write`. Any change to this list is a user-visible change and is reviewed as such. `vso.code_write` is required to create pull request review comments on specific diff lines.
 
 ### What contributors must not do
 

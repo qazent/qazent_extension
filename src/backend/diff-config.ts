@@ -23,6 +23,8 @@ export const DIFF_CONTEXT_LINES = 12;
 export const MAX_SYNTHETIC_DIFF_LINES = 120;
 export const MAX_FILES_FOR_AI = 120;
 export const ITERATION_CHANGES_PAGE_SIZE = 200;
+export const MAX_INLINE_COMMENTS = 10;
+export const MAX_INLINE_COMMENT_BATCH = 20;
 
 const SOURCE_FILE_EXTENSIONS = new Set([
   // JavaScript / TypeScript
@@ -213,6 +215,30 @@ export function classifyChangeType(changeType: unknown): DiffChangeType {
 
 export function normalizeDiffPath(filePath: string): string {
   return filePath.replace(/^\/+/, '');
+}
+
+export function toAdoThreadFilePath(filePath: string): string {
+  return `/${normalizeDiffPath(filePath)}`;
+}
+
+export function fileLineCounts(
+  changeType: DiffChangeType,
+  oldContent?: string | null,
+  newContent?: string | null
+): { oldLineCount?: number; newLineCount?: number } {
+  if (changeType === 'add' && typeof newContent === 'string') {
+    return { oldLineCount: 0, newLineCount: countContentLines(newContent) };
+  }
+  if (changeType === 'delete' && typeof oldContent === 'string') {
+    return { oldLineCount: countContentLines(oldContent), newLineCount: 0 };
+  }
+  if (typeof oldContent === 'string' && typeof newContent === 'string') {
+    return {
+      oldLineCount: countContentLines(oldContent),
+      newLineCount: countContentLines(newContent),
+    };
+  }
+  return {};
 }
 
 export function countContentLines(content: string): number {

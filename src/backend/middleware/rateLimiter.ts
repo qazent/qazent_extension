@@ -201,6 +201,16 @@ export const rateLimitPostPRComment = createRateLimiter({
   message: 'Too many PR comment requests.'
 });
 
+/**
+ * Rate limiter for /post-pr-inline-comments
+ * Limit: 20 batch requests per 10 minutes per IP
+ */
+export const rateLimitPostPRInlineComments = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 20,
+  message: 'Too many inline PR comment requests.'
+});
+
 // --- POST PR LABEL VAULTED ---
 // export const rateLimitPostPRLabel = createRateLimiter({
 //   windowMs: 10 * 60 * 1000,

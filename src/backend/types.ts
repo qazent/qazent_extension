@@ -74,6 +74,8 @@ export interface CodeDiff {
   truncatedChanges?: number;
   sourceCommitId?: string;  // Optional for fallback scenarios
   targetCommitId?: string;   // Optional for fallback scenarios
+  latestIterationId?: number;
+  firstComparingIteration?: number;
 }
 
 export type DiffChangeType = 'add' | 'edit' | 'delete';
@@ -87,6 +89,9 @@ export interface DiffChange {
   linesAdded: number;
   linesDeleted: number;
   diffContent: string;
+  changeTrackingId?: number;
+  oldLineCount?: number;
+  newLineCount?: number;
 }
 
 /**

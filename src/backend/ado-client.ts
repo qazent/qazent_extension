@@ -7,6 +7,7 @@ import { GitApi } from 'azure-devops-node-api/GitApi';
 import { WorkItemTrackingApi } from 'azure-devops-node-api/WorkItemTrackingApi';
 import { JsonPatchOperation, Operation } from 'azure-devops-node-api/interfaces/common/VSSInterfaces';
 import { CodeDiff, DiffChange, DiffChangeType, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
+import type { ResolvedInlineCommentThread } from './inline-comment-threads';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import {
@@ -204,16 +205,17 @@ export function generateUnifiedDiff(
     // Add context lines before
     const contextBeforeStart = Math.max(0, hunkStartOld - contextLines);
     const contextBefore = oldLines.slice(contextBeforeStart, hunkStartOld).map(l => `  ${l}`);
+    const newContextBeforeStart = Math.max(0, hunkStartNew - contextLines);
 
     // Add context lines after
     const contextAfterEnd = Math.min(oldLines.length, i + contextLines);
     const contextAfter = oldLines.slice(i, contextAfterEnd).map(l => `  ${l}`);
 
     hunks.push({
-      oldStart: hunkStartOld + 1,
-      newStart: hunkStartNew + 1,
-      oldCount: i - hunkStartOld,
-      newCount: j - hunkStartNew,
+      oldStart: contextBeforeStart + 1,
+      newStart: newContextBeforeStart + 1,
+      oldCount: contextBefore.length + (i - hunkStartOld) + contextAfter.length,
+      newCount: contextBefore.length + (j - hunkStartNew) + contextAfter.length,
       lines: [...contextBefore, ...hunkLines, ...contextAfter]
     });
   }
@@ -232,6 +234,43 @@ export function generateUnifiedDiff(
   }
 
   return { diffContent: diff.trim(), linesAdded, linesDeleted };
+}
+
+export function annotateUnifiedDiffWithLineNumbers(diffContent: string): string {
+  const lines = diffContent.split('\n');
+  let oldLine = 0;
+  let newLine = 0;
+
+  return lines
+    .map((line) => {
+      const hunk = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (hunk) {
+        oldLine = Number(hunk[1]);
+        newLine = Number(hunk[2]);
+        return line;
+      }
+      if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+        return line;
+      }
+      if (line.startsWith('+')) {
+        const annotated = `new:${newLine} ${line}`;
+        newLine += 1;
+        return annotated;
+      }
+      if (line.startsWith('-')) {
+        const annotated = `old:${oldLine} ${line}`;
+        oldLine += 1;
+        return annotated;
+      }
+      if (line.startsWith(' ')) {
+        const annotated = `old:${oldLine} new:${newLine} ${line}`;
+        oldLine += 1;
+        newLine += 1;
+        return annotated;
+      }
+      return line;
+    })
+    .join('\n');
 }
 
 export function generateSyntheticFileDiff(
@@ -457,6 +496,7 @@ export async function fetchPRDiffFallback(
 
   const latestIteration = iterations[iterations.length - 1];
   const iterationId = latestIteration.id;
+  const firstComparingIteration = iterations[0]?.id;
 
   if (!iterationId) {
     return { changes: [], totalChanges: 0 };
@@ -478,7 +518,8 @@ export async function fetchPRDiffFallback(
       changeType,
       linesAdded: fallbackMetrics.linesAdded,
       linesDeleted: fallbackMetrics.linesDeleted,
-      diffContent: `File: ${filePath}\nChange type: ${changeType}\n[Detailed diff unavailable - fallback mode]`
+      diffContent: `File: ${filePath}\nChange type: ${changeType}\n[Detailed diff unavailable - fallback mode]`,
+      ...(typeof change.changeTrackingId === 'number' ? { changeTrackingId: change.changeTrackingId } : {}),
     };
   });
 
@@ -486,6 +527,8 @@ export async function fetchPRDiffFallback(
     changes: diffChanges,
     totalChanges: changeEntries.length,
     truncatedChanges: Math.max(0, changeEntries.length - diffChanges.length),
+    latestIterationId: iterationId,
+    ...(typeof firstComparingIteration === 'number' ? { firstComparingIteration } : {}),
   };
 }
 
@@ -730,6 +773,29 @@ export async function createFallbackWorkItem(
    //     logger.error("Failed to post PR label", { projectName, prId, labelName, error: String(error) });
    //   }
    // }
+function buildCommentThread({
+  content,
+  threadContext,
+  pullRequestThreadContext,
+}: {
+  content: string;
+  threadContext?: ResolvedInlineCommentThread['threadContext'];
+  pullRequestThreadContext?: ResolvedInlineCommentThread['pullRequestThreadContext'];
+}) {
+  return {
+    comments: [
+      {
+        parentCommentId: 0,
+        content,
+        commentType: 1,
+      },
+    ],
+    status: 1,
+    ...(threadContext ? { threadContext } : {}),
+    ...(pullRequestThreadContext ? { pullRequestThreadContext } : {}),
+  };
+}
+
       /**
        * Post a comment on a pull request
        */
@@ -761,19 +827,8 @@ export async function createFallbackWorkItem(
             workItemId,
           });
 
-        const commentThread = {
-          comments: [
-            {
-              parentCommentId: 0,
-              content: commentText,
-              commentType: 1
-            }
-          ],
-          status: 1
-        };
-
         await gitApi.createThread(
-          commentThread,
+          buildCommentThread({ content: commentText }) as any,
           repositoryId,
           prId,
           projectName
@@ -790,6 +845,56 @@ export async function createFallbackWorkItem(
       throw new Error(`Failed to post PR comment: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+
+export async function postPRInlineComments({
+  projectName,
+  repositoryId,
+  prId,
+  connection,
+  inlineComments,
+}: {
+  projectName: string;
+  repositoryId: string;
+  prId: number;
+  connection: azdev.WebApi;
+  inlineComments: ResolvedInlineCommentThread[];
+}): Promise<{ posted: number; failed: number }> {
+  const gitApi: GitApi = await connection.getGitApi();
+  let posted = 0;
+  let failed = 0;
+
+  for (const thread of inlineComments) {
+    try {
+      const content = sanitizeHTML(thread.comments[0]?.content ?? '', {
+        source: 'ado.postPRInlineComments',
+        prId,
+        projectName,
+      });
+      await gitApi.createThread(
+        buildCommentThread({
+          content,
+          threadContext: thread.threadContext,
+          pullRequestThreadContext: thread.pullRequestThreadContext,
+        }) as any,
+        repositoryId,
+        prId,
+        projectName
+      );
+      posted += 1;
+    } catch (error) {
+      failed += 1;
+      logger.error('Failed to post inline PR comment', {
+        projectName,
+        prId,
+        filePath: thread.threadContext?.filePath,
+        error: String(error),
+      });
+    }
+  }
+
+  logger.info('Finished posting inline PR comments', { projectName, prId, posted, failed });
+  return { posted, failed };
+}
         
 export { DIFF_MAX_CHARS_PER_FILE };
 

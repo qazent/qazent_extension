@@ -15,11 +15,14 @@ import * as logger from './utils/logger';
 import * as adoClient from './ado-client';
 import * as ai from './ai';
 import { fetchPRDiff } from './fetchPRdiff';
+import { coerceRawComment, resolveInlineCommentThreads } from './inline-comment-threads';
+import { MAX_INLINE_COMMENT_BATCH } from './diff-config';
 import { createAuthMiddleware, AuthenticatedRequest } from './middleware/authenticate';
 import {
   rateLimitGenerateTests,
   rateLimitCreateWorkItem,
   rateLimitPostPRComment,
+  rateLimitPostPRInlineComments,
   // rateLimitPostPRLabel, // --- POST PR LABEL VAULTED ---
   rateLimitExtractPurposeScope,
   rateLimitQueuePr,
@@ -637,12 +640,12 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       // Validate optional `mode` field. Default to 'qa' for backward compatibility with
       // clients that don't yet send the new flag.
       const rawMode = payload.mode;
-      let mode: 'qa' | 'review' | 'deep-review' = 'review';
+      let mode: ai.PromptMode = 'review';
       if (rawMode !== undefined && rawMode !== null && rawMode !== '') {
-        if (typeof rawMode !== 'string' || (rawMode !== 'qa' && rawMode !== 'review' && rawMode !== 'deep-review')) {
+        if (!ai.isPromptMode(rawMode)) {
           const errorResponse: ErrorResponse = {
             error: 'Invalid mode',
-            details: `mode must be one of: 'qa', 'review', 'deep-review' (got: ${JSON.stringify(rawMode)})`
+            details: `mode must be one of: ${ai.PROMPT_MODES.map((value) => `'${value}'`).join(', ')} (got: ${JSON.stringify(rawMode)})`
           };
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(errorResponse));
@@ -720,16 +723,35 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
       };
 
       // Generate test cases
+      const requestInlineComments = mode === 'inline-comments';
       logger.debug('Calling AI generateTestCases', {
         prId: payload.prId,
         codeDiffFiles: codeDiff.changes.length,
         totalChanges: codeDiff.totalChanges,
         customContextLength: customContext?.length ?? 0,
         commitsCount: commitsResult.length,
-        mode
+        mode,
+        requestInlineComments,
       });
-      const result = await ai.generateTestCases(prMetadata, codeDiff, customContext, mode, commitsResult);
+      const result = await ai.generateTestCases(
+        prMetadata,
+        codeDiff,
+        customContext,
+        mode,
+        commitsResult
+      );
       logger.debug('AI generateTestCases returned successfully', { prId: payload.prId, title: result.title });
+
+      const resolvedInline = requestInlineComments
+        ? resolveInlineCommentThreads(result.inlineComments, codeDiff)
+        : null;
+      if (resolvedInline && resolvedInline.skippedInlineComments.length > 0) {
+        logger.warn('Skipped inline comments after generate-tests resolve', {
+          event: logger.Events.GENERATE_TESTS,
+          prId: payload.prId,
+          skipped: resolvedInline.skippedInlineComments,
+        });
+      }
 
       // Return test case + commit IDs + optional compression report for observability
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -739,6 +761,12 @@ async function handleGenerateTests(req: AuthenticatedRequest, res: http.ServerRe
         sourceCommitId: codeDiff.sourceCommitId,
         targetCommitId: codeDiff.targetCommitId,
         ...(result.compressionReport && { compressionReport: result.compressionReport }),
+        ...(resolvedInline
+          ? {
+              inlineComments: resolvedInline.acceptedComments,
+              skippedInlineComments: resolvedInline.skippedInlineComments,
+            }
+          : {}),
       }));
 
     } catch (error) {
@@ -981,6 +1009,118 @@ async function handlePostPRComment(req: AuthenticatedRequest, res: http.ServerRe
     res.end(JSON.stringify(errorResponse));
   });
 }
+
+/**
+ * Handle batch inline PR comment POST request
+ * Security: User identity verified by authentication middleware
+ */
+async function handlePostPRInlineComments(req: AuthenticatedRequest, res: http.ServerResponse): Promise<void> {
+  let body = '';
+
+  req.on('data', chunk => {
+    body += chunk.toString();
+  });
+
+  req.on('end', async () => {
+    try {
+      const payload = JSON.parse(body);
+
+      if (typeof payload.prId !== 'number' || !payload.projectName || !payload.repositoryId) {
+        const errorResponse: ErrorResponse = {
+          error: 'Missing required fields',
+          details: 'prId, projectName, repositoryId, inlineComments are required'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      if (!Array.isArray(payload.inlineComments) || payload.inlineComments.every((item: unknown) => coerceRawComment(item) == null)) {
+        const errorResponse: ErrorResponse = {
+          error: 'Invalid inline comments',
+          details: 'inlineComments must be an array of file/line findings'
+        };
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(errorResponse));
+        return;
+      }
+
+      const rawComments = payload.inlineComments
+        .map((item: unknown) => coerceRawComment(item))
+        .filter((item: ReturnType<typeof coerceRawComment>): item is NonNullable<ReturnType<typeof coerceRawComment>> => item != null)
+        .slice(0, MAX_INLINE_COMMENT_BATCH);
+
+      logger.info('Post PR inline comments request', {
+        event: logger.Events.POST_PR_INLINE_COMMENTS,
+        prId: payload.prId,
+        projectName: payload.projectName,
+        count: rawComments.length,
+        userDisplayName: req.user?.displayName
+      });
+
+      const token = req.headers['authorization']!.split(' ')[1];
+      const orgName = extractOrgName(req.orgUrl!);
+      const connection = adoClient.createConnection(token, req.orgUrl!);
+      const codeDiff = await fetchPRDiff(
+        payload.projectName,
+        payload.repositoryId,
+        payload.prId,
+        connection,
+        orgName,
+        token
+      );
+      const resolved = resolveInlineCommentThreads(rawComments, codeDiff);
+      if (resolved.skippedInlineComments.length > 0) {
+        logger.warn('Skipped inline comments during server-side resolve', {
+          event: logger.Events.POST_PR_INLINE_COMMENTS,
+          prId: payload.prId,
+          skipped: resolved.skippedInlineComments,
+        });
+      }
+
+      const result = await adoClient.postPRInlineComments({
+        projectName: payload.projectName,
+        repositoryId: payload.repositoryId,
+        prId: payload.prId,
+        connection,
+        inlineComments: resolved.inlineComments,
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        posted: result.posted,
+        failed: result.failed,
+        skipped: resolved.skippedInlineComments.length,
+      }));
+    } catch (error) {
+      logger.error('Failed to post PR inline comments', {
+        event: logger.Events.POST_PR_INLINE_COMMENTS,
+        error: String(error)
+      });
+
+      const errorResponse: ErrorResponse = {
+        error: 'Failed to post inline comments',
+        message: error instanceof Error ? error.message : String(error)
+      };
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(errorResponse));
+    }
+  });
+
+  req.on('error', error => {
+    logger.error('Request error', { error: String(error) });
+
+    const errorResponse: ErrorResponse = {
+      error: 'Internal server error',
+      message: 'Failed to process request'
+    };
+
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(errorResponse));
+  });
+}
+
 /**
  * Handle extract purpose-scope POST request
  * Security: User identity verified by authentication middleware
@@ -1320,6 +1460,7 @@ function startServer(): void {
     ai.loadSystemPrompt('qa');
     ai.loadSystemPrompt('review');
     ai.loadSystemPrompt('deep-review');
+    ai.loadSystemPrompt('inline-comments');
   } catch (error) {
     logger.error('Failed to load system prompt', { error: String(error) });
     console.error('FATAL: Failed to load system prompt');
@@ -1435,6 +1576,19 @@ function startServer(): void {
       }
 
       await applyMiddleware(rateLimitPostPRComment, handlePostPRComment)(req, res);
+      return;
+    }
+
+    if (normalizedUrl === '/post-pr-inline-comments' && method === 'POST') {
+      const contentType = req.headers['content-type'];
+      if (!contentType || !contentType.includes('application/json')) {
+        logger.warn("Invalid content type", { contentType });
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid content type' }));
+        return;
+      }
+
+      await applyMiddleware(rateLimitPostPRInlineComments, handlePostPRInlineComments)(req, res);
       return;
     }
 

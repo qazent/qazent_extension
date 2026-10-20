@@ -336,6 +336,7 @@ export async function startWorker(): Promise<void> {
   ai.loadSystemPrompt('qa');
   ai.loadSystemPrompt('review');
   ai.loadSystemPrompt('deep-review');
+  ai.loadSystemPrompt('inline-comments');
 
   process.on('SIGINT', () => requestShutdown('SIGINT'));
   process.on('SIGTERM', () => requestShutdown('SIGTERM'));

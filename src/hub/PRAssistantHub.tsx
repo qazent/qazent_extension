@@ -88,7 +88,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
   const [completedSteps, setCompletedSteps] = React.useState<number[]>([]);
   const [postCommentOnPR, setPostCommentOnPR] = React.useState<boolean>(true);
   const [outputType, setOutputType] = React.useState<boolean>(false);
-  const [mode, setMode] = React.useState<'qa' | 'review' | 'deep-review'>('qa');
+  const [mode, setMode] = React.useState<'qa' | 'review' | 'deep-review' | 'inline-comments'>('qa');
 
 
   React.useEffect(() => {
@@ -285,6 +285,45 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
     try {
       let workItemCommentPosted = false;
       let detailsCommentPosted = false;
+      let inlinePosted = 0;
+      let inlineFailed = 0;
+      let inlineComments: backendClient.InlineCommentPayload[] = [];
+      let skippedInlineCount = 0;
+      const isInlineCommentsMode = mode === 'inline-comments';
+
+      const postInlineOverlay = async () => {
+        if (!isInlineCommentsMode || inlineComments.length === 0) {
+          return;
+        }
+        try {
+          const inlineResult = await backendClient.postPRInlineComments({
+            prId: prData.prId,
+            projectName,
+            repositoryId,
+            connection: backendUrl,
+            inlineComments,
+          });
+          inlinePosted = inlineResult.posted;
+          inlineFailed = inlineResult.failed;
+        } catch (err) {
+          console.warn('Inline PR comments failed:', err);
+          inlineFailed = inlineComments.length;
+        }
+      };
+
+      const appendInlineDetails = (details: string) => {
+        const extra: string[] = [];
+        if (inlinePosted > 0) {
+          extra.push(`Posted ${inlinePosted} inline comments on the Files tab.`);
+        }
+        if (skippedInlineCount > 0) {
+          extra.push(`${skippedInlineCount} findings could not be attached to a diff line.`);
+        }
+        if (inlineFailed > 0) {
+          extra.push(`${inlineFailed} inline comments failed to post.`);
+        }
+        return extra.length > 0 ? `${details} ${extra.join(' ')}` : details;
+      };
 
       // Step 3: Validate metadata
       setCurrentStep(1);
@@ -310,6 +349,8 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
       // Extract test case and commit IDs from response
       setCompletedSteps(prev => [...prev, 2]);
       setCurrentStep(3);
+      inlineComments = response.inlineComments ?? [];
+      skippedInlineCount = response.skippedInlineComments?.length ?? 0;
       const generatedTestCase = {
         title: response.title,
         htmlDescription: response.htmlDescription
@@ -344,6 +385,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         } catch (err) {
           console.warn('Full output PR comment failed:', err);
         }
+        await postInlineOverlay();
         setCompletedSteps(prev => [...prev, 5]);
 
         setCurrentStep(6);
@@ -361,9 +403,11 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
             ? 'Analysis posted on the pull request'
             : 'Analysis completed',
           url: 'result.workItemUrl',
-          details: fullOutputCommentPosted
-            ? 'The full output was added as a PR comment. Open the pull request to review it.'
-            : 'The analysis finished but could not be posted as a PR comment. Please try again.'
+          details: appendInlineDetails(
+            fullOutputCommentPosted
+              ? 'The full output was added as a PR comment. Open the pull request to review it.'
+              : 'The analysis finished but could not be posted as a PR comment. Please try again.'
+          )
         });
         setTimeout(() => setSuccessMessage(null), 60000);
 
@@ -374,20 +418,27 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         // Step 5: Immediately call /create-work-item with ALL required fields
         setCompletedSteps(prev => [...prev, 3]);
         setCurrentStep(4);
-        const result = await backendClient.createWorkItem(
-          generatedTestCase as any,
-          prData.prId,
-          projectName,
-          repositoryId,
-          backendUrl,
-          projectId,
-          sourceCommitId,
-          targetCommitId
-        );
+        let result: { workItemId: number; workItemUrl: string } | null = null;
+        let workItemError: unknown = null;
+        try {
+          result = await backendClient.createWorkItem(
+            generatedTestCase as any,
+            prData.prId,
+            projectName,
+            repositoryId,
+            backendUrl,
+            projectId,
+            sourceCommitId,
+            targetCommitId
+          );
+        } catch (err) {
+          workItemError = err;
+          console.warn('Work item creation failed:', err);
+        }
 
         // Step 6: Post main comment on PR (optional)
         setCompletedSteps(prev => [...prev, 4]);
-        if (postCommentOnPR) {
+        if (result && postCommentOnPR) {
           setCurrentStep(5);
           try {
             const commentResponse = await backendClient.postPRComment({
@@ -421,6 +472,12 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           }
           setCompletedSteps(prev => [...prev, 5]);
         }
+        await postInlineOverlay();
+        if (!result && inlinePosted === 0) {
+          throw workItemError instanceof Error
+            ? workItemError
+            : new Error('Failed to create work item');
+        }
         
         setCurrentStep(6);
         await new Promise(resolve => setTimeout(resolve, 400));
@@ -442,19 +499,27 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         }
         if (detailParts.length === 0) detailParts.push('Work item created. No comment was added.');
         
-        // if radio button is set to comment then dont link the success message to the work item
-        if (detailsCommentPosted) setSuccessMessage({
-          text: "Output posted as PR comment!",
-          url: '',
-          details: 'A PR comment with the output was posted successfully.'
-        });
-        // if radio button is set to full then link the success message to the work item
-        if (!outputType && postCommentOnPR) {
+        if (!result) {
           setSuccessMessage({
-            text: "Work item created successfully!",
-            url: result.workItemUrl,
-            details: 'Got it! The work item has been created.'
+            text: 'Inline comments posted',
+            url: '',
+            details: appendInlineDetails('The work item could not be created.')
           });
+        } else {
+          // if radio button is set to comment then dont link the success message to the work item
+          if (detailsCommentPosted) setSuccessMessage({
+            text: "Output posted as PR comment!",
+            url: '',
+            details: appendInlineDetails('A PR comment with the output was posted successfully.')
+          });
+          // if radio button is set to full then link the success message to the work item
+          if (!outputType && postCommentOnPR) {
+            setSuccessMessage({
+              text: "Work item created successfully!",
+              url: result.workItemUrl,
+              details: appendInlineDetails('Got it! The work item has been created.')
+            });
+          }
         }
         setTimeout(() => setSuccessMessage(null), 60000);
       }
@@ -670,14 +735,16 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '4px' }}>
       <div style={{ fontSize: '13px', fontWeight: 600, color: '#555' }}>Mode</div>
       <RadioGroup
-        layout="horizontal"
         value={mode}
-        onChange={(_e, data) => setMode(data.value as 'qa' | 'review' | 'deep-review')}
+        onChange={(_e, data) => {
+          setMode(data.value as 'qa' | 'review' | 'deep-review' | 'inline-comments');
+        }}
         disabled={isGenerating}
       >
         <Radio value="qa" label="QA Mode" />
         <Radio value="review" label="Code Review Mode" />
         <Radio value="deep-review" label="Deep Technical Review Mode" />
+        <Radio value="inline-comments" label="Inline Diff Comments Mode" />
       </RadioGroup>
     </div>
 
@@ -710,6 +777,7 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
         />
       </RadioGroup>
     </div>
+
   </div>
 </div>
 

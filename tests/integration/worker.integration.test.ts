@@ -17,7 +17,10 @@ jest.mock('../../src/backend/utils/logger', () => createLoggerMock());
 jest.mock('../../src/backend/ai', () => ({
   loadSystemPrompt: jest.fn(),
   extractPurposeAndScope: jest.fn(() => '<h2>Summary</h2><p>Validate queue worker.</p>'),
-  generateTestCases: jest.fn()
+  generateTestCases: jest.fn(),
+  PROMPT_MODES: ['qa', 'review', 'deep-review', 'inline-comments'],
+  isPromptMode: (value: unknown) =>
+    value === 'qa' || value === 'review' || value === 'deep-review' || value === 'inline-comments',
 }));
 jest.mock('../../src/backend/fetchPRdiff', () => ({
   fetchPRDiff: jest.fn()

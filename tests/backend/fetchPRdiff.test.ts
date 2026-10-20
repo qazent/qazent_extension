@@ -180,10 +180,10 @@ describe('fetchPRdiff backend path', () => {
       getPullRequestIterations: jest.fn().mockResolvedValue([{ id: 7 }]),
       getPullRequestIterationChanges: jest.fn().mockResolvedValue({
         changeEntries: [
-          { item: { path: '/src/edited.ts' }, changeType: 'edit' },
-          { item: { path: '/src/added.ts' }, changeType: 'add' },
-          { item: { path: '/src/deleted.ts' }, changeType: 'delete' },
-          { item: { path: '/assets/logo.png' }, changeType: 'add' },
+          { item: { path: '/src/edited.ts' }, changeType: 'edit', changeTrackingId: 11 },
+          { item: { path: '/src/added.ts' }, changeType: 'add', changeTrackingId: 12 },
+          { item: { path: '/src/deleted.ts' }, changeType: 'delete', changeTrackingId: 13 },
+          { item: { path: '/assets/logo.png' }, changeType: 'add', changeTrackingId: 14 },
         ],
       }),
     };
@@ -210,6 +210,7 @@ describe('fetchPRdiff backend path', () => {
     expect(result.truncatedChanges).toBe(0);
     expect(result.sourceCommitId).toBe('source-123');
     expect(result.targetCommitId).toBe('target-456');
+    expect(result.latestIterationId).toBe(7);
     expect(result.changes).toEqual([
       {
         filePath: '/src/edited.ts',
@@ -217,6 +218,9 @@ describe('fetchPRdiff backend path', () => {
         linesAdded: 4,
         linesDeleted: 2,
         diffContent: '@@ -1,2 +1,2 @@\n-old\n+new',
+        changeTrackingId: 11,
+        oldLineCount: 2,
+        newLineCount: 2,
       },
       {
         filePath: '/src/added.ts',
@@ -224,6 +228,9 @@ describe('fetchPRdiff backend path', () => {
         linesAdded: 2,
         linesDeleted: 0,
         diffContent: expect.stringContaining('+++ b/src/added.ts'),
+        changeTrackingId: 12,
+        oldLineCount: 0,
+        newLineCount: 2,
       },
       {
         filePath: '/src/deleted.ts',
@@ -231,6 +238,9 @@ describe('fetchPRdiff backend path', () => {
         linesAdded: 0,
         linesDeleted: 2,
         diffContent: expect.stringContaining('--- a/src/deleted.ts'),
+        changeTrackingId: 13,
+        oldLineCount: 2,
+        newLineCount: 0,
       },
     ]);
   });
@@ -260,6 +270,7 @@ describe('fetchPRdiff backend path', () => {
       'oauth-token'
     );
 
+    expect(result.latestIterationId).toBe(1);
     expect(result.changes).toEqual([
       {
         filePath: '/src/empty.ts',
@@ -267,6 +278,8 @@ describe('fetchPRdiff backend path', () => {
         linesAdded: 0,
         linesDeleted: 0,
         diffContent: expect.stringContaining('+++ b/src/empty.ts'),
+        oldLineCount: 0,
+        newLineCount: 0,
       },
     ]);
     expect(result.changes[0].diffContent).not.toContain('Content fetch failed');
@@ -344,6 +357,7 @@ describe('fetchPRdiff backend path', () => {
       'oauth-token'
     );
 
+    expect(result.latestIterationId).toBe(1);
     expect(result.changes).toEqual([
       {
         filePath: '/src/added.ts',
@@ -354,6 +368,8 @@ describe('fetchPRdiff backend path', () => {
           'File: /src/added.ts\nChange type: add\n[Content fetch failed - possibly binary file, too large, or access restricted]',
       },
     ]);
+    expect(result.changes[0].oldLineCount).toBeUndefined();
+    expect(result.changes[0].newLineCount).toBeUndefined();
   });
 
   it('recovers added file content when Azure DevOps classifies it as edit but the old side is missing', async () => {

@@ -63,6 +63,7 @@ export const Events = {
   GENERATE_TESTS: 'generate_tests',
   CREATE_WORK_ITEM: 'create_work_item',
   POST_PR_COMMENT: 'post_pr_comment',
+  POST_PR_INLINE_COMMENTS: 'post_pr_inline_comments',
   EXTRACT_PURPOSE_SCOPE: 'extract_purpose_scope',
   QUEUE_PR_ENQUEUE: 'queue.pr.enqueue',
   AI_GENERATE_START: 'ai.generate.start',

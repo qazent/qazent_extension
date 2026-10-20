@@ -7,6 +7,8 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CodeDiff, PRCommit, PRMetadata, TaskWorkItemOutput } from './types';
+import { InlineCommentSeverity, parseNumericLine, RawInlineComment } from './inline-comment-threads';
+import { annotateUnifiedDiffWithLineNumbers } from './ado-client';
 import * as logger from './utils/logger';
 import { sanitizeHTML } from './utils/sanitize-html';
 import { jsonrepair } from "jsonrepair";
@@ -52,6 +54,31 @@ const AI_RESPONSE_SCHEMA = {
   required: ["title", "htmlDescription"]
 } as const;
 
+const INLINE_COMMENT_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    htmlDescription: { type: "string" },
+    inlineComments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          filePath: { type: "string" },
+          line: { type: "number" },
+          side: { type: "string", enum: ["left", "right"] },
+          contentHtml: { type: "string" },
+          severity: { type: "string", enum: ["Blocker", "Major", "Minor", "Nit"] },
+        },
+        required: ["filePath", "line", "side", "contentHtml"],
+      },
+    },
+  },
+  required: ["title", "htmlDescription", "inlineComments"],
+} as const;
+
+const INLINE_COMMENT_SEVERITIES: InlineCommentSeverity[] = ['Blocker', 'Major', 'Minor', 'Nit'];
+
 
 /**
  * This module handles all interactions with the Gemini AI model, including:
@@ -66,18 +93,25 @@ const AI_RESPONSE_SCHEMA = {
 /** let parsed: Partial<GeneratedTestCase>;
 */
 
-export type PromptMode = 'qa' | 'review' | 'deep-review';
+export const PROMPT_MODES = ['qa', 'review', 'deep-review', 'inline-comments'] as const;
+export type PromptMode = (typeof PROMPT_MODES)[number];
+
+export function isPromptMode(value: unknown): value is PromptMode {
+  return typeof value === 'string' && (PROMPT_MODES as readonly string[]).includes(value);
+}
 
 const PROMPT_FILES: Record<PromptMode, string> = {
   qa: 'system-prompt.txt',
   review: 'system-prompt-review.txt',
   'deep-review': 'system-prompt-deep-review.txt',
+  'inline-comments': 'system-prompt-inline-comments.txt',
 };
 
 const systemPromptCache: Record<PromptMode, string | null> = {
   qa: null,
   review: null,
   'deep-review': null,
+  'inline-comments': null,
 };
 
 let genAI: GoogleGenAI | null = null;
@@ -259,6 +293,7 @@ export interface BuildUserPromptResult {
 /** Result of generateTestCases; includes optional compression report for observability. */
 export interface GenerateTestCasesResult extends TaskWorkItemOutput {
   compressionReport?: { compressionSummary: string; sectionsRemoved: string[] };
+  inlineComments?: RawInlineComment[];
 }
 
 /**
@@ -277,6 +312,9 @@ function buildUserPrompt(
     maxFilesWithDiff?: number;
     maxCommits?: number;
     maxCommitMessageChars?: number;
+    annotateLineNumbers?: boolean;
+    jsonContract?: string;
+    promptLead?: string;
   }
 ): BuildUserPromptResult {
   const maxDesc = options?.maxDescriptionChars ?? MAX_PR_DESCRIPTION_CHARS;
@@ -285,6 +323,7 @@ function buildUserPrompt(
   const maxFilesWithDiff = options?.maxFilesWithDiff ?? Math.min(MAX_FILES_WITH_DIFF, codeDiff.changes.length);
   const maxCommits = options?.maxCommits ?? MAX_COMMITS;
   const maxCommitMessageChars = options?.maxCommitMessageChars ?? MAX_COMMIT_MESSAGE_CHARS;
+  const annotateLineNumbers = options?.annotateLineNumbers === true;
   const rankedChanges = [...codeDiff.changes].sort((left, right) => rankDiffChange(right) - rankDiffChange(left));
   const changesWithDiff = rankedChanges.slice(0, maxFilesWithDiff);
 
@@ -294,7 +333,7 @@ function buildUserPrompt(
       ? description
       : description.slice(0, maxDesc) + '... (description truncated)';
 
-  let prompt = `Generate test cases for this Pull Request:
+  let prompt = `${options?.promptLead ?? 'Generate test cases for this Pull Request'}:
 
 PR Title: ${prMetadata.title}
 PR Description: ${descriptionTruncated}
@@ -349,7 +388,10 @@ Target Branch: ${prMetadata.targetBranch}
     if (!change.diffContent) {
       continue;
     }
-    const { text, omitted } = truncateToLines(change.diffContent, maxLines);
+    const diffForPrompt = annotateLineNumbers
+      ? annotateUnifiedDiffWithLineNumbers(change.diffContent)
+      : change.diffContent;
+    const { text, omitted } = truncateToLines(diffForPrompt, maxLines);
     prompt += `\n--- ${change.filePath} ---\n${text}`;
     if (omitted > 0) prompt += `\n... (diff truncated, ${omitted} lines omitted)`;
     prompt += '\n';
@@ -368,7 +410,7 @@ Target Branch: ${prMetadata.targetBranch}
     prompt += `\nRepository-Specific Context:\n${contextTruncated}\n`;
   }
 
-  prompt += `\nReturn JSON only: { "title": "Test Case: <short summary>", "htmlDescription": "<encoded HTML>" }`;
+  prompt += `\n${options?.jsonContract ?? 'Return JSON only: { "title": "Test Case: <short summary>", "htmlDescription": "<encoded HTML>" }'}`;
 
   return { prompt, sectionsRemoved: SECTIONS_REMOVED };
 }
@@ -380,9 +422,19 @@ function buildUserPromptWithTokenCap(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
   customContext?: string,
-  commits: PRCommit[] = []
+  commits: PRCommit[] = [],
+  promptOptions?: {
+    annotateLineNumbers?: boolean;
+    jsonContract?: string;
+    promptLead?: string;
+  }
 ): BuildUserPromptResult {
-  let result = buildUserPrompt(prMetadata, codeDiff, customContext, commits);
+  let result = buildUserPrompt(prMetadata, codeDiff, customContext, commits, {
+    maxDescriptionChars: MAX_PR_DESCRIPTION_CHARS,
+    maxContextChars: MAX_REPOSITORY_CONTEXT_CHARS,
+    maxDiffLinesPerFile: MAX_DIFF_LINES_PER_FILE,
+    ...promptOptions,
+  });
   if (estimateTokens(result.prompt) <= TARGET_USER_PROMPT_TOKENS) {
     return result;
   }
@@ -397,6 +449,7 @@ function buildUserPromptWithTokenCap(
     maxFilesWithDiff: Math.min(MAX_FILES_WITH_DIFF_STRICT, codeDiff.changes.length),
     maxCommits: MAX_COMMITS_STRICT,
     maxCommitMessageChars: MAX_COMMIT_MESSAGE_CHARS_STRICT,
+    ...promptOptions,
   };
   result = buildUserPrompt(prMetadata, codeDiff, customContext, commits, strictOptions);
 
@@ -768,6 +821,49 @@ export function extractPurposeAndScope(html: string): string {
 /**
  * Generate test cases using Gemini AI with retry logic
  */
+function parseInlineComments(parsed: unknown, prMetadata: PRMetadata): RawInlineComment[] {
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { inlineComments?: unknown }).inlineComments)) {
+    return [];
+  }
+
+  const comments: RawInlineComment[] = [];
+  for (const item of (parsed as { inlineComments: unknown[] }).inlineComments) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+    const candidate = item as Partial<RawInlineComment> & { line?: unknown };
+    const line = parseNumericLine(candidate.line);
+    if (typeof candidate.filePath !== 'string' || typeof line !== 'number') {
+      continue;
+    }
+    if (candidate.side !== 'left' && candidate.side !== 'right') {
+      continue;
+    }
+    if (typeof candidate.contentHtml !== 'string') {
+      continue;
+    }
+    const contentHtml = sanitizeHTML(candidate.contentHtml, {
+      source: 'ai.inlineComments',
+      prId: prMetadata.prId,
+      projectName: prMetadata.projectName,
+    });
+    if (!contentHtml) {
+      continue;
+    }
+    const severity = INLINE_COMMENT_SEVERITIES.includes(candidate.severity as InlineCommentSeverity)
+      ? (candidate.severity as InlineCommentSeverity)
+      : undefined;
+    comments.push({
+      filePath: candidate.filePath,
+      line,
+      side: candidate.side,
+      contentHtml,
+      ...(severity ? { severity } : {}),
+    });
+  }
+  return comments;
+}
+
 export async function generateTestCases(
   prMetadata: PRMetadata,
   codeDiff: CodeDiff,
@@ -789,6 +885,7 @@ export async function generateTestCases(
 
       // On retry (attempt 2), use shortened system prompt (examples omitted) to leave more output budget
       const useShortPrompt = attempt >= 2;
+      const requestInlineComments = mode === 'inline-comments';
       const sysPrompt = loadSystemPrompt(mode, useShortPrompt);
 
       // Initialize Gemini
@@ -799,7 +896,15 @@ export async function generateTestCases(
         prMetadata,
         codeDiff,
         customContext,
-        commits
+        commits,
+        requestInlineComments
+          ? {
+              annotateLineNumbers: true,
+              promptLead: 'Comment on specific diff lines for this Pull Request',
+              jsonContract:
+                'Return JSON only: { "title": "Inline Review: <short summary>", "htmlDescription": "<encoded HTML>", "inlineComments": [{ "filePath": "src/file.ts", "line": 42, "side": "right", "contentHtml": "<p>finding</p>", "severity": "Major" }] }. line is the annotated new:N (right) or old:N (left) file line number, not a hunk index.',
+            }
+          : undefined
       );
 
       const MAX_OUTPUT_TOKENS = 65536;
@@ -829,7 +934,7 @@ export async function generateTestCases(
             thinkingLevel: ThinkingLevel.HIGH
           },
           responseMimeType: 'application/json',
-          responseSchema: AI_RESPONSE_SCHEMA
+          responseSchema: requestInlineComments ? INLINE_COMMENT_RESPONSE_SCHEMA : AI_RESPONSE_SCHEMA
         }
       });
 
@@ -967,6 +1072,7 @@ export async function generateTestCases(
           compressionSummary: COMPRESSION_SUMMARY,
           sectionsRemoved: [...sectionsRemoved],
         },
+        ...(requestInlineComments ? { inlineComments: parseInlineComments(parsed, prMetadata) } : {}),
       };
       return result;
 

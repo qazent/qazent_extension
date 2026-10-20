@@ -9,7 +9,7 @@ import {
 } from "./ado-client";
 import { GitApi } from 'azure-devops-node-api/GitApi';
 import * as azdev from 'azure-devops-node-api';
-import { classifyChangeType, getFallbackLineMetrics, MAX_FILES_FOR_AI } from './diff-config';
+import { classifyChangeType, fileLineCounts, getFallbackLineMetrics, MAX_FILES_FOR_AI } from './diff-config';
 function isMissingFileError(error: unknown): boolean {
   const message = String(error);
   return message.includes('REST getItem failed (404') || message.includes('TF401174');
@@ -133,6 +133,7 @@ export async function fetchPRDiff(
 
     const latestIteration = iterations[iterations.length - 1];
     const iterationId = latestIteration.id;
+    const firstComparingIteration = iterations[0]?.id;
 
     if (!iterationId) {
       throw new Error("Latest iteration has no ID");
@@ -149,7 +150,12 @@ export async function fetchPRDiff(
 
     if (changeEntries.length === 0) {
       logger.warn("No changes found in PR", { prId });
-      return { changes: [], totalChanges: 0 };
+      return {
+        changes: [],
+        totalChanges: 0,
+        latestIterationId: iterationId,
+        ...(typeof firstComparingIteration === 'number' ? { firstComparingIteration } : {}),
+      };
     }
 
     const diffChanges: DiffChange[] = [];
@@ -232,6 +238,8 @@ export async function fetchPRDiff(
       let diffContent = "";
       let linesAdded = 0;
       let linesDeleted = 0;
+      let oldContent: string | undefined;
+      let newContent: string | undefined;
 
       try {
         if (changeType === "delete") {
@@ -259,7 +267,7 @@ export async function fetchPRDiff(
           }
 
           // Fetch old content (deleted file)
-          const oldContent = await fetchFileContentFromRest(
+          oldContent = await fetchFileContentFromRest(
             organization,
             projectName,
             repositoryId,
@@ -294,7 +302,7 @@ export async function fetchPRDiff(
           if (!organization) throw new Error("Organization is undefined");
           if (!sourceCommitId) throw new Error(`sourceCommitId undefined for ${filePath}`);
 
-          const newContent = await fetchFileContentFromRest(
+          newContent = await fetchFileContentFromRest(
             organization,
             projectName,
             repositoryId,
@@ -349,8 +357,8 @@ export async function fetchPRDiff(
           const newContentMissing = newContentResult.status === 'rejected' && isMissingFileError(newContentResult.reason);
 
           if (oldContentAvailable && newContentAvailable) {
-            const oldContent = oldContentResult.value || "";
-            const newContent = newContentResult.value || "";
+            oldContent = oldContentResult.value || "";
+            newContent = newContentResult.value || "";
 
             const diff = generateUnifiedDiff(filePath, oldContent, newContent);
             diffContent = diff.diffContent;
@@ -358,7 +366,8 @@ export async function fetchPRDiff(
             linesDeleted = diff.linesDeleted;
           } else if (oldContentMissing && newContentAvailable) {
             changeType = "add";
-            const syntheticDiff = generateSyntheticFileDiff(filePath, newContentResult.value, "add");
+            newContent = newContentResult.value;
+            const syntheticDiff = generateSyntheticFileDiff(filePath, newContent, "add");
             diffContent = syntheticDiff.diffContent;
             linesAdded = syntheticDiff.linesAdded;
             linesDeleted = syntheticDiff.linesDeleted;
@@ -369,7 +378,8 @@ export async function fetchPRDiff(
             });
           } else if (oldContentAvailable && newContentMissing) {
             changeType = "delete";
-            const syntheticDiff = generateSyntheticFileDiff(filePath, oldContentResult.value, "delete");
+            oldContent = oldContentResult.value;
+            const syntheticDiff = generateSyntheticFileDiff(filePath, oldContent, "delete");
             diffContent = syntheticDiff.diffContent;
             linesAdded = syntheticDiff.linesAdded;
             linesDeleted = syntheticDiff.linesDeleted;
@@ -393,6 +403,8 @@ export async function fetchPRDiff(
           filePath,
           error: String(diffError),
         });
+        oldContent = undefined;
+        newContent = undefined;
         diffContent =
           `File: ${filePath}\n` +
           `Change type: ${changeType}\n` +
@@ -408,6 +420,8 @@ export async function fetchPRDiff(
         linesAdded,
         linesDeleted,
         diffContent,
+        ...(typeof change.changeTrackingId === 'number' ? { changeTrackingId: change.changeTrackingId } : {}),
+        ...fileLineCounts(changeType, oldContent, newContent),
       });
     }
 
@@ -436,6 +450,8 @@ export async function fetchPRDiff(
       truncatedChanges,
       sourceCommitId,
       targetCommitId,
+      latestIterationId: iterationId,
+      ...(typeof firstComparingIteration === 'number' ? { firstComparingIteration } : {}),
     };
   } catch (error) {
     logger.error("Failed to fetch PR diff", {

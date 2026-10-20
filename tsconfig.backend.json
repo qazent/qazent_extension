@@ -9,6 +9,6 @@
       "@logger": ["utils/logger"]
     },
   },
-  "include": ["src/backend/**/*", "system-prompt.txt", "system-prompt-review.txt", "system-prompt-deep-review.txt"],
+  "include": ["src/backend/**/*", "system-prompt.txt", "system-prompt-review.txt", "system-prompt-deep-review.txt", "system-prompt-inline-comments.txt"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

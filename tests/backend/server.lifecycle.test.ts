@@ -75,6 +75,7 @@ describe('backend server startup and shutdown lifecycle', () => {
       createConnection: jest.fn(),
       createTaskWorkItem: jest.fn(),
       postPRComment: jest.fn(),
+      postPRInlineComments: jest.fn(),
     }));
 
     jest.doMock('../../src/backend/middleware/authenticate', () => ({
@@ -85,6 +86,7 @@ describe('backend server startup and shutdown lifecycle', () => {
       rateLimitGenerateTests: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
       rateLimitCreateWorkItem: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
       rateLimitPostPRComment: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
+      rateLimitPostPRInlineComments: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
       rateLimitExtractPurposeScope: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
       rateLimitHealth: jest.fn((_: unknown, __: unknown, next: () => void) => next()),
       rateLimitLicenseStatus: jest.fn((_: unknown, __: unknown, next: () => void) => next()),

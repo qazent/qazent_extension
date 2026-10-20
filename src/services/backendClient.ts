@@ -201,21 +201,51 @@ async function postJson<T>(
 /**
  * Generate test cases for a PR
  */
+export interface InlineCommentPayload {
+  filePath: string;
+  line: number;
+  side: 'left' | 'right';
+  contentHtml: string;
+  severity?: 'Blocker' | 'Major' | 'Minor' | 'Nit';
+}
+
+export interface SkippedInlineComment {
+  filePath?: string;
+  line?: number;
+  reason: string;
+}
+
 export async function generateTestCases(
   prId: number,
   projectName: string,
   repositoryId: string,
   backendUrl: string,
   customContext: string | undefined,
-  mode: 'qa' | 'review' | 'deep-review' 
-): Promise<GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }> {
+  mode: 'qa' | 'review' | 'deep-review' | 'inline-comments'
+): Promise<GeneratedTestCase & {
+  sourceCommitId?: string;
+  targetCommitId?: string;
+  inlineComments?: InlineCommentPayload[];
+  skippedInlineComments?: SkippedInlineComment[];
+}> {
   const url = buildUrl(backendUrl, '/generate-tests');
 
   return postJson<
-    GeneratedTestCase & { sourceCommitId?: string; targetCommitId?: string }
+    GeneratedTestCase & {
+      sourceCommitId?: string;
+      targetCommitId?: string;
+      inlineComments?: InlineCommentPayload[];
+      skippedInlineComments?: SkippedInlineComment[];
+    }
   >(
     url,
-    { prId, projectName, repositoryId, customContext, mode },
+    {
+      prId,
+      projectName,
+      repositoryId,
+      customContext,
+      mode,
+    },
     900000 // 15 minutes — Gemini 4 Argon thinking can run for several minutes on a hard PR
 
   );
@@ -301,6 +331,41 @@ export async function postPRComment({
 
   return {
     success: response.success === true,
+  };
+}
+
+export interface PostPRInlineCommentsParams {
+  prId: number;
+  projectName: string;
+  repositoryId: string;
+  connection: string;
+  inlineComments: InlineCommentPayload[];
+}
+
+export interface PostPRInlineCommentsResponse {
+  posted: number;
+  failed: number;
+  skipped: number;
+}
+
+export async function postPRInlineComments({
+  prId,
+  projectName,
+  repositoryId,
+  connection,
+  inlineComments,
+}: PostPRInlineCommentsParams): Promise<PostPRInlineCommentsResponse> {
+  const url = buildUrl(connection, '/post-pr-inline-comments');
+  const response = await postJson<PostPRInlineCommentsResponse>(
+    url,
+    { prId, projectName, repositoryId, inlineComments },
+    180000
+  );
+
+  return {
+    posted: response.posted ?? 0,
+    failed: response.failed ?? 0,
+    skipped: response.skipped ?? 0,
   };
 }
 

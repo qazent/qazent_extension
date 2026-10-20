@@ -63,6 +63,9 @@ jest.mock('../../src/backend/ai', () => ({
     purpose: 'Verify backend behavior',
     scope: 'Server middleware path',
   }),
+  PROMPT_MODES: ['qa', 'review', 'deep-review', 'inline-comments'],
+  isPromptMode: (value: unknown) =>
+    value === 'qa' || value === 'review' || value === 'deep-review' || value === 'inline-comments',
 }));
 
 jest.mock('../../src/backend/fetchPRdiff', () => ({
@@ -102,6 +105,7 @@ jest.mock('../../src/backend/ado-client', () => ({
   fetchPRCommits: jest.fn().mockResolvedValue([]),
   createTaskWorkItem: jest.fn().mockResolvedValue(77),
   postPRComment: jest.fn().mockResolvedValue(undefined),
+  postPRInlineComments: jest.fn().mockResolvedValue({ posted: 1, failed: 0 }),
 }));
 
 jest.mock('../../src/backend/license/service', () => ({
@@ -363,6 +367,81 @@ describe('backend server request path', () => {
       expect.any(String)
     );
     expect(httpsRequestSpy).toHaveBeenCalled();
+  });
+
+  it('returns accepted inline comments from generate-tests in inline-comments mode', async () => {
+    const { generateTestCases } = await import('../../src/backend/ai');
+    const { fetchPRDiff } = await import('../../src/backend/fetchPRdiff');
+    (generateTestCases as jest.Mock).mockResolvedValueOnce({
+      title: 'Generated test cases',
+      htmlDescription: '<p>Generated body</p>',
+      inlineComments: [
+        {
+          filePath: 'src/example.ts',
+          line: 2,
+          side: 'right',
+          contentHtml: '<p>Check this</p>',
+          severity: 'Major',
+        },
+      ],
+    });
+    (fetchPRDiff as jest.Mock).mockResolvedValueOnce({
+      changes: [
+        {
+          filePath: 'src/example.ts',
+          changeType: 'edit',
+          linesAdded: 3,
+          linesDeleted: 1,
+          diffContent: '@@ diff @@',
+          changeTrackingId: 4,
+          oldLineCount: 10,
+          newLineCount: 12,
+        },
+      ],
+      totalChanges: 1,
+      sourceCommitId: 'source-commit',
+      targetCommitId: 'target-commit',
+      latestIterationId: 3,
+    });
+
+    const response = await requestJson(port, '/generate-tests', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${createJwtLikeToken()}`,
+        'x-ado-org-url': 'https://dev.azure.com/myorg',
+        'x-forwarded-for': '198.51.100.41',
+      },
+      body: JSON.stringify({
+        prId: 123,
+        projectName: 'MyProject',
+        repositoryId: 'repo-123',
+        mode: 'inline-comments',
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = response.body as {
+      inlineComments: unknown;
+      skippedInlineComments: unknown;
+    };
+    expect(body.inlineComments).toEqual([
+      {
+        filePath: 'src/example.ts',
+        line: 2,
+        side: 'right',
+        contentHtml: '<p>Check this</p>',
+        severity: 'Major',
+      },
+    ]);
+    expect(body.skippedInlineComments).toEqual([]);
+    expect(generateTestCases).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      undefined,
+      'inline-comments',
+      []
+    );
   });
 
   it('logs connection metadata without claiming a public client IP', async () => {
@@ -744,6 +823,108 @@ describe('backend server request path', () => {
     expect(response.body).toEqual({
       error: 'Failed to post comment',
       message: 'comment service failed',
+    });
+  });
+
+  it('rejects malformed inline comment batches', async () => {
+    const response = await requestJson(port, '/post-pr-inline-comments', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${createJwtLikeToken()}`,
+        'x-ado-org-url': 'https://dev.azure.com/myorg',
+        'x-forwarded-for': '198.51.100.42',
+      },
+      body: JSON.stringify({
+        prId: 130,
+        projectName: 'MyProject',
+        repositoryId: 'repo-123',
+        inlineComments: [{ comments: [] }],
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({
+      error: 'Invalid inline comments',
+      details: 'inlineComments must be an array of file/line findings',
+    });
+  });
+
+  it('re-resolves raw inline comments against the current PR diff before posting', async () => {
+    const { fetchPRDiff } = await import('../../src/backend/fetchPRdiff');
+    (fetchPRDiff as jest.Mock).mockResolvedValueOnce({
+      changes: [
+        {
+          filePath: '/src/a.ts',
+          changeType: 'edit',
+          linesAdded: 3,
+          linesDeleted: 1,
+          diffContent: '@@ diff @@',
+          changeTrackingId: 3,
+          oldLineCount: 20,
+          newLineCount: 22,
+        },
+      ],
+      totalChanges: 1,
+      latestIterationId: 2,
+      firstComparingIteration: 1,
+      sourceCommitId: 'source-commit',
+      targetCommitId: 'target-commit',
+    });
+
+    const response = await requestJson(port, '/post-pr-inline-comments', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${createJwtLikeToken()}`,
+        'x-ado-org-url': 'https://dev.azure.com/myorg',
+        'x-forwarded-for': '198.51.100.43',
+      },
+      body: JSON.stringify({
+        prId: 130,
+        projectName: 'MyProject',
+        repositoryId: 'repo-123',
+        inlineComments: [
+          {
+            filePath: '/src/a.ts',
+            line: 4,
+            side: 'right',
+            contentHtml: '<p>Finding</p>',
+            severity: 'Major',
+          },
+          {
+            filePath: '/etc/passwd',
+            line: 1,
+            side: 'right',
+            contentHtml: '<p>Client-forged extra</p>',
+            threadContext: {
+              filePath: '/src/a.ts',
+              rightFileStart: { line: 4, offset: 1 },
+              rightFileEnd: { line: 4, offset: 1 },
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ posted: 1, failed: 0, skipped: 1 });
+
+    const { postPRInlineComments } = await import('../../src/backend/ado-client');
+    expect(postPRInlineComments).toHaveBeenCalledWith({
+      projectName: 'MyProject',
+      repositoryId: 'repo-123',
+      prId: 130,
+      connection: expect.any(Object),
+      inlineComments: [
+        expect.objectContaining({
+          status: 1,
+          threadContext: expect.objectContaining({
+            filePath: '/src/a.ts',
+            rightFileStart: { line: 4, offset: 1 },
+          }),
+        }),
+      ],
     });
   });
 
