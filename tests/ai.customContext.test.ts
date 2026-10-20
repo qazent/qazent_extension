@@ -43,7 +43,8 @@ jest.mock('@google/genai', () => {
       models: {
         generateContent: mockGenerateContent
       }
-    }))
+    })),
+    ThinkingLevel: { HIGH: 'HIGH' }
   };
 });
 

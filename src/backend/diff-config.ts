@@ -1,6 +1,6 @@
 import { DiffChange, DiffChangeType } from './types';
 
-export const GEMINI_MODEL_NAME = 'gemini-3.1-pro-preview';
+export const GEMINI_MODEL_NAME = 'gemini-4-argon';
 export const CHARS_PER_TOKEN_ESTIMATE = 4;
 export const TARGET_USER_PROMPT_TOKENS = 12000;
 

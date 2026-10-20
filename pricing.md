@@ -38,7 +38,7 @@ Your trial begins when you activate PR Assistant. After 14 days, an active licen
 - QA mode (structured test cases) and Code Review mode
 - Custom context per project and repository
 - Azure DevOps work items and/or PR comment output
-- Powered by Google Gemini 3.1 Pro (preview)
+- Powered by the latest Gemini 4 Argon model
 - Privacy-first processing (diffs and PR metadata only; not used for model training)
 - Direct founder support
 

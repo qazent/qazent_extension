@@ -16,7 +16,8 @@ jest.mock('@google/genai', () => {
       models: {
         generateContent: mockGenerateContent
       }
-    }))
+    })),
+    ThinkingLevel: { HIGH: 'HIGH' }
   };
 });
 
@@ -87,6 +88,18 @@ describe('generateTestCases', () => {
     });
 
     const result = await generateTestCases(mockPRMetadata, mockCodeDiff);
+
+    expect(mockGenerateContent).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'gemini-4-argon',
+      config: expect.objectContaining({
+        maxOutputTokens: 65536,
+        thinkingConfig: expect.objectContaining({
+          thinkingLevel: 'HIGH'
+        })
+      })
+    }));
+    const requestConfig = mockGenerateContent.mock.calls[0][0].config as { temperature?: number };
+    expect(requestConfig).not.toHaveProperty('temperature');
 
     expect(result.title).toBe('Test Case: Feature Functionality');
     expect(result.htmlDescription).toContain('<h2>Summary</h2>');

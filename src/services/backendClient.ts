@@ -216,7 +216,7 @@ export async function generateTestCases(
   >(
     url,
     { prId, projectName, repositoryId, customContext, mode },
-    300000 //  5minutes - generating test cases can take longer for complex PRs or if the backend is cold, especially with AI processing involved
+    900000 // 15 minutes — Gemini 4 Argon thinking can run for several minutes on a hard PR
 
   );
 }

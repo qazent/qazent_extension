@@ -180,7 +180,10 @@ function getGenAI(): GoogleGenAI {
     throw new Error('GEMINI_API_KEY environment variable not set');
   }
 
-  genAI = new GoogleGenAI({ apiKey });
+  genAI = new GoogleGenAI({
+    apiKey,
+    httpOptions: { timeout: 15 * 60 * 1000 },
+  });
   logger.info('Gemini AI client initialized');
   return genAI;
 }
@@ -799,7 +802,7 @@ export async function generateTestCases(
         commits
       );
 
-      const MAX_OUTPUT_TOKENS = 32768;
+      const MAX_OUTPUT_TOKENS = 65536;
       const estimatedUserTokens = estimateTokens(userPrompt);
       logger.debug('Sending prompt to AI', {
         systemPromptLength: sysPrompt.length,
@@ -813,9 +816,6 @@ export async function generateTestCases(
         compressionSummary: COMPRESSION_SUMMARY,
         sectionsRemoved: [...sectionsRemoved],
       });
-      const thinkingLevelHigh = (ThinkingLevel as unknown as { HIGH?: unknown } | undefined)?.HIGH ?? 'HIGH';
-
-
       // Generate content using new SDK API
       const response = await ai.models.generateContent({
         model: GEMINI_MODEL_NAME,
@@ -823,11 +823,10 @@ export async function generateTestCases(
           { role: 'user', parts: [{ text: sysPrompt + '\n\n' + userPrompt }] }
         ],
         config: {
-          temperature: 0.50, // Adjusted for more focused output; can be tuned based on observed response quality
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           thinkingConfig: {
             includeThoughts: true,
-            thinkingLevel: thinkingLevelHigh as ThinkingLevel
+            thinkingLevel: ThinkingLevel.HIGH
           },
           responseMimeType: 'application/json',
           responseSchema: AI_RESPONSE_SCHEMA

@@ -1570,6 +1570,12 @@ function startServer(): void {
     }); // close runWithLabels
   });
 
+  // Gemini 4 Argon can think for several minutes. Node's default requestTimeout
+  // is 5 minutes and would close /generate-tests before the model finishes.
+  const requestTimeoutMs = 15 * 60 * 1000;
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = requestTimeoutMs + 60 * 1000;
+
   server.listen(PORT, "0.0.0.0", () => {
     logger.info("Server started", { event: logger.Events.STARTUP, port: PORT });
     console.log(`Server listening on port ${PORT}`);

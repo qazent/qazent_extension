@@ -37,7 +37,8 @@ function getCallArgs() {
 jest.mock('@google/genai', () => ({
   GoogleGenAI: jest.fn().mockImplementation(() => ({
     models: { generateContent: mockGenerateContent }
-  }))
+  })),
+  ThinkingLevel: { HIGH: 'HIGH' }
 }));
 
 //

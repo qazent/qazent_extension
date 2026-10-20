@@ -645,6 +645,9 @@ const [successMessage, setSuccessMessage] = React.useState<SuccessMessageData | 
           This process may take some time, especially for larger pull requests or when the backend is under heavy load. Please wait after clicking
           <strong> Analyze</strong>. If something goes wrong, an error message will appear above.
         </p>
+        <p style={{ marginTop: '12px', marginBottom: 0 }}>
+          Analysis uses the latest Gemini 4 Argon model.
+        </p>
       </div>
 
  {/* Optional: Post comment / Add label */}

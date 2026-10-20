@@ -8,7 +8,7 @@ View https://qazent.com for more info!
 
 - **QA Mode and Code Review Mode** – Switch between structured test-case generation and actionable code review summaries, so the same extension fits QA and engineering workflows
 - **Flexible PR output** – Choose work item plus summary PR comment (default), or post the full output as a PR comment only — mutually exclusive options prevent conflicting settings
-- **AI‑powered analysis from real diffs** – Powered by Google Gemini 3.1 Pro (preview) to analyze code changes, PR metadata, and commit messages
+- **AI‑powered analysis from real diffs** – Powered by the latest Gemini 4 Argon model to analyze code changes, PR metadata, and commit messages
 - **PR commit messages in context** – Commit history is included alongside the diff so generated output reflects how the change evolved
 - **Instant work item creation** – Convert pull requests into Azure DevOps work items with traceable links back to the PR
 - **An AI that truly knows your project** – Project default and repository-specific custom context help the AI apply the same signals your QA team would use

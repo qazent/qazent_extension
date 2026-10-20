@@ -558,7 +558,7 @@ const handleDeleteWebhook = async (subscriptionId: string) => {
       <p style={{ color: "#605e5c", marginBottom: "24px" }}>
         Configure custom context that will be provided to the AI assistant when
         generating test cases. Set a project-wide default or customize context
-        for specific repositories.
+        for specific repositories. Analysis uses the latest Gemini 4 Argon model.
       </p>
 
       {successMessage && (
